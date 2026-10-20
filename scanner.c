@@ -1,0 +1,1 @@
+//TODO hlavny kod. + vytvorit automat a naprogramovat ho.
