@@ -1,4 +1,5 @@
 #include "token.h"
+#include <stdlib.h>
 
 void token_free(Token *token)
 {
