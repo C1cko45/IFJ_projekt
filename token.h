@@ -1,6 +1,7 @@
 #ifndef TOKEN_H
 #define TOKEN_H
 
+#include <stdbool.h> // rozsirenie boolthen;
 // Klucove slova jazyka IFJ26.
 typedef enum
 {
@@ -20,7 +21,23 @@ typedef enum
     KEYWORD_INT,
     KEYWORD_UNIT,
 
-    //+ boolean, case, class, extension, for, list, match, type.
+    //rozsirenie BOOLTHEN:
+    KEYWORD_BOOL,
+    
+    //rozsirenie CONTROL:
+    KEYWORD_FOR,
+    KEYWORD_BREAK,
+    KEYWORD_CONTINUE,
+    KEYWORD_CASE,
+    KEYWORD_MATCH,
+    
+    //rozsirenie LISTS:
+    KEYWORD_LIST,
+
+    //rozsirenie VALMEM:
+    KEYWORD_CLASS,
+    KEYWORD_TYPE,
+    KEYWORD_EXTENSION,
 } Keyword;
 
 // Typy rozpoznanych lexikalnych jednotiek/tokenov.
@@ -41,6 +58,7 @@ typedef enum
     TOKEN_TYPE_DOUBLE,
     TOKEN_TYPE_STRING,
     TOKEN_TYPE_UNIT,
+    TOKEN_TYPE_BOOL, // rozsirenie boolthen;
 
     // Operatory.
     TOKEN_TYPE_PLUS,
@@ -48,6 +66,7 @@ typedef enum
     TOKEN_TYPE_MUL,
     TOKEN_TYPE_DIV,
     TOKEN_TYPE_ASSIGN,
+    TOKEN_TYPE_DOT,  //rozsirenie valmem;
 
     // Relacne operatory.
     TOKEN_TYPE_EQ,
@@ -60,6 +79,8 @@ typedef enum
     // Oddelovace.
     TOKEN_TYPE_LPAREN,
     TOKEN_TYPE_RPAREN,
+    TOKEN_TYPE_LBRACKET,    // [  rozsirenie lists;
+    TOKEN_TYPE_RBRACKET,    // ]  rozsirenie lists;
     TOKEN_TYPE_COLON,
     TOKEN_TYPE_COMMA,
     TOKEN_TYPE_SEMICOLON,
@@ -70,6 +91,7 @@ typedef union {
     long long int_val;
     double double_val;
     char *str_val;
+    bool bool_val;      //rozsirenie boolthen;
     Keyword keyword;
 } TokenAttribute;
 
