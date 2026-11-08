@@ -2,17 +2,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define START_LENGHT (size_t) 8
+#define START_LENGTH (size_t) 8
 
 
 // inicializacia dynamickeho pola, pociatocna kapacita 8, dlzka 0.
 bool dstring_init(dstring *s) {
-    s->str = malloc(START_LENGHT);
+    s->str = malloc(START_LENGTH);
     if (s->str == NULL) {
         return false;
     } 
     s->str[0] = '\0';
-    s->capacity = START_LENGHT;
+    s->capacity = START_LENGTH;
     s->len = 0;
     return true;
 }
