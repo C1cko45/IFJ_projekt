@@ -26,21 +26,10 @@ typedef enum
     
     //rozsirenie CONTROL:
     KEYWORD_FOR,
-    KEYWORD_BREAK,
-    KEYWORD_CONTINUE,
-    KEYWORD_CASE,
-    KEYWORD_MATCH,
-    KEYWORD_TO,
-    KEYWORD_UNTIL,
-    KEYWORD_BY,
     
     //rozsirenie LISTS:
     KEYWORD_LIST,
 
-    //rozsirenie VALMEM:
-    KEYWORD_CLASS,
-    KEYWORD_TYPE,
-    KEYWORD_EXTENSION,
 } Keyword;
 
 // Typy rozpoznanych lexikalnych jednotiek/tokenov.
