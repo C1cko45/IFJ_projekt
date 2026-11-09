@@ -47,7 +47,6 @@ typedef enum
 typedef enum
 {
     // Riadiace tokeny.
-    TOKEN_ERROR_LEX, // Syntakticka chyba 1.
     TOKEN_TYPE_EOF,
     TOKEN_TYPE_EOL,
     TOKEN_TYPE_INDENT,
@@ -70,7 +69,6 @@ typedef enum
     TOKEN_TYPE_MUL,
     TOKEN_TYPE_DIV,
     TOKEN_TYPE_ASSIGN,
-    TOKEN_TYPE_DOT,  //rozsirenie valmem;
 
     // Relacne operatory.
     TOKEN_TYPE_EQ,
@@ -97,6 +95,11 @@ typedef enum
     TOKEN_TYPE_COMMA,
     TOKEN_TYPE_SEMICOLON,
     TOKEN_TYPE_AT_MAIN, // @main
+
+    //chyba 1.
+    TOKEN_ERROR_LEX,
+    //token pre parser.
+    TOKEN_TYPE_STATEMENT,
 } TokenType;
 
 typedef union {
