@@ -12,7 +12,8 @@ typedef enum{
     NODE_ASSIGN,    
     NODE_EXPRESSION,
     NODE_TOKEN_ONLY,
-    NODE_CALL
+    NODE_CALL,
+    NODE_MAIN
 }AST_NODE_TYPE;
 
 
