@@ -8,6 +8,6 @@
 void scanner_init(FILE *source);
 
 // hlavna funkcia: nacita dalsi token zo vstupu.
-int scanner_get_next_token(Token *token);
+Token scanner_get_next_token(void);
 
 #endif // SCANNER_H
