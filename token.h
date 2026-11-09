@@ -47,6 +47,7 @@ typedef enum
 typedef enum
 {
     // Riadiace tokeny.
+    TOKEN_ERROR_LEX, // Syntakticka chyba 1.
     TOKEN_TYPE_EOF,
     TOKEN_TYPE_EOL,
     TOKEN_TYPE_INDENT,
@@ -110,7 +111,7 @@ typedef struct
 {
     TokenType type;
     TokenAttribute attr;
-    int line;
+    //int line;
 } Token;
 
 void token_free(Token *token);
