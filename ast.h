@@ -25,6 +25,7 @@ typedef struct{
 }AST_NODE;
 
 AST_NODE* ast_create_node(Token token);
+AST_NODE* ast_create_node_type(AST_NODE type);
 void ast_add_parent(AST_NODE *parent, AST_NODE *child, int side); //do parent sa prida child na stranu podla side(left -> side = 0, right -> side = 1)
 void ast_free_node(AST_NODE *node);
 
