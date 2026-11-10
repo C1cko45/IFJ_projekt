@@ -13,12 +13,13 @@ typedef enum{
     NODE_VAR_DEF,
     NODE_VAL_DEF,  
     NODE_TOKEN_ONLY,
-    NODE_VALMEN    //nody sa mozu pridat alebo ubrat podla potreby
+    NODE_VALMEN,
+    NODE_LIST    //nody sa mozu pridat alebo ubrat podla potreby
     
 }AST_NODE_TYPE;
 
 
-typedef struct{
+typedef struct AST_NODE {
     AST_NODE_TYPE type;
     Token token;            //ak bude type tak token bude automaticky ukazovat na NULL a opacne
     struct AST_NODE *left_ch;  

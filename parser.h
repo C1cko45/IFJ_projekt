@@ -10,5 +10,10 @@ AST_NODE* function_list(Token token);   //Kontroluje strukturu definicie funkcie
 AST_NODE* function_def();               // Kontroluje spravnost definicie funkcie. Iba def nie bllok kodu pod nou
 AST_NODE* function_body();               //Kontroluje blok kodu pod definiciou funkcie;
 AST_NODE* parameter_list();             //Toto kontorluje spravny zapis parametrov a vracia AST parametrov
+void parser_error_exit(int error_code, const char *message); //vypise error a ukonci program s vymazanim vsetkych alokacii
+AST_NODE* get_type(Token token); //vrati node v ktorom je type 
+AST_NODE* parser_get_list(); //vrati AST v ktorom je rzlozeny zapis List[type]
+
+
 
 #endif

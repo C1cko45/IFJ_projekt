@@ -56,6 +56,8 @@ AST_NODE* function_list(Token token){
     
     temp = function_def();
     ast_add_parent(last_program_node, temp, 0);     //pridavanie definicie funkcie do laveho uzla 
+
+
     temp = function_body();
     ast_add_parent(last_program_node, temp, 1);     //pridavanie tela funkcie do raveho uzla 
     return root;
@@ -79,17 +81,69 @@ AST_NODE* function_def(){
     }
     temp = parameter_list();
     ast_add_parent(last_program_node,temp,1);
+
     current_token = scanner_get_next_token();
-    if(current_token.type != TOKEN_TYPE_RPAREN){
+    if(current_token.type != TOKEN_TYPE_RPAREN){parser_error_exit(2, "Syntakticka chyba");}
+
+    current_token = scanner_get_next_token();
+    if(current_token.type == TOKEN_TYPE_COLON){
+        current_token = scanner_get_next_token();
+        temp = get_type(current_token);
+        ast_add_parent(last_program_node,temp,0);
+        current_token = scanner_get_next_token();
+    }
+    if(current_token.type == TOKEN_TYPE_ASSIGN){
+        return root;
+    }else{
         parser_error_exit(2, "Syntakticka chyba");
     }
+
     
+
+    return root;
+
 }
 AST_NODE* function_body(){
-
+    return NULL;
 }
 
 
+AST_NODE* get_type(Token token){
+    AST_NODE* temp = NULL;
+    switch(token.type){
+        case KEYWORD_STRING:
+            temp = ast_create_node (token);
+            break;
+        case KEYWORD_DOUBLE:
+            temp = ast_create_node (token);
+            break;
+        case KEYWORD_INT:
+            temp = ast_create_node (token);
+            break;
+        case KEYWORD_UNIT:
+            temp = ast_create_node (token);
+            break;
+        case KEYWORD_BOOLEAN:
+            temp = ast_create_node (token);
+            break;
+        case KEYWORD_LIST:
+            temp = parser_get_list();
+            break;
+        default:
+            parser_error_exit(2,"Syntakticka chyba");
+    }
+    return temp;
+}
+AST_NODE* parser_get_list(){
+    AST_NODE* list_node = ast_create_node_type(NODE_LIST);
+    Token current_token = scanner_get_next_token();
+    if(current_token.type !=TOKEN_TYPE_LBRACKET){parser_error_exit(2,"Syntakticka chyba.");}
+    current_token = scanner_get_next_token();
+    get_type(current_token);
+    AST_NODE* temp = ast_create_node (current_token);
+    ast_add_parent(list_node,temp,0);
+    return list_node;
+}
 
 AST_NODE* program(){
     AST_NODE* root = ast_create_node_type(NODE_PROGRAM);
