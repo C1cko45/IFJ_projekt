@@ -3,8 +3,9 @@
 #include <stdlib.h>
 
 AST_NODE* parser(){
-    AST_NODE* koren = (NODE_STAT);
-
+    AST_NODE* koren = ast_create_node_type(NODE_PROGRAM);
     
+
+
     return koren;
 }
