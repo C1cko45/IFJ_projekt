@@ -4,16 +4,17 @@
 
 typedef enum{
     NODE_PROGRAM,     //preojenie jednotlivych stromov
-    NODE_FUNC_DEF,  
+    NODE_FUNC_DEF, 
+    NODE_MAIN, 
+    NODE_CALL,
     NODE_IF,
     NODE_WHILE,
     NODE_FOR,
-    NODE_VARL_DEF,  //definicia var a val
-    NODE_ASSIGN,    
-    NODE_EXPRESSION,
+    NODE_VAR_DEF,
+    NODE_VAL_DEF,  
     NODE_TOKEN_ONLY,
-    NODE_CALL,
-    NODE_MAIN
+    NODE_VALMEN    //nody sa mozu pridat alebo ubrat podla potreby
+    
 }AST_NODE_TYPE;
 
 
