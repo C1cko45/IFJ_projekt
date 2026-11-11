@@ -127,16 +127,18 @@ AST_NODE* parameter_list(){
         if(current_token.type == TOKEN_TYPE_COMMA){
             temp = parameter_list();
             ast_add_parent(last_program_node,temp,1);
+            
+            return last_program_node;
         }else if(current_token.type == TOKEN_TYPE_RPAREN){
             return root;
         }else{parser_error_exit(2, "Syntakticka chyba, parameter_list3");}
-        return NULL;
+            return NULL;
     }else if(current_token.type == TOKEN_TYPE_RPAREN){
         return NULL;
-    }else{parser_error_exit(2, "Syntakticka chyba, parameter_list1");}
-
-    
-    return root;
+    }else{
+        parser_error_exit(2, "Syntakticka chyba, parameter_list1");
+        return NULL;
+    }
 }
 AST_NODE* get_type(Token token){
     AST_NODE* temp = NULL;
