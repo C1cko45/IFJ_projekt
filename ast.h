@@ -21,7 +21,8 @@ typedef enum{
 
 typedef struct AST_NODE {
     AST_NODE_TYPE type;
-    Token token;            //ak bude type tak token bude automaticky ukazovat na NULL a opacne
+    Token token;             //ak type nebude NODE_TOKEN_ONLY tak token bude automaticku ={0}. 
+                            // ak bude type NODE_TOKEN_ONLY tak token bude platna struktura ako v token.h 
     struct AST_NODE *left_ch;  
     struct AST_NODE *right_ch;
 }AST_NODE;
