@@ -58,6 +58,8 @@ AST_NODE* function_list(Token token){
     temp = function_def();
     ast_add_parent(last_program_node, temp, 0);     //pridavanie definicie funkcie do laveho uzla 
 
+    current_token = scanner_get_next_token();
+    if(current_token.type != TOKEN_TYPE_EOL){parser_error_exit(2, "Syntakticka chyba,function_list");}
 
     temp = function_body();
     ast_add_parent(last_program_node, temp, 1);     //pridavanie tela funkcie do raveho uzla 
