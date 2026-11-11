@@ -105,7 +105,8 @@ AST_NODE* function_def(){
 
 AST_NODE* parse_expression(){
     Token current_token = scanner_get_next_token();
-    return NULL;
+    AST_NODE* root = ast_create_node(current_token);
+    return root;
 }
 AST_NODE* var_assign(Token first, Token second){
     return NULL;
