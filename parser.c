@@ -45,13 +45,14 @@ AST_NODE* function_list(Token token){
             last_program_node = temp;
            
         }else{
-            parser_error_exit(2, "Syntakticka chyba v definicii funkcie");
+            parser_error_exit(2, "Syntakticka chyba,function_list");
         }
 
     }else if (current_token.type == KEYWORD_DEF){
         root = ast_create_node_type(NODE_FUNC_DEF); 
+        last_program_node = root;
     }else{
-        parser_error_exit(2, "Syntakticka chyba v definicii funkcie");
+        parser_error_exit(2, "Syntakticka chyba,function_list");
     }
     
     temp = function_def();
@@ -73,17 +74,14 @@ AST_NODE* function_def(){
         root = ast_create_node(current_token);
         last_program_node = root; 
     }else{
-        parser_error_exit(2, "Syntakticka chyba");
+        parser_error_exit(2, "Syntakticka chyba,function_def1");
     }
     current_token = scanner_get_next_token();
     if(current_token.type != TOKEN_TYPE_LPAREN){
-        parser_error_exit(2, "Syntakticka chyba");
+        parser_error_exit(2, "Syntakticka chyba,function_def2");
     }
     temp = parameter_list();
     ast_add_parent(last_program_node,temp,1);
-
-    current_token = scanner_get_next_token();
-    if(current_token.type != TOKEN_TYPE_RPAREN){parser_error_exit(2, "Syntakticka chyba");}
 
     current_token = scanner_get_next_token();
     if(current_token.type == TOKEN_TYPE_COLON){
@@ -95,7 +93,7 @@ AST_NODE* function_def(){
     if(current_token.type == TOKEN_TYPE_ASSIGN){
         return root;
     }else{
-        parser_error_exit(2, "Syntakticka chyba");
+        parser_error_exit(2, "Syntakticka chyba,function_def3");
     }
 
     
@@ -103,11 +101,43 @@ AST_NODE* function_def(){
     return root;
 
 }
+
 AST_NODE* function_body(){
     return NULL;
 }
+AST_NODE* parameter_list(){
+    
+    AST_NODE* root = NULL;
+    AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
+    AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
+    Token current_token = scanner_get_next_token();
 
+    if(current_token.type == TOKEN_TYPE_IDENTIFIER){
+        root = ast_create_node(current_token);
+        last_program_node = root;
 
+        current_token = scanner_get_next_token();
+        if(current_token.type != TOKEN_TYPE_COLON){parser_error_exit(2, "Syntakticka chyba, parameter_list2");}
+        
+        current_token = scanner_get_next_token();
+        temp = get_type(current_token);
+        ast_add_parent(last_program_node,temp,0);
+        
+        current_token = scanner_get_next_token();
+        if(current_token.type == TOKEN_TYPE_COMMA){
+            temp = parameter_list();
+            ast_add_parent(last_program_node,temp,1);
+        }else if(current_token.type == TOKEN_TYPE_RPAREN){
+            return root;
+        }else{parser_error_exit(2, "Syntakticka chyba, parameter_list3");}
+        return NULL;
+    }else if(current_token.type == TOKEN_TYPE_RPAREN){
+        return NULL;
+    }else{parser_error_exit(2, "Syntakticka chyba, parameter_list1");}
+
+    
+    return root;
+}
 AST_NODE* get_type(Token token){
     AST_NODE* temp = NULL;
     switch(token.type){
@@ -130,18 +160,25 @@ AST_NODE* get_type(Token token){
             temp = parser_get_list();
             break;
         default:
-            parser_error_exit(2,"Syntakticka chyba");
+            parser_error_exit(2,"Syntakticka chyba,get_type");
     }
     return temp;
 }
+
 AST_NODE* parser_get_list(){
     AST_NODE* list_node = ast_create_node_type(NODE_LIST);
     Token current_token = scanner_get_next_token();
-    if(current_token.type !=TOKEN_TYPE_LBRACKET){parser_error_exit(2,"Syntakticka chyba.");}
+    if(current_token.type !=TOKEN_TYPE_LBRACKET){parser_error_exit(2,"Syntakticka chyba,parser_get_list");}
+
     current_token = scanner_get_next_token();
-    get_type(current_token);
-    AST_NODE* temp = ast_create_node (current_token);
+    AST_NODE* temp= get_type(current_token);
     ast_add_parent(list_node,temp,0);
+
+    current_token = scanner_get_next_token();
+    if(current_token.type != TOKEN_TYPE_RBRACKET){
+        parser_error_exit(2, "Syntakticka chyba, parser_get_list: ocakavana ']'");
+    }
+    
     return list_node;
 }
 
@@ -169,7 +206,7 @@ AST_NODE* program(){
                 current_token = scanner_get_next_token();
                 continue;
             default:
-                parser_error_exit(2,"Syntakticka chyba");
+                parser_error_exit(2,"Syntakticka chyba,program");
         }
 
         current_token = scanner_get_next_token();
