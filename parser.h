@@ -15,5 +15,15 @@ AST_NODE* get_type(Token token); //vrati node v ktorom je type
 AST_NODE* parser_get_list(); //vrati AST v ktorom je rzlozeny zapis List[type]
 
 
-
+AST_NODE* parse_expression();
+AST_NODE* var_assign(Token first, Token second);
+AST_NODE* call_f(Token first, Token second);
+AST_NODE* if_statement();
+AST_NODE* while_loop();
+AST_NODE* for_loop();
+AST_NODE* var_def();
+AST_NODE* val_def();
+AST_NODE* function_body_block();
+AST_NODE* statement_list(Token token);
+AST_NODE* statement(Token token);
 #endif
