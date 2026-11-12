@@ -4,7 +4,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "scanner.h"
+// pridanie funkcie peek a next na pracu s tokenom
+//peek nacita token ale nspotrebuje ho
+//next spotrebuje uz nacitany token alebo nacita novy
 
+static Token saved_token;
+static bool has_saved = false;
+
+static Token peek(void){
+    if(!has_saved){
+        has_saved = true;
+        saved_token = scanner_get_next_token();
+    }
+    return saved_token;
+}
+
+static Token next(void){
+    if(has_saved){
+        has_saved = false;
+        return saved_token;
+    }
+    return scanner_get_next_token();
+}
 
 void parser_error_exit(int error_code, const char *message){
     fprintf(stderr, "Chyba (%d): %s\n",error_code,message);
@@ -12,33 +33,33 @@ void parser_error_exit(int error_code, const char *message){
 }
 
 bool prolog(){
-    Token current_token = scanner_get_next_token(); 
+    Token current_token = next(); 
     if (current_token.type != KEYWORD_IMPORT) return false;
     
-    current_token = scanner_get_next_token();       
+    current_token = next();       
     if (current_token.type != TOKEN_TYPE_IDENTIFIER) return false;
     
-    current_token = scanner_get_next_token();       
+    current_token = next();       
     if (current_token.type != TOKEN_TYPE_DOT) return false;
     
-    current_token = scanner_get_next_token();       
+    current_token = next();       
     if (current_token.type != TOKEN_TYPE_MUL) return false;
     
-    current_token = scanner_get_next_token();
+    current_token = next();
     if (current_token.type != TOKEN_TYPE_EOL) return false;
 
     return true;
 }
 
-AST_NODE* function_list(Token token){
+AST_NODE* function_list(){
     AST_NODE* root = NULL;
-    Token current_token = token;
+    Token current_token = next();
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pointre na uzly ktore treba pripojit na koren
     AST_NODE* last_program_node = root;   //ukazatel na posledny node z ktoreho vychadzame
 
     if(current_token.type == TOKEN_TYPE_AT_MAIN){
         root = ast_create_node_type(NODE_MAIN);
-        current_token = scanner_get_next_token();
+        current_token = next();
         if(current_token.type == KEYWORD_DEF){
             temp = ast_create_node_type(NODE_FUNC_DEF);
             ast_add_parent(root, temp, 0);
@@ -68,7 +89,7 @@ AST_NODE* function_list(Token token){
 
 AST_NODE* function_def(){
     AST_NODE* root = NULL;
-    Token current_token = scanner_get_next_token();
+    Token current_token = next();
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
     AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
     if(current_token.type == TOKEN_TYPE_IDENTIFIER){
@@ -77,19 +98,19 @@ AST_NODE* function_def(){
     }else{
         parser_error_exit(2, "Syntakticka chyba,function_def1");
     }
-    current_token = scanner_get_next_token();
+    current_token = next();
     if(current_token.type != TOKEN_TYPE_LPAREN){
         parser_error_exit(2, "Syntakticka chyba,function_def2");
     }
     temp = parameter_list();
     ast_add_parent(last_program_node,temp,1);
 
-    current_token = scanner_get_next_token();
+    current_token = next();
     if(current_token.type == TOKEN_TYPE_COLON){
-        current_token = scanner_get_next_token();
-        temp = get_type(current_token);
+        current_token = peek();
+        temp = get_type();
         ast_add_parent(last_program_node,temp,0);
-        current_token = scanner_get_next_token();
+        current_token = next();
     }
     if(current_token.type == TOKEN_TYPE_ASSIGN){
         return root;
@@ -104,12 +125,14 @@ AST_NODE* function_def(){
 }
 
 AST_NODE* parse_expression(){
-    Token current_token = scanner_get_next_token();
+    Token current_token = next();
     AST_NODE* root = ast_create_node(current_token);
     return root;
 }
 AST_NODE* var_assign(Token first, Token second){
-    return NULL;
+    AST_NODE* root = NULL;
+    AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
+    AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
 }
 AST_NODE* call_f(Token first, Token second){
     return NULL;
@@ -131,13 +154,13 @@ AST_NODE* var_def(){
     AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
     
     root = ast_create_node_type(NODE_VAR_DEF);
-    Token current_token = scanner_get_next_token();
+    Token current_token = next();
     if(current_token.type != TOKEN_TYPE_IDENTIFIER){parser_error_exit(2, "Syntakticka chyba,var_def");}
     temp = ast_create_node(current_token);
     ast_add_parent(root,temp,0);
     
 
-    current_token = scanner_get_next_token();
+    current_token = next();
     switch (current_token.type){
     case TOKEN_TYPE_ASSIGN:
         temp = parse_expression();
@@ -145,11 +168,11 @@ AST_NODE* var_def(){
         break;
     case TOKEN_TYPE_COLON:
         last_program_node = temp;
-        current_token = scanner_get_next_token();
-        temp = get_type(current_token);
+        current_token = peek();
+        temp = get_type( );
         ast_add_parent(last_program_node,temp,0);
 
-        current_token = scanner_get_next_token();
+        current_token = next();
         if(current_token.type != TOKEN_TYPE_ASSIGN){parser_error_exit(2, "Syntakticka chyba,var_def");}
         temp = parse_expression();
         ast_add_parent(root,temp,1);
@@ -163,18 +186,18 @@ AST_NODE* var_def(){
     return root;
 }
 AST_NODE* val_def(){
-        AST_NODE* root = NULL;
+    AST_NODE* root = NULL;
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
     AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
     
     root = ast_create_node_type(NODE_VAL_DEF);
-    Token current_token = scanner_get_next_token();
+    Token current_token = next();
     if(current_token.type != TOKEN_TYPE_IDENTIFIER){parser_error_exit(2, "Syntakticka chyba,var_def");}
     temp = ast_create_node(current_token);
     ast_add_parent(root,temp,0);
     
 
-    current_token = scanner_get_next_token();
+    current_token = next();
     switch (current_token.type){
     case TOKEN_TYPE_ASSIGN:
         temp = parse_expression();
@@ -182,11 +205,11 @@ AST_NODE* val_def(){
         break;
     case TOKEN_TYPE_COLON:
         last_program_node = temp;
-        current_token = scanner_get_next_token();
-        temp = get_type(current_token);
+        current_token = peek();
+        temp = get_type();
         ast_add_parent(last_program_node,temp,0);
 
-        current_token = scanner_get_next_token();
+        current_token = next();
         if(current_token.type != TOKEN_TYPE_ASSIGN){parser_error_exit(2, "Syntakticka chyba,var_def");}
         temp = parse_expression();
         ast_add_parent(root,temp,1);
@@ -202,8 +225,9 @@ AST_NODE* val_def(){
 
 AST_NODE* function_body(){
     AST_NODE* root = NULL;
-    Token current_token = scanner_get_next_token();
+    Token current_token = peek();
     if(current_token.type == TOKEN_TYPE_EOL){
+        next();
         root = function_body_block();
     }else{
         root = parse_expression();
@@ -216,26 +240,31 @@ AST_NODE* function_body_block(){
     AST_NODE* root = ast_create_node_type(NODE_PROGRAM);
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
     AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
-    Token current_token = scanner_get_next_token();
+    Token current_token = next();
     if(current_token.type != TOKEN_TYPE_INDENT){parser_error_exit(2, "Syntakticka chyba, function_body_block1");}
     
     //pre pripad prazdneho bloku. Blok nemoze byt prazdny.
-    current_token = scanner_get_next_token();
+    current_token = peek();
     if(current_token.type == TOKEN_TYPE_DEDENT){parser_error_exit(2, "Syntakticka chyba, function_body_block2");}
     last_program_node = root;
     
     //Loop ktory kontroluje lubovolny pocet statementov
     while (current_token.type != TOKEN_TYPE_DEDENT){
-        temp = statement_list(current_token);
+        temp = statement();
         ast_add_parent(last_program_node,temp,0);
-        current_token = scanner_get_next_token();
-        if(current_token.type == TOKEN_TYPE_EOF){parser_error_exit(99, "Chyba lexera. Koniec programu EOL ale neuzavrety blok kodu.");}
+        current_token = peek();
+        if(current_token.type == TOKEN_TYPE_EOF){
+            next();
+            parser_error_exit(2, "Chyba lexera. Koniec programu EOL ale neuzavrety blok kodu.");
+        }
         
         //vytvorenie noveho uzla, nappojenie na predchadzajuci programovy uzol a nastavenie uzla ako posledny
         if(current_token.type != TOKEN_TYPE_DEDENT){
             temp = ast_create_node_type(NODE_PROGRAM);
             ast_add_parent(last_program_node,temp,1);
             last_program_node = temp;
+        }else{
+            next();
         }
         
     }
@@ -243,17 +272,9 @@ AST_NODE* function_body_block(){
     
     return root;
 }
-AST_NODE* statement_list(Token token){
-    AST_NODE* root = NULL;
-    //AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
-    //AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
-    
-    root = statement(token);
-    
-    return root;
-}
-AST_NODE* statement(Token token){
-    Token current_token = token;
+
+AST_NODE* statement(){
+    Token current_token = next();
     AST_NODE* root = NULL;
     switch (current_token.type){
         case KEYWORD_IF:
@@ -269,7 +290,7 @@ AST_NODE* statement(Token token){
             root = val_def();
             break;
         case TOKEN_TYPE_IDENTIFIER:
-            Token current_token_second = scanner_get_next_token();
+            Token current_token_second = next();
             switch (current_token_second.type){
                 case TOKEN_TYPE_ASSIGN:
                     root = var_assign(current_token, current_token_second);
@@ -299,7 +320,7 @@ AST_NODE* statement(Token token){
             //expression
             break;
         }    
-    current_token = scanner_get_next_token();
+    current_token = next();
     if(current_token.type != TOKEN_TYPE_EOL){parser_error_exit(2, "Syntakticka chyba, statementx");}
     return root;
 }
@@ -309,20 +330,20 @@ AST_NODE* parameter_list(){
     AST_NODE* root = NULL;
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
     AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
-    Token current_token = scanner_get_next_token();
+    Token current_token = next();
 
     if(current_token.type == TOKEN_TYPE_IDENTIFIER){
         root = ast_create_node(current_token);
         last_program_node = root;
 
-        current_token = scanner_get_next_token();
+        current_token = next();
         if(current_token.type != TOKEN_TYPE_COLON){parser_error_exit(2, "Syntakticka chyba, parameter_list2");}
         
-        current_token = scanner_get_next_token();
-        temp = get_type(current_token);
+        current_token = peek();
+        temp = get_type();
         ast_add_parent(last_program_node,temp,0);
         
-        current_token = scanner_get_next_token();
+        current_token = next();
         if(current_token.type == TOKEN_TYPE_COMMA){
             temp = parameter_list();
             ast_add_parent(last_program_node,temp,1);
@@ -339,23 +360,23 @@ AST_NODE* parameter_list(){
         return NULL;
     }
 }
-AST_NODE* get_type(Token token){
+AST_NODE* get_type( ){
     AST_NODE* temp = NULL;
-    switch(token.type){
+    switch(peek().type){
         case KEYWORD_STRING:
-            temp = ast_create_node (token);
+            temp = ast_create_node (next());
             break;
         case KEYWORD_DOUBLE:
-            temp = ast_create_node (token);
+            temp = ast_create_node (next());
             break;
         case KEYWORD_INT:
-            temp = ast_create_node (token);
+            temp = ast_create_node (next());
             break;
         case KEYWORD_UNIT:
-            temp = ast_create_node (token);
+            temp = ast_create_node (next());
             break;
         case KEYWORD_BOOLEAN:
-            temp = ast_create_node (token);
+            temp = ast_create_node (next());
             break;
         case KEYWORD_LIST:
             temp = parser_get_list();
@@ -370,14 +391,14 @@ AST_NODE* get_type(Token token){
 
 AST_NODE* parser_get_list(){
     AST_NODE* list_node = ast_create_node_type(NODE_LIST);
-    Token current_token = scanner_get_next_token();
+    Token current_token = next();
     if(current_token.type !=TOKEN_TYPE_LBRACKET){parser_error_exit(2,"Syntakticka chyba,parser_get_list");}
 
-    current_token = scanner_get_next_token();
-    AST_NODE* temp= get_type(current_token);
+    current_token = peek();
+    AST_NODE* temp= get_type();
     ast_add_parent(list_node,temp,0);
 
-    current_token = scanner_get_next_token();
+    current_token = next();
     if(current_token.type != TOKEN_TYPE_RBRACKET){
         parser_error_exit(2, "Syntakticka chyba, parser_get_list: ocakavana ']'");
     }
@@ -396,26 +417,27 @@ AST_NODE* program(){
 
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
     AST_NODE* last_program_node = root;
-    Token current_token = scanner_get_next_token();  //volanie lexera
+    Token current_token = peek();  //volanie lexera
     while (current_token.type != TOKEN_TYPE_EOF){            //kontrola ci po prologu nasleduju definicie funkcii. Kazda funkcia ma v sebe zvysok pravidiel
         
         switch(current_token.type){
             case TOKEN_TYPE_AT_MAIN:
-                temp = function_list(current_token);
+                temp = function_list();
                 ast_add_parent(last_program_node, temp, 0);
                 break;
             case KEYWORD_DEF:
-                temp = function_list(current_token);
+                temp = function_list();
                 ast_add_parent(last_program_node, temp, 0);   
                 break; 
             case TOKEN_TYPE_EOL:
-                current_token = scanner_get_next_token();
+                next();
+                current_token = peek();
                 continue;
             default:
                 parser_error_exit(2,"Syntakticka chyba,program");
         }
 
-        current_token = scanner_get_next_token();
+        current_token = peek();
         if(current_token.type != TOKEN_TYPE_EOF){
             AST_NODE* program_node = ast_create_node_type(NODE_PROGRAM);
             ast_add_parent(last_program_node, program_node, 1);

@@ -13,7 +13,7 @@ typedef enum{
     NODE_VAR_DEF,
     NODE_VAL_DEF,  
     NODE_TOKEN_ONLY,
-    NODE_VALMEN,
+    NODE_VALMEM,
     NODE_LIST    //nody sa mozu pridat alebo ubrat podla potreby
     
 }AST_NODE_TYPE;
