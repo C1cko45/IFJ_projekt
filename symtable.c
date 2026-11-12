@@ -29,25 +29,24 @@ struct SymTable
 };
 
 /* DJB2 Hash */
-unsigned long DJBHash(unsigned char *str)
+unsigned long DJBHash(const char *str)
 {
     unsigned long hash = 5381;
     int c;
 
-    while ((c = *str++))
+    while ((c = (unsigned char)*str++))
         hash = ((hash << 5) + hash) + c; // hash * 33 + c
 
     return hash;
 }
 
 /* BKDR Hash */
-unsigned int BKDRHash(unsigned char *str, unsigned int length)
+unsigned int BKDRHash(const char *str)
 {
-    unsigned int seed = 131;
     unsigned int hash = 0;
 
-    for (unsigned int i = 0; i < length; str++, i++)
-        hash = (hash * seed) + (*str);
+    while (*str)
+        hash = hash * 131 + (unsigned char)*str++;
 
     return hash;
 }
