@@ -4,9 +4,17 @@
 
 #define HT_MAX_SIZE 13
 
+typedef enum
+{
+    EMPTY,
+    BUSY,
+    DELETED
+} EntryState;
+
 struct HTEntry
 {
-    bool busy;
+    EntryState state;
+
     char *identifier;
     // type
     // value
@@ -16,6 +24,7 @@ struct SymTable
 {
     size_t capacity;
     size_t size;
+
     HTEntry **scopes;
 };
 
