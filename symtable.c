@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -35,9 +36,9 @@ struct SymTable
 };
 
 /* DJB2 Hash */
-unsigned long DJBHash(const char *str)
+uint32_t DJBHash(const char *str)
 {
-    unsigned long hash = 5381;
+    uint32_t hash = 5381;
     int c;
 
     while ((c = (unsigned char)*str++))
@@ -47,9 +48,9 @@ unsigned long DJBHash(const char *str)
 }
 
 /* BKDR Hash */
-unsigned int BKDRHash(const char *str)
+uint32_t BKDRHash(const char *str)
 {
-    unsigned int hash = 0;
+    uint32_t hash = 0;
 
     while (*str)
         hash = hash * 131 + (unsigned char)*str++;
