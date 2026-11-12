@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "symtable.h"
 
@@ -14,18 +15,23 @@ typedef enum
 struct HTEntry
 {
     EntryState state;
-
-    char *identifier;
+    char *identifier; // key
     // type
     // value
+};
+
+struct HTable
+{
+    size_t capacity;
+    size_t count;
+    HTEntry *entries;
 };
 
 struct SymTable
 {
     size_t capacity;
-    size_t size;
-
-    HTEntry **scopes;
+    size_t count;
+    HTable *scopes;
 };
 
 /* DJB2 Hash */
@@ -35,7 +41,7 @@ unsigned long DJBHash(const char *str)
     int c;
 
     while ((c = (unsigned char)*str++))
-        hash = ((hash << 5) + hash) + c; // hash * 33 + c
+        hash = hash * 33 + c;
 
     return hash;
 }
