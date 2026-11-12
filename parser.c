@@ -27,6 +27,37 @@ static Token next(void){
     return scanner_get_next_token();
 }
 
+// AI-generated (Claude) - prompt: "vytvor mi 2d pole s mojou hotovou precedencnou tabulkou"
+// Prepis rucne vyplnenej tabulky autora (hodnoty su jeho, AI ich len previedla do kodu).
+
+typedef enum {
+    P_I, P_PLUS, P_MINUS, P_MUL, P_DIV, P_LPAREN, P_RPAREN, P_DOLLAR,
+    P_UPLUS, P_UMINUS, P_REL, P_EQ, P_NOT, P_AND, P_OR,
+    P_COUNT
+} PrecIndex;
+
+// N = prazdne (chyba), L = <, G = >, Q = =
+typedef enum { N, L, G, Q } PrecRel;
+
+//                      i  +  -  *  /  (  )  $ +U -U REL EQ !  && ||
+static const PrecRel prec_table[P_COUNT][P_COUNT] = {
+    /* i   */ { N, G, G, G, G, N, G, G, N, N, G, G, N, G, G },
+    /* +   */ { L, G, G, L, L, L, G, G, L, L, G, G, L, G, G },
+    /* -   */ { L, G, G, L, L, L, G, G, L, L, G, G, L, G, G },
+    /* *   */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G },
+    /* /   */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G },
+    /* (   */ { L, L, L, L, L, L, Q, N, L, L, L, L, L, L, L },
+    /* )   */ { N, G, G, G, G, N, G, G, N, N, G, G, N, G, G },
+    /* $   */ { L, L, L, L, L, L, N, N, L, L, L, L, L, L, L },
+    /* +U  */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G },
+    /* -U  */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G },
+    /* REL */ { L, L, L, L, L, L, G, G, L, L, N, G, L, G, G },
+    /* EQ  */ { L, L, L, L, L, L, G, G, L, L, L, N, L, G, G },
+    /* !   */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G },
+    /* &&  */ { L, L, L, L, L, L, G, G, L, L, L, L, L, G, G },
+    /* ||  */ { L, L, L, L, L, L, G, G, L, L, L, L, L, L, G },
+};
+
 void parser_error_exit(int error_code, const char *message){
     fprintf(stderr, "Chyba (%d): %s\n",error_code,message);
     exit(error_code);
