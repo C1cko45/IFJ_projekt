@@ -4,7 +4,7 @@
 
 #include "symtable.h"
 
-#define HT_MAX_SIZE 13
+#define HTABLE_MAX_LOAD 0.7 // Load factor; round down (rounding up will make the number over 0.7)
 
 typedef enum
 {
@@ -36,24 +36,24 @@ struct SymTable
 };
 
 /* DJB2 Hash */
-uint32_t DJBHash(const char *str)
+uint32_t DJBHash(const char *key)
 {
     uint32_t hash = 5381;
-    int c;
 
-    while ((c = (unsigned char)*str++))
+    int c;
+    while ((c = (unsigned char)*key++))
         hash = hash * 33 + c;
 
     return hash;
 }
 
 /* BKDR Hash */
-uint32_t BKDRHash(const char *str)
+uint32_t BKDRHash(const char *key)
 {
     uint32_t hash = 0;
 
-    while (*str)
-        hash = hash * 131 + (unsigned char)*str++;
+    while (*key)
+        hash = hash * 131 + (unsigned char)*key++;
 
     return hash;
 }
