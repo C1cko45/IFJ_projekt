@@ -96,10 +96,21 @@ SymTable createSymTable()
 
     return sym_table;
 }
+/* Destroys the whole SymTable
+ * Free memory of every scope, free memory of the scopes array, set capacity and count to 0 */
 void destroySymTable(SymTable *sym_table)
 {
-    // TODO: destroyScope() and set NULL for every SymTable.scope[x]
-    // Don't have to return any value indicating status of success, just fprintf upon error
+    while (sym_table->count > 0)
+    {
+        free(sym_table->scopes[sym_table->count - 1].entries);
+        sym_table->scopes[sym_table->count - 1].entries = NULL;
+        sym_table->count--;
+    }
+
+    free(sym_table->scopes);
+    sym_table->scopes = NULL;
+    sym_table->count = 0;
+    sym_table->capacity = 0;
 }
 
 /* Creates and initializes new scope at the end of the SymTable; updates SymTable->count
@@ -118,7 +129,6 @@ void createScope(SymTable *sym_table)
         // TODO: cleanup(); -- must free AST memory
         exit(ERROR_INTERNAL);
     }
-
     sym_table->count++;
 }
 /* Destroys the last (most local) scope and updates SymTable->count
@@ -136,7 +146,6 @@ void destroyScope(SymTable *sym_table)
     sym_table->scopes[sym_table->count - 1].capacity = 0;
     free(sym_table->scopes[sym_table->count - 1].entries);
     sym_table->scopes[sym_table->count - 1].entries = NULL;
-
     sym_table->count--;
 }
 
