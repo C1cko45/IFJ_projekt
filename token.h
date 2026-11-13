@@ -2,37 +2,8 @@
 #define TOKEN_H
 
 #include <stdbool.h> // rozsirenie boolthen;
-// Klucove slova jazyka IFJ26.
-typedef enum
-{
-    KEYWORD_DEF,
-    KEYWORD_DO,
-    KEYWORD_ELSE,
-    KEYWORD_IF,
-    KEYWORD_IMPORT,
-    KEYWORD_RETURN,
-    KEYWORD_THEN,
-    KEYWORD_VAL,
-    KEYWORD_WHILE,
-    KEYWORD_VAR,
 
-    KEYWORD_STRING,
-    KEYWORD_DOUBLE,
-    KEYWORD_INT,
-    KEYWORD_UNIT,
-
-    //rozsirenie BOOLTHEN:
-    KEYWORD_BOOLEAN,
-    
-    //rozsirenie CONTROL:
-    KEYWORD_FOR,
-    
-    //rozsirenie LISTS:
-    KEYWORD_LIST,
-
-} Keyword;
-
-// Typy rozpoznanych lexikalnych jednotiek/tokenov.
+// Typy rozpoznanych lexikalnych jednotiek/tokenov + keywords.
 typedef enum
 {
     // Riadiace tokeny.
@@ -89,6 +60,32 @@ typedef enum
     TOKEN_ERROR_LEX,
     //token pre parser.
     TOKEN_TYPE_STATEMENT,
+
+    //keywords:
+    KEYWORD_DEF,
+    KEYWORD_DO,
+    KEYWORD_ELSE,
+    KEYWORD_IF,
+    KEYWORD_IMPORT,
+    KEYWORD_RETURN,
+    KEYWORD_THEN,
+    KEYWORD_VAL,
+    KEYWORD_WHILE,
+    KEYWORD_VAR,
+
+    KEYWORD_STRING,
+    KEYWORD_DOUBLE,
+    KEYWORD_INT,
+    KEYWORD_UNIT,
+
+    //rozsirenie BOOLTHEN:
+    KEYWORD_BOOLEAN,
+    
+    //rozsirenie CONTROL:
+    KEYWORD_FOR,
+    
+    //rozsirenie LISTS:
+    KEYWORD_LIST,
 } TokenType;
 
 typedef union {
@@ -96,7 +93,6 @@ typedef union {
     double double_val;
     char *str_val;
     bool bool_val;      //rozsirenie boolthen;
-    Keyword keyword;
 } TokenAttribute;
 
 typedef struct

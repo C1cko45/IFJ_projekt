@@ -41,7 +41,7 @@ typedef enum {
 // struktura kde budu vsetky keywords.
 typedef struct {
     const char *text;
-    Keyword keyword;
+    TokenType keyword_type;
 } KeywordMap;
 
 // tabulka keywords.
@@ -62,7 +62,7 @@ static const KeywordMap keyword_table[] = {
     {"Unit", KEYWORD_UNIT},
     {"Boolean", KEYWORD_BOOLEAN},
     {"for", KEYWORD_FOR},
-    {"List", KEYWORD_LIST}
+    {"List", KEYWORD_LIST},
 };
 
 // vypocet slov v tabulke.
@@ -70,10 +70,10 @@ static const KeywordMap keyword_table[] = {
 
 
 // pomocna funckia na ziskanie zhody. ak je vrati true a keyword ak nieje vrati false.
-bool is_keyword(const char *word, Keyword *out_keyword) {
+bool is_keyword(const char *word, TokenType *out_keyword) {
     for (size_t index_word = 0; index_word < KEYWORD_COUNT; index_word++) {
         if (strcmp(word, keyword_table[index_word].text) == 0) {
-            *out_keyword = keyword_table[index_word].keyword;
+            *out_keyword = keyword_table[index_word].keyword_type;
             return true;
         }
     }
@@ -401,11 +401,22 @@ Token scanner_get_next_token(void) {
                 } 
                 ungetc(character, stdin);
                 // skontrolovanie keywordu.
-                Keyword keyword;
-                if (is_keyword(string.str, &keyword)) {
-                    token.attr.keyword = keyword;
-                    token.type = TOKEN_TYPE_KEYWORD;
+                TokenType keyword;
+                if (strcmp(string.str, "true") == 0) {
+                    token.type = TOKEN_TYPE_BOOL;
+                    token.attr.bool_val = true;
                     dstring_free(&string);
+                    return token;
+                }
+                else if (strcmp(string.str, "false") == 0) {
+                    token.type = TOKEN_TYPE_BOOL;
+                    token.attr.bool_val = false;
+                    dstring_free(&string);
+                    return token;
+                }
+                else if (is_keyword(string.str, &keyword)) {
+                    dstring_free(&string);
+                    token.type = keyword;
                     return token;
                 } else {
                     token.attr.str_val = string.str;
@@ -686,6 +697,7 @@ Token scanner_get_next_token(void) {
                 }
                 break;
             case STATE_DEDENT:
+                ungetc(character, stdin);
                 stack_pop(&stack);
                 token.type = TOKEN_TYPE_DEDENT;
                 return token;
