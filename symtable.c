@@ -57,3 +57,17 @@ uint32_t BKDRHash(const char *key)
 
     return hash;
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+int main(void)
+{
+    // char string[] = "__retarded_fuck____asdfasdf";
+    //
+    // uint32_t hash = DJBHash(string);
+    // printf("%u, %u\n", *string, hash);
+    //
+    // hash = BKDRHash(string);
+    // printf("%u\n", hash);
+
+    return 0;
+}
