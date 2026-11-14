@@ -24,7 +24,7 @@ typedef enum
 } DataType;
 typedef struct FunctionParameter
 {
-    const char *identifier;
+    char *identifier;
     DataType data_type;
 
 } FunctionParameter;
@@ -61,7 +61,7 @@ typedef struct HTEntry
 
     // IFJ26 supports function and variable with the same identifier (doesn't lead to re-defition error)
     // -> identifier and entry_type (function/variable) both become keys
-    const char *identifier; // key#1
+    char *identifier;       // key#1
     HTEntryType entry_type; // key#2|tag
 
     HTEntryData entry_data; // tagged union

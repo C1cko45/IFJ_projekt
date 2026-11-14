@@ -14,8 +14,8 @@
 // IFJ26-specific error code
 #define ERROR_INTERNAL 99
 
-#define HTABLE_MAX_LOAD_FACTOR 0.7 // Load factor; round down (rounding up will make the number over 0.7)
-#define HTABLE_INIT_CAPACITY 17    // Min. 17 to satisfy load factor for initial global scope - has 10 builtin functions
+#define HTABLE_MAX_LOAD_FACTOR 7 // Load factor * 10, to avoid floating-point arithmetic and conversion size_t -> double
+#define HTABLE_INIT_CAPACITY 17  // Min. 17 to satisfy load factor for initial global scope - has 10 builtin functions
 
 #define SYMTABLE_INIT_CAPACITY 1
 #define SYMTABLE_GLOBAL_SCOPE 0
@@ -211,12 +211,12 @@ void resizeScope(HTable *scope)
         exit(ERROR_INTERNAL);
     }
 
+    scope->capacity = new_capacity;
     for (size_t i = 0; i < scope->count; i++)
     {
         insertEntry(&old_entries[i], scope); // rehash
     }
     free(old_entries);
-    scope->capacity = new_capacity;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -266,13 +266,43 @@ HTEntry *getEntry(const char *identifier, HTEntryType entry_type, HTable *scope)
 }
 /*
  * Inserts specified entry into specified scope
- * Implemented as Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
- * Function assumes entry(identifier) isn't already in specified scope
+ * Implemented as Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1) (scope->capacity == MAX+1)
+ * Function assumes entry(identifier+identifier_type) isn't already in specified scope
  * First invoke isEntry(entry, entry_type, scope) to check that assumption
  */
 void insertEntry(HTEntry *entry, HTable *scope)
 {
-    // TODO:
+    // If inserting exceeds load_factor -> grow HTable, rehash
+    // COUNT+1 > MAX_COUNT
+    // MAX_COUNT = (CAPACITY * 0.7 (load factor)) * 10 -- To avoid floating-points
+    if ((scope->count + 1) * 10 > (scope->capacity * HTABLE_MAX_LOAD_FACTOR))
+        resizeScope(scope);
+
+    size_t index_hash = DJBHash(entry->identifier);
+    size_t probe_step_hash = BKDRHash(entry->identifier);
+
+    // Find EMPTY place in scope (HTable synonyms list) of SymTable
+    HTEntry *target_entry = &scope->entries[index_hash % (scope->capacity)];
+    for (size_t i = 1; target_entry->state != EMPTY; i++)
+        target_entry = &scope->entries[(index_hash + i * probe_step_hash) % scope->capacity];
+
+    size_t str_len = strlen(entry->identifier) + 1; // account for '\0' that strlen() doesn't count
+    target_entry->identifier = calloc(str_len, sizeof(char *));
+    if (target_entry->identifier == NULL)
+    {
+        fprintf(stderr, "insertEntry() -- calloc() failed.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
+    // The rest of target_entry->identifier filled with '\0'
+    strncpy(target_entry->identifier, entry->identifier, str_len);
+    target_entry->entry_type = entry->entry_type;
+    // TODO: Is this legal? Does it shallow-copy or deep-copy?
+    // Does it matter since scope is a pointer?
+    // It should stay for the lifetime of SymTable no?
+    target_entry->entry_data = entry->entry_data;
+    target_entry->state = BUSY;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
