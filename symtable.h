@@ -9,9 +9,47 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef struct HTEntry HTEntry;
-typedef struct HTable HTable;
-typedef struct SymTable SymTable;
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef enum
+{
+    INT,
+    DOUBLE,
+    STRING,
+    BOOL,
+    UNIT,
+    LIST
+} VarType;
+typedef enum
+{
+    EMPTY,
+    BUSY
+} EntryState;
+
+struct HTEntry
+{
+    EntryState state;
+    char *identifier; // key
+    // type
+    // value
+};
+/* Lexical scope */
+struct HTable
+{
+    size_t capacity;
+    size_t count;
+    HTEntry *entries;
+};
+
+struct SymTable
+{
+    size_t capacity;
+    size_t count;
+    size_t current;
+    HTable *scopes;
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 uint32_t DJBHash(const char *key);
 uint32_t BKDRHash(const char *key);

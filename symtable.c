@@ -31,8 +31,7 @@ typedef enum
 typedef enum
 {
     EMPTY,
-    BUSY,
-    DELETED
+    BUSY
 } EntryState;
 
 struct HTEntry
