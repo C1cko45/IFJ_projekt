@@ -63,6 +63,7 @@ static const KeywordMap keyword_table[] = {
     {"Boolean", KEYWORD_BOOLEAN},
     {"for", KEYWORD_FOR},
     {"List", KEYWORD_LIST},
+    {"to", KEYWORD_TO},
 };
 
 // vypocet slov v tabulke.

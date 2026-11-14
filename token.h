@@ -83,6 +83,7 @@ typedef enum
     
     //rozsirenie CONTROL:
     KEYWORD_FOR,
+    KEYWORD_TO,
     
     //rozsirenie LISTS:
     KEYWORD_LIST,
