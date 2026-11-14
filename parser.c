@@ -312,23 +312,27 @@ AST_NODE* if_statement(){
     if(peek().type == KEYWORD_ELSE){
         AST_NODE* els;
         next();
-        els =  ast_create_node_type(NODE_ELSE);
+        
         switch(peek().type){
             case TOKEN_TYPE_EOL:
-                
+                els =  ast_create_node_type(NODE_ELSE);
                 temp = function_body();
+                ast_add_parent(els,temp,0);
+                ast_add_parent(root,els,1);
             break;
             case KEYWORD_IF:
                 next();
                 temp = if_statement();
+                ast_add_parent(root,temp,1);
             break;
             default:
                 temp = function_body();
+                ast_add_parent(root,temp,1);
             break;
             
         }
-        ast_add_parent(els,temp,0);
-        ast_add_parent(root,els,1);
+        
+        
     }
     return root;
 }
@@ -337,6 +341,7 @@ AST_NODE* if_statement(){
 //TODO
 // while_loop: cyklus while
 AST_NODE* while_loop(){
+    AST_NODE* root = ast_create_node_type(NODE_WHILE);
     return NULL;
 }
 
