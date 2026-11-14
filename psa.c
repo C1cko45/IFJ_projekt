@@ -269,4 +269,58 @@ AST_NODE* parse_expression(){
     return stack[1].node;
 }
 
+//funkcia ak sa uz token ziedol pri desifrovani ktora funkcia to je ale mi ho este potrebujeme
 
+AST_NODE* parse_expression_from(Token token){
+    stack_count = 0;
+    paren_count = 0;
+    insert((STACK_ITEM){.idx = P_DOLLAR});
+    PrecIndex prev = P_DOLLAR;
+    STACK_ITEM item = get_next_item(token, prev);
+    insert(item); 
+    prev = item.idx;
+    while(1){
+        Token tk = peek();
+        // volanie funkcie: na zasobniku je len $ a identifikator, nasleduje '('
+        if(prev == P_I && stack_count == 2 && tk.type == TOKEN_TYPE_LPAREN
+        && stack[1].token.type == TOKEN_TYPE_IDENTIFIER){
+            Token name = stack[1].token;
+            next();                       // spotrebuje '('
+            return call_f(name, tk);
+        }
+        STACK_ITEM item = get_next_item(peek(),prev);
+        
+        PrecIndex first = stack[stack_top_position()].idx;
+        PrecIndex second = item.idx;
+
+        if(first == P_DOLLAR && second == P_DOLLAR ){
+            break;
+        }
+
+        switch(prec_table[first][second]){
+                
+                case L:
+                case Q:
+                    insert(item);
+                    if(second == P_LPAREN){ paren_count++; }
+                    if(second == P_RPAREN){ paren_count--; }
+                    next();
+                    prev = second;
+                    break;
+
+                case G:
+                    reduce();
+                    break;
+
+                case N:
+                default:
+                    parser_error_exit(2, "Chyba expression");
+                    break;
+                
+            }
+    }
+    if(stack_count != 2 || stack[1].idx != P_EXPR){
+        parser_error_exit(2, "Chyba vyraz");
+    }
+    return stack[1].node;
+}

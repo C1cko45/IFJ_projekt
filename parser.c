@@ -18,6 +18,8 @@ static Token saved_token;
 static bool has_saved = false;
 
 // peek: nacita dalsi token zo scannera, ale nespotrebuje ho (dalsi peek/next vrati ten isty)
+//! Volana z: get_type(), parser_get_list(), parameter_list(), var_def(), val_def(), call_f(), if_statement(),
+//!     statement(), function_body_block(), function_body(), function_def(), program(), psa.c: parse_expression
 Token peek(void){
     if(!has_saved){
         has_saved = true;
@@ -28,6 +30,9 @@ Token peek(void){
 
 //TODO NA konci odobrat vypis tokenov
 // next: spotrebuje a vrati token (ulozeny z peek, inak novy zo scannera)
+//! Volana z: get_type(), parser_get_list(), parameter_list(), var_def(), val_def(), call_f(), if_statement(),
+//!     while_loop(), statement(), function_body_block(), function_body(), function_def(), function_list(), prolog(),
+//!     program(), psa.c: parse_expression
 Token next(void){
     Token t;
     if(has_saved){
@@ -42,6 +47,9 @@ Token next(void){
 
 // parser_error_exit: vypise chybu na stderr a ukonci program s danym navratovym kodom
 // TODO: parser_error_exit musi pred exit uvolnit vsetky alokacie (AST uzly, retazce identifikatorov cez token_free) - ast_free_node zatial neexistuje v ast.c
+//! Volana z: get_type(), parser_get_list(), parameter_list(), var_def(), val_def(), call_f(), if_statement(),
+//!     while_loop(), statement(), function_body_block(), function_def(), function_list(), program(), psa.c: viac
+//!     funkcii
 void parser_error_exit(int error_code, const char *message){
     fprintf(stderr, "Chyba (%d): %s\n",error_code,message);
     exit(error_code);
@@ -52,6 +60,7 @@ void parser_error_exit(int error_code, const char *message){
    ============================================================ */
 
 // get_type: spracuje typ (String, Double, Int, Unit, Boolean, List[...]) a vrati jeho uzol
+//! Volana z: parser_get_list(), parameter_list(), var_def(), val_def(), function_def()
 AST_NODE* get_type( ){
     AST_NODE* temp = NULL;
     switch(peek().type){
@@ -80,6 +89,7 @@ AST_NODE* get_type( ){
 }
 
 // parser_get_list: spracuje zapis List[typ] a vrati uzol NODE_LIST (typ prvku v lavom potomkovi)
+//! Volana z: get_type()
 AST_NODE* parser_get_list(){
     AST_NODE* list_node = ast_create_node_type(NODE_LIST);
     Token current_token = next();
@@ -99,6 +109,7 @@ AST_NODE* parser_get_list(){
 
 // TODO: parameter_list - kontrola, ci su mena parametrov v zozname unikatne (ak to nerobi semanticka cast)
 // parameter_list: rekurzivne spracuje zoznam parametrov "meno: typ, ..." az po pravu zatvorku
+//! Volana z: sama seba (rekurzia), function_def()
 AST_NODE* parameter_list(){
     
     AST_NODE* root = NULL;
@@ -142,6 +153,7 @@ AST_NODE* parameter_list(){
 
 // TODO: var_def - PSA (parse_expression) musi vediet skoncit aj na dalsich tokenoch (COMMA, EOF, DEDENT) podla toho, kde sa vyraz moze vyskytnut
 // var_def: spracuje definiciu premennej "var meno [: typ] = vyraz" (vyraz cez precedencnu analyzu)
+//! Volana z: statement()
 AST_NODE* var_def(){
     AST_NODE* root = NULL;
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
@@ -183,6 +195,7 @@ AST_NODE* var_def(){
 
  
 // val_def: spracuje definiciu konstanty "val meno [: typ] = vyraz" (rovnaka struktura ako var_def)
+//! Volana z: statement()
 AST_NODE* val_def(){
     AST_NODE* root = NULL;
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
@@ -224,19 +237,21 @@ AST_NODE* val_def(){
 // TODO: var_assign - odstranit nepouzite premenne a '(void)' riadok, ked bude funkcia hotova
 //TODO
 // var_assign: priradenie "meno = vyraz" (zatial nedokoncene)
+//! Volana z: statement()
 AST_NODE* var_assign(Token first, Token second){
-    AST_NODE* root = NULL;
-    AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
-    AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
-    (void)first; (void)second;
-    (void)root; (void)temp; (void)last_program_node;
-    return NULL;
+    AST_NODE* root = ast_create_node(second);
+    AST_NODE* temp = ast_create_node(first);
+    ast_add_parent(root, temp, 0);
+    temp = parse_expression();
+    ast_add_parent(root, temp, 1);
+    return root;
 }
 
 // TODO: call_f - spracovat argumenty (vyraz, ciarka, ...) az po ')', vratit uzol NODE_CALL; PSA musi skoncit vyraz na ',' a na ')' bez parovej '('
 // TODO: call_f - volanie funkcie moze byt aj sucast vyrazu (napr. x = f(1) + 2), nielen samostatny prikaz - dorobit do PSA
 //TODO
 // call_f: volanie funkcie "meno(...)" (zatial nedokoncene)
+//! Volana z: statement(), psa.c: parse_expression (volanie na zaciatku vyrazu)
 AST_NODE* call_f(Token first, Token second){
     if(first.type == TOKEN_TYPE_IDENTIFIER && second.type == TOKEN_TYPE_LPAREN){
         AST_NODE* root = ast_create_node_type(NODE_CALL);
@@ -302,6 +317,7 @@ AST_NODE* call_f(Token first, Token second){
 // TODO: if_statement - blok musi byt znovupouzitelny (teraz ho vie len function_body_block pre telo funkcie)
 //TODO
 // if_statement: podmienka if / else
+//! Volana z: sama seba (rekurzia), statement()
 AST_NODE* if_statement(){
     AST_NODE* root = ast_create_node_type(NODE_IF);
     AST_NODE* podmienka = ast_create_node_type(NODE_PODMIENKA);
@@ -341,6 +357,7 @@ AST_NODE* if_statement(){
 // TODO: while_loop - spracovat 'while vyraz do' + blok, vytvorit NODE_WHILE
 //TODO
 // while_loop: cyklus while
+//! Volana z: statement()
 AST_NODE* while_loop(){
     AST_NODE* root = ast_create_node_type(NODE_WHILE);
     AST_NODE* temp = parse_expression();
@@ -355,6 +372,7 @@ AST_NODE* while_loop(){
 // TODO: for_loop - rozsirenie CONTROL: spracovat hlavicku for (token ARROW '<-', rozsah, pripadne guard) + blok, vytvorit NODE_FOR
 //TODO
 // for_loop: cyklus for
+//! Volana z: nikde zatial (ma ju volat statement() vo vetve KEYWORD_FOR)
 AST_NODE* for_loop(){
     return NULL;
 }
@@ -369,6 +387,7 @@ AST_NODE* for_loop(){
 // TODO: statement - KEYWORD_RETURN: spracovat 'return [vyraz]'
 // TODO: statement - case TOKEN_TYPE_EOL: rozhodnut, ako sa spracuje prazdny riadok (dnes sa v nom spotrebuje EOL a vrati sa NULL)
 // statement: spracuje jeden prikaz podla prveho tokenu a skonci kontrolou ukoncenia EOL
+//! Volana z: function_body_block()
 AST_NODE* statement(){
     Token current_token = peek();
     AST_NODE* root = NULL;
@@ -404,7 +423,8 @@ AST_NODE* statement(){
                     root = call_f(current_token, current_token_second);
                     break;
                 default:
-                    parser_error_exit(2, "Syntakticka chyba v statement: neočakávaný token za identifikátorom");
+                    root = parse_expression_from(current_token);
+                    
                     break;
             }
 
@@ -446,6 +466,7 @@ AST_NODE* statement(){
 // TODO: function_body_block - po ukonceni bloku skontrolovat EOL/DEDENT za poslednym prikazom a vyriesit vnorene bloky (if/while/for) cez rovnaku funkciu
 // TODO: function_body_block - uvolnit/osetrit pripad, ked statement() vrati NULL (prazdny riadok) pri ast_add_parent
 // function_body_block: blok prikazov medzi INDENT a DEDENT, prikazy su zretazene cez NODE_PROGRAM
+//! Volana z: function_body()
 AST_NODE* function_body_block(){
     //vytvorime prvy node program bloku
     AST_NODE* root = ast_create_node_type(NODE_PROGRAM);
@@ -486,6 +507,7 @@ AST_NODE* function_body_block(){
 
 // TODO: function_body - po jedinom vyraze (telo na jednom riadku) skontrolovat ukoncenie riadku (EOL), dnes sa nespotrebuje
 // function_body: telo funkcie - bud blok (za EOL) alebo jediny vyraz
+//! Volana z: if_statement(), while_loop(), function_list()
 AST_NODE* function_body(){
     AST_NODE* root = NULL;
     Token current_token = peek();
@@ -506,6 +528,7 @@ AST_NODE* function_body(){
 // DONE function_def - kod za 'return root;' v if/else je nedosiahnutelny, odstranit
 // DONE function_def - skontrolovat, ci je navratovy typ povinny (podla zadania)
 // function_def: hlavicka funkcie "meno(parametre) [: typ] =" (bez tela)
+//! Volana z: function_list()
 AST_NODE* function_def(){
     AST_NODE* root = NULL;
     Token current_token = next();
@@ -540,6 +563,7 @@ AST_NODE* function_def(){
 
 // TODO: function_list - nepouzite premenne a prazdne riadky na konci uprat (kozmetika)
 // function_list: jedna definicia funkcie ([@main] def ...) = hlavicka + telo
+//! Volana z: program()
 AST_NODE* function_list(){
     AST_NODE* root = NULL;
     Token current_token = next();
@@ -581,6 +605,7 @@ AST_NODE* function_list(){
    ============================================================ */
 
 // prolog: skontroluje povinny prolog "import meno.*" ukonceny EOL
+//! Volana z: program()
 bool prolog(){
     Token current_token = next(); 
     if (current_token.type != KEYWORD_IMPORT) return false;
@@ -601,6 +626,7 @@ bool prolog(){
 }
 
  // program: vstupna funkcia parsera - prolog a potom zoznam definicii funkcii, vracia koren AST
+//! Volana z: main.c: main
 AST_NODE* program(){
     AST_NODE* root = ast_create_node_type(NODE_PROGRAM);
     if (prolog() == false){

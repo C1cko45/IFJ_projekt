@@ -20,4 +20,5 @@ typedef struct{
 AST_NODE* parse_expression();
 STACK_ITEM get_next_item(Token token, PrecIndex prev);
 void insert(STACK_ITEM);
+AST_NODE* parse_expression_from(Token token);
 #endif
