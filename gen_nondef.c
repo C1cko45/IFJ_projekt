@@ -65,6 +65,10 @@ static CodegenType get_expression_type(const AST_NODE *node, const CodegenContex
         return CG_TYPE_UNKNOWN;
     }
 
+    if(node->type == NODE_CALL){
+        return codegen_builtin_return_type(node);
+    }
+
     if(node->type != NODE_TOKEN_ONLY){
         return CG_TYPE_UNKNOWN;
     }
@@ -123,9 +127,45 @@ static CodegenType get_expression_type(const AST_NODE *node, const CodegenContex
             return CG_TYPE_INT;
         }
 
+        case TOKEN_TYPE_EQ:
+        case TOKEN_TYPE_NEQ:
+        case TOKEN_TYPE_LT:
+        case TOKEN_TYPE_LTE:
+        case TOKEN_TYPE_GT:
+        case TOKEN_TYPE_GTE:
+            if(node->left_ch == NULL || node->right_ch == NULL){
+                return CG_TYPE_UNKNOWN;
+            }
+
+            return CG_TYPE_BOOL;
+
+        case TOKEN_TYPE_NOT:
+            if(node->left_ch != NULL && node->right_ch == NULL &&
+                get_expression_type(node->left_ch, ctx) == CG_TYPE_BOOL){
+                    return CG_TYPE_BOOL;
+            }
+
+            return CG_TYPE_UNKNOWN;
+
+        case TOKEN_TYPE_AND:
+        case TOKEN_TYPE_OR:
+            if(node->left_ch != NULL && node->right_ch != NULL &&
+                get_expression_type(node->left_ch, ctx) == CG_TYPE_BOOL &&
+                get_expression_type(node->right_ch, ctx) == CG_TYPE_BOOL){
+                    return CG_TYPE_BOOL;
+            }
+
+            return CG_TYPE_UNKNOWN;
+
+
         default:
             return CG_TYPE_UNKNOWN;
     }
+}
+
+
+CodegenType codegen_expression_type(const AST_NODE *node, const CodegenContext *ctx){
+    return get_expression_type(node, ctx);
 }
 
 
@@ -222,6 +262,88 @@ static void generate_numeric_operation(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+static void generate_comparison(AST_NODE *node, CodegenContext *ctx){
+    if(node == NULL || ctx == NULL || ctx->error_code != 0){
+        return;
+    }
+
+    if(node->left_ch == NULL || node->right_ch == NULL){
+        ctx->error_code = 99;
+        return;
+    }
+
+    CodegenType left_type = get_expression_type(node->left_ch, ctx);
+
+    CodegenType right_type = get_expression_type(node->right_ch, ctx);
+
+    int left_numeric = (left_type == CG_TYPE_INT || left_type == CG_TYPE_DOUBLE);
+
+    int right_numeric = (right_type == CG_TYPE_INT || right_type == CG_TYPE_DOUBLE);
+
+    int numeric_pair = (left_numeric && right_numeric);
+
+    int same_type = (left_type == right_type);
+
+    int equality = (node->token.type == TOKEN_TYPE_EQ || node->token.type == TOKEN_TYPE_NEQ);
+
+    if(left_type == CG_TYPE_UNKNOWN || right_type == CG_TYPE_UNKNOWN ||
+        (!numeric_pair && !same_type) || (!equality && !numeric_pair && left_type != CG_TYPE_STRING)){
+                ctx->error_code = 99;
+                return;
+    }
+
+    generate_expression(node->left_ch, ctx);
+
+    if(ctx->error_code != 0){
+        return;
+    }
+
+    if(left_type == CG_TYPE_INT && right_type == CG_TYPE_DOUBLE){
+        fprintf(ctx->output, "INT2FLOATS\n");
+    }
+
+    generate_expression(node->right_ch, ctx);
+
+    if(ctx->error_code != 0){
+        return;
+    }
+
+    if(left_type == CG_TYPE_DOUBLE && right_type == CG_TYPE_INT){
+        fprintf(ctx->output, "INT2FLOATS\n");
+    }
+
+    switch(node->token.type){
+        case TOKEN_TYPE_LT:
+            fprintf(ctx->output, "LTS\n");
+            break;
+
+        case TOKEN_TYPE_GT:
+            fprintf(ctx->output, "GTS\n");
+            break;
+
+        case TOKEN_TYPE_EQ:
+            fprintf(ctx->output, "EQS\n");
+            break;
+
+        case TOKEN_TYPE_NEQ:
+            fprintf(ctx->output, "EQS\nNOTS\n");
+            break;
+        
+        case TOKEN_TYPE_LTE:
+            fprintf(ctx->output, "GTS\nNOTS\n");
+            break;
+
+        case TOKEN_TYPE_GTE:
+            fprintf(ctx->output, "LTS\nNOTS\n");
+            break;
+
+        default:
+            ctx->error_code = 99;
+            break;
+    }
+}
+
+
 static void generate_variable(AST_NODE *node, CodegenContext *ctx){
     if(ctx == NULL || ctx->error_code != 0){
         return;
@@ -274,8 +396,65 @@ static void generate_string_literal(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+static void generate_boolean_operation(AST_NODE *node, CodegenContext *ctx){
+    if(node == NULL || ctx == NULL || ctx->error_code != 0){
+        return;
+    }
+
+    if(get_expression_type(node, ctx) != CG_TYPE_BOOL){
+        ctx->error_code = 99;
+        return;
+    }
+
+    if(node->token.type == TOKEN_TYPE_NOT){
+        generate_expression(node->left_ch, ctx);
+
+        if(ctx->error_code == 0){
+            fputs("NOTS\n", ctx->output);
+        }
+
+        return;
+    }
+
+    int is_and = node->token.type == TOKEN_TYPE_AND;
+    unsigned int id = ctx->label_counter++;
+
+    generate_expression(node->left_ch, ctx);
+
+    if(ctx->error_code != 0){
+        return;
+    }
+
+    const char *short_value = is_and ? "false" : "true";
+
+    fprintf(ctx->output, "PUSHS bool@%s\n"
+                        "JUMPIFEQS $$bool_short_%u\n", short_value, id);
+
+    generate_expression(node->right_ch, ctx);
+
+    if(ctx->error_code != 0){
+        return;
+    }
+
+    fprintf(ctx->output, "JUMP $$bool_end_%u\n"
+                        "LABEL $$bool_short_%u\n"
+                        "PUSHS bool@%s\n"
+                        "LABEL $$bool_end_%u", id, id, short_value, id);
+}
+
+
 void generate_expression(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code !=0){
+        return;
+    }
+
+    if(node->type == NODE_CALL){
+        codegen_generate_builtin_expression(node, ctx);
+        return;
+    }
+
+    if(node->type != NODE_TOKEN_ONLY){
+        ctx->error_code = 99;
         return;
     }
 
@@ -299,6 +478,21 @@ void generate_expression(AST_NODE *node, CodegenContext *ctx){
 
         case TOKEN_TYPE_IDENTIFIER:
             generate_variable(node, ctx);
+            break;
+
+        case TOKEN_TYPE_EQ:
+        case TOKEN_TYPE_NEQ:
+        case TOKEN_TYPE_LT:
+        case TOKEN_TYPE_LTE:
+        case TOKEN_TYPE_GT:
+        case TOKEN_TYPE_GTE:
+            generate_comparison(node, ctx);
+            break;
+
+        case TOKEN_TYPE_NOT:
+        case TOKEN_TYPE_AND:
+        case TOKEN_TYPE_OR:
+            generate_boolean_operation(node, ctx);
             break;
 
         default:
@@ -363,7 +557,7 @@ void generate_definition(AST_NODE *node, CodegenContext *ctx){
     
 
         if(expression_type == CG_TYPE_INT){
-            fprintf(ctx->output, "INT@FLOATS\n");
+            fprintf(ctx->output, "INT2FLOATS\n");
         }
 
         else if(expression_type != CG_TYPE_DOUBLE){
