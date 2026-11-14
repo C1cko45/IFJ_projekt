@@ -15,6 +15,7 @@ typedef enum{
     NODE_TOKEN_ONLY,
     NODE_VALMEM,
     NODE_ARGUMENT,
+    NODE_PODMIENKA,
     NODE_LIST    //nody sa mozu pridat alebo ubrat podla potreby
     
 }AST_NODE_TYPE;
