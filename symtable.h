@@ -26,28 +26,28 @@ typedef enum
     BUSY
 } EntryState;
 
-struct HTEntry
+typedef struct HTEntry
 {
     EntryState state;
     char *identifier; // key
     // type
     // value
-};
+} HTEntry;
 /* Lexical scope */
-struct HTable
+typedef struct HTable
 {
     size_t capacity;
     size_t count;
-    HTEntry *entries;
-};
+    struct HTEntry *entries;
+} HTable;
 
-struct SymTable
+typedef struct SymTable
 {
     size_t capacity;
     size_t count;
     size_t current;
-    HTable *scopes;
-};
+    struct HTable *scopes;
+} SymTable;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

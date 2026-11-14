@@ -19,44 +19,6 @@
 #define SYMTABLE_INIT_CAPACITY 1
 #define SYMTABLE_GLOBAL_SCOPE 0
 
-typedef enum
-{
-    INT,
-    DOUBLE,
-    STRING,
-    BOOL,
-    UNIT,
-    LIST
-} VarType;
-typedef enum
-{
-    EMPTY,
-    BUSY
-} EntryState;
-
-struct HTEntry
-{
-    EntryState state;
-    char *identifier; // key
-    // type
-    // value
-};
-/* Lexical scope */
-struct HTable
-{
-    size_t capacity;
-    size_t count;
-    HTEntry *entries;
-};
-
-struct SymTable
-{
-    size_t capacity;
-    size_t count;
-    size_t current;
-    HTable *scopes;
-};
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /* DJB2 Hash */
