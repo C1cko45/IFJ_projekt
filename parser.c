@@ -229,6 +229,7 @@ AST_NODE* var_assign(Token first, Token second){
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
     AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
     (void)first; (void)second;
+    (void)root; (void)temp; (void)last_program_node;
     return NULL;
 }
 
@@ -290,6 +291,7 @@ AST_NODE* call_f(Token first, Token second){
 
         }
     }
+    return NULL;
 }
 
 /* ============================================================
@@ -327,7 +329,6 @@ AST_NODE* if_statement(){
             break;
             default:
                 temp = function_body();
-                ast_add_parent(root,temp,1);
             break;
             
         }
@@ -342,7 +343,13 @@ AST_NODE* if_statement(){
 // while_loop: cyklus while
 AST_NODE* while_loop(){
     AST_NODE* root = ast_create_node_type(NODE_WHILE);
-    return NULL;
+    AST_NODE* temp = parse_expression();
+    ast_add_parent(root, temp, 0);
+    if(next().type != KEYWORD_DO){parser_error_exit(2,"Chyba v while_loop" );}
+    temp = function_body();
+    ast_add_parent(root, temp,1);
+
+    return root;
 }
 
 // TODO: for_loop - rozsirenie CONTROL: spracovat hlavicku for (token ARROW '<-', rozsah, pripadne guard) + blok, vytvorit NODE_FOR
@@ -373,7 +380,7 @@ AST_NODE* statement(){
             break;
         case KEYWORD_WHILE:
             next(); 
-            //cyklus while
+            root = while_loop();
             //TODO
             break;
         case KEYWORD_VAR:
