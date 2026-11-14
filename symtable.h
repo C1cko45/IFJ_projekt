@@ -24,7 +24,7 @@ typedef enum
 } DataType;
 typedef struct FunctionParameter
 {
-    char *identifier;
+    const char *identifier;
     DataType data_type;
 
 } FunctionParameter;
@@ -58,7 +58,7 @@ typedef union HTEntryData
 typedef struct HTEntry
 { /* calloc() initializes all fields to 0/NULL */
     HTEntryState state;
-    char *identifier; // key
+    const char *identifier; // key
 
     HTEntryType entry_type; // tag
     HTEntryData entry_data; // tagged union
