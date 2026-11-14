@@ -58,9 +58,12 @@ typedef union HTEntryData
 typedef struct HTEntry
 { /* calloc() initializes all fields to 0/NULL */
     HTEntryState state;
-    const char *identifier; // key
 
-    HTEntryType entry_type; // tag
+    // IFJ26 supports function and variable with the same identifier (doesn't lead to re-defition error)
+    // -> identifier and entry_type (function/variable) both become keys
+    const char *identifier; // key#1
+    HTEntryType entry_type; // key#2|tag
+
     HTEntryData entry_data; // tagged union
 } HTEntry;
 
@@ -94,8 +97,8 @@ void createScope(SymTable *sym_table);
 void resizeScope(HTable *scope);
 void destroyScope(SymTable *sym_table);
 
-bool isEntry(const char *identifier, HTable *scope);
-HTEntry *getEntry(const char *identifier, HTable *scope);
+bool isEntry(const char *identifier, HTEntryType entry_type, HTable *scope);
+HTEntry *getEntry(const char *identifier, HTEntryType entry_type, HTable *scope);
 void insertEntry(HTEntry *entry, HTable *scope);
 
 #endif

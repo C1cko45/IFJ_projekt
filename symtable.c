@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "symtable.h"
 
@@ -14,7 +15,7 @@
 #define ERROR_INTERNAL 99
 
 #define HTABLE_MAX_LOAD_FACTOR 0.7 // Load factor; round down (rounding up will make the number over 0.7)
-#define HTABLE_INIT_CAPACITY 17    // Minimum 17 to satisfy load factor - initial global scope has 10 builtin functions
+#define HTABLE_INIT_CAPACITY 17    // Min. 17 to satisfy load factor for initial global scope - has 10 builtin functions
 
 #define SYMTABLE_INIT_CAPACITY 1
 #define SYMTABLE_GLOBAL_SCOPE 0
@@ -220,18 +221,55 @@ void resizeScope(HTable *scope)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool isEntry(const char *key, HTable *scope)
+/*
+ * Returns a boolean indicating whether an identifier exists in specified scope
+ */
+bool isEntry(const char *identifier, HTEntryType entry_type, HTable *scope)
 {
-    // TODO:
-    return true;
-}
+    size_t index_hash = DJBHash(identifier);
+    size_t probe_step_hash = BKDRHash(identifier);
 
-HTEntry *getEntry(const char *key, HTable *scope)
+    // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
+    // scope->capacity == MAX+1
+    HTEntry *target_entry = &scope->entries[index_hash % (scope->capacity)];
+    for (size_t i = 1; target_entry->state != EMPTY; i++)
+    {
+        // if identifier type (function/variable) matches and then identifier matches
+        if (target_entry->entry_type == entry_type && strcmp(identifier, target_entry->identifier) == 0)
+            return true;
+        target_entry = &scope->entries[(index_hash + i * probe_step_hash) % scope->capacity];
+    }
+
+    return false;
+}
+/*
+ * Returns pointer to identifier in specified scope
+ * Returns NULL if identifier doesn't exist
+ */
+HTEntry *getEntry(const char *identifier, HTEntryType entry_type, HTable *scope)
 {
-    // TODO:
+    size_t index_hash = DJBHash(identifier);
+    size_t probe_step_hash = BKDRHash(identifier);
+
+    // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
+    // scope->capacity == MAX+1
+    HTEntry *target_entry = &scope->entries[index_hash % (scope->capacity)];
+    for (size_t i = 1; target_entry->state != EMPTY; i++)
+    {
+        // if identifier type (function/variable) matches and then identifier matches
+        if (target_entry->entry_type == entry_type && strcmp(identifier, target_entry->identifier) == 0)
+            return target_entry;
+        target_entry = &scope->entries[(index_hash + i * probe_step_hash) % scope->capacity];
+    }
+
     return NULL;
 }
-
+/*
+ * Inserts specified entry into specified scope
+ * Implemented as Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
+ * Function assumes entry(identifier) isn't already in specified scope
+ * First invoke isEntry(entry, entry_type, scope) to check that assumption
+ */
 void insertEntry(HTEntry *entry, HTable *scope)
 {
     // TODO:
