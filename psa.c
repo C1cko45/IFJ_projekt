@@ -27,6 +27,7 @@ static const PrecRel prec_table[P_COUNT][P_COUNT] = {
 
 static STACK_ITEM stack[STACK_MAX];
 static int stack_count = 0;
+static int paren_count = 0;
 STACK_ITEM get_next_item(Token token, PrecIndex prev){
     STACK_ITEM item = {0};
     switch (token.type){
@@ -38,7 +39,9 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         case TOKEN_TYPE_UNIT:
 
             if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz");}
+
             item = (STACK_ITEM){.idx = P_I, .token = token};
+
         break;
 
         case TOKEN_TYPE_PLUS:
@@ -73,11 +76,16 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
             if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz");}
             item = (STACK_ITEM){.idx = P_LPAREN, .token = token};
             
+            
         break;
 
         case TOKEN_TYPE_RPAREN:
             if(prev == P_DOLLAR){parser_error_exit(2, "Chyba vyraz");}
-            item = (STACK_ITEM){.idx = P_RPAREN, .token = token};
+                if(paren_count > 0){
+                    item = (STACK_ITEM){.idx = P_RPAREN, .token = token};
+                }else{
+                    item = (STACK_ITEM){.idx = P_DOLLAR, .token = token};
+            }
             
         break;
 
@@ -85,6 +93,7 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         case TOKEN_TYPE_SEMICOLON:
         case KEYWORD_THEN: 
         case KEYWORD_DO:
+        case TOKEN_TYPE_COMMA:
             if(prev == P_LPAREN || prev == P_DOLLAR){parser_error_exit(2, "Chyba vyraz");}
             item = (STACK_ITEM){.idx = P_DOLLAR, .token = token};
             
@@ -170,7 +179,7 @@ void reduce(){
         case P_OR:
             //pravidlo E->E znamienko E
             if(index < 1 || index + 1 != stack_count - 1 ||
-               stack[index-1].idx != P_EXPR || stack[index+1].idx != P_EXPR){
+                stack[index-1].idx != P_EXPR || stack[index+1].idx != P_EXPR){
                 parser_error_exit(2, "Chyba v pravidle E->E op E");
             }
             temp = ast_create_node(stack[index].token);
@@ -215,7 +224,16 @@ AST_NODE* parse_expression(){
     PrecIndex prev = P_DOLLAR;
 
     while(1){
+        Token tk = peek();
+        // volanie funkcie: na zasobniku je len $ a identifikator, nasleduje '('
+        if(prev == P_I && stack_count == 2 && tk.type == TOKEN_TYPE_LPAREN
+        && stack[1].token.type == TOKEN_TYPE_IDENTIFIER){
+            Token name = stack[1].token;
+            next();                       // spotrebuje '('
+            return call_f(name, tk);
+        }
         STACK_ITEM item = get_next_item(peek(),prev);
+        
         PrecIndex first = stack[stack_top_position()].idx;
         PrecIndex second = item.idx;
 
@@ -228,6 +246,8 @@ AST_NODE* parse_expression(){
                 case L:
                 case Q:
                     insert(item);
+                    if(second == P_LPAREN){ paren_count++; }
+                    if(second == P_RPAREN){ paren_count--; }
                     next();
                     prev = second;
                     break;
