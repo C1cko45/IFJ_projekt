@@ -94,8 +94,8 @@ void createScope(SymTable *sym_table);
 void resizeScope(HTable *scope);
 void destroyScope(SymTable *sym_table);
 
-bool isEntry(const char *key, HTable *scope);
-HTEntry *getEntry(const char *key, HTable *scope);
+bool isEntry(const char *identifier, HTable *scope);
+HTEntry *getEntry(const char *identifier, HTable *scope);
 void insertEntry(HTEntry *entry, HTable *scope);
 
 #endif
