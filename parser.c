@@ -301,21 +301,36 @@ AST_NODE* call_f(Token first, Token second){
 //TODO
 // if_statement: podmienka if / else
 AST_NODE* if_statement(){
-    AST_NODE* root = parse_expression();
+    AST_NODE* root = ast_create_node_type(NODE_IF);
+    AST_NODE* podmienka = ast_create_node_type(NODE_PODMIENKA);
+    ast_add_parent(root, podmienka, 0);
+    AST_NODE* vyraz = parse_expression();
+    ast_add_parent(podmienka, vyraz,0);
     if(next().type != KEYWORD_THEN){parser_error_exit(2,"Chyba v if_statement" );}
     AST_NODE* temp = function_body();
-    if(peek().type != KEYWORD_ELSE){
+    ast_add_parent(podmienka,temp,1);
+    if(peek().type == KEYWORD_ELSE){
+        AST_NODE* els;
         next();
+        els =  ast_create_node_type(NODE_ELSE);
         switch(peek().type){
             case TOKEN_TYPE_EOL:
-                function_body();
+                
+                temp = function_body();
             break;
             case KEYWORD_IF:
-                if_statement();
+                next();
+                temp = if_statement();
+            break;
+            default:
+                temp = function_body();
+            break;
             
         }
+        ast_add_parent(els,temp,0);
+        ast_add_parent(root,els,1);
     }
-    return NULL;
+    return root;
 }
 
 // TODO: while_loop - spracovat 'while vyraz do' + blok, vytvorit NODE_WHILE
@@ -348,8 +363,8 @@ AST_NODE* statement(){
     switch (current_token.type){
         case KEYWORD_IF:
             next(); 
-            //podmienka IF
-            //TODO
+            root = if_statement();
+            
             break;
         case KEYWORD_WHILE:
             next(); 
@@ -404,11 +419,7 @@ AST_NODE* statement(){
         }    
     // TODO: statement - odstranit ladiaci vypis DEBUG (fprintf) pred odovzdanim
     if(current_token.type == KEYWORD_WHILE || current_token.type == KEYWORD_IF || current_token.type == KEYWORD_FOR){
-        current_token = next();
-        if(current_token.type != TOKEN_TYPE_DEDENT){
-            fprintf(stderr, "DEBUG: ocakavany EOL, prisiel typ %d\n", current_token.type);
-            parser_error_exit(2, "Syntakticka chyba, statementx");
-        }
+        
     }else{
         current_token = next();
         if(current_token.type != TOKEN_TYPE_EOL){

@@ -8,6 +8,7 @@ typedef enum{
     NODE_MAIN, 
     NODE_CALL,
     NODE_IF,
+    NODE_ELSE,
     NODE_WHILE,
     NODE_FOR,
     NODE_VAR_DEF,
