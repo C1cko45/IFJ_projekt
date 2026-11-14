@@ -12,40 +12,72 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 typedef enum
-{
+{         /* calloc() initializes all fields to 0/NULL */
+    UNIT, // -> initial value
+
     INT,
     DOUBLE,
     STRING,
     BOOL,
-    UNIT,
-    LIST
-} VarType;
-typedef enum
-{
-    EMPTY,
-    BUSY
-} EntryState;
 
-typedef struct HTEntry
+    LIST
+} DataType;
+typedef struct FunctionParameter
 {
-    EntryState state;
+    char *identifier;
+    DataType data_type;
+
+} FunctionParameter;
+
+typedef enum
+{         /* calloc() initializes all fields to 0/NULL */
+    NONE, // -> initial value
+
+    FUNCTION,
+    VAR,
+    VAL
+} HTEntryType;
+typedef enum
+{          /* calloc() initializes all fields to 0/NULL */
+    EMPTY, // -> initial value
+    BUSY
+} HTEntryState;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef union HTEntryData
+{
+    DataType variable_data_type;
+
+    struct
+    {
+        size_t param_count;
+        FunctionParameter *params;
+    } function;
+} HTEntryData;
+typedef struct HTEntry
+{ /* calloc() initializes all fields to 0/NULL */
+    HTEntryState state;
     char *identifier; // key
-    // type
-    // value
+
+    HTEntryType entry_type; // tag
+    HTEntryData entry_data; // tagged union
 } HTEntry;
+
 /* Lexical scope */
 typedef struct HTable
-{
+{ /* calloc() initializes all fields to 0/NULL */
     size_t capacity;
     size_t count;
+
     struct HTEntry *entries;
 } HTable;
-
 typedef struct SymTable
-{
+{ /* calloc() initializes all fields to 0/NULL */
     size_t capacity;
     size_t count;
     size_t current;
+
     struct HTable *scopes;
 } SymTable;
 
