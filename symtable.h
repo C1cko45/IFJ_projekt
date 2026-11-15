@@ -90,11 +90,9 @@ typedef struct SymTable
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 SymTable createSymTable();
-void resizeSymTable(SymTable *sym_table);
 void destroySymTable(SymTable *sym_table);
 
 void createScope(SymTable *sym_table);
-void resizeScope(HTable *scope);
 void destroyScope(SymTable *sym_table);
 
 bool isEntry(const char *key, HTEntryType entry_type, HTable *table);

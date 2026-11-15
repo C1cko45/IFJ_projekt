@@ -140,8 +140,10 @@ void destroySymTable(SymTable *sym_table)
 /*
  * Grows symTable, should be called only when symTable becomes full
  * Dynamic array semantics -> double the capacity
+ *
+ * Helper function for createScope()
  */
-void resizeSymTable(SymTable *sym_table)
+static void resizeSymTable(SymTable *sym_table)
 {
     // Assigning to tmp variable -> if realloc() failed, we would lose access to original unfree'd memory
     HTable *new_scopes = realloc(sym_table->scopes, sizeof(HTable) * sym_table->capacity * 2);
@@ -214,8 +216,10 @@ void destroyScope(SymTable *sym_table)
  * Grows the HTable, should only be called when count exceeds HTABLE_MAX_LOAD_FACTOR
  * Hash table resizing -> double the capacity, find the closest greater prime number (to guarantee probe coverage)
  * Rehash existing entries into the new HTable (new capacity changes order of entries)
+ *
+ * Helper function for insertEntry() - it's only use case
  */
-void resizeScope(HTable *scope)
+static void resizeScope(HTable *scope)
 {
     size_t old_capacity = scope->capacity;
     HTEntry *old_entries = scope->entries;
