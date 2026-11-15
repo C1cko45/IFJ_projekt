@@ -6,6 +6,7 @@
 #ifndef SYMTABLE_H
 #define SYMTABLE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
