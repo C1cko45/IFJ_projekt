@@ -33,6 +33,7 @@ static const char *node_type_name(AST_NODE_TYPE type) {
         case NODE_ARGUMENT:   return "ARGUMENT";
         case NODE_PODMIENKA:  return "PODMIENKA";
         case NODE_ELSE:       return "ELSE";
+        case NODE_LIMIT:      return "LIMIT";
         default:              return "UNKNOWN_NODE";
     }
 }

@@ -321,36 +321,67 @@ AST_NODE* call_f(Token first, Token second){
 AST_NODE* if_statement(){
     AST_NODE* root = ast_create_node_type(NODE_IF);
     AST_NODE* podmienka = ast_create_node_type(NODE_PODMIENKA);
+    AST_NODE* temp;
     ast_add_parent(root, podmienka, 0);
     AST_NODE* vyraz = parse_expression();
     ast_add_parent(podmienka, vyraz,0);
     if(next().type != KEYWORD_THEN){parser_error_exit(2,"Chyba v if_statement" );}
-    AST_NODE* temp = function_body();
-    ast_add_parent(podmienka,temp,1);
-    if(peek().type == KEYWORD_ELSE){
-        AST_NODE* els;
-        next();
-        
-        switch(peek().type){
-            case TOKEN_TYPE_EOL:
-                els =  ast_create_node_type(NODE_ELSE);
-                temp = function_body();
-                ast_add_parent(els,temp,0);
-                ast_add_parent(root,els,1);
-            break;
-            case KEYWORD_IF:
-                next();
-                temp = if_statement();
-                ast_add_parent(root,temp,1);
-            break;
-            default:
-                temp = function_body();
-            break;
+    if(peek().type == TOKEN_TYPE_EOL){ 
+        temp = function_body();
+        ast_add_parent(podmienka,temp,1);
+        if(peek().type == KEYWORD_ELSE){
+            AST_NODE* els;
+            next();
+            
+            switch(peek().type){
+                case TOKEN_TYPE_EOL:
+                    els =  ast_create_node_type(NODE_ELSE);
+                    temp = function_body();
+                    ast_add_parent(els,temp,0);
+                    ast_add_parent(root,els,1);
+                break;
+                case KEYWORD_IF:
+                    next();
+                    temp = if_statement();
+                    ast_add_parent(root,temp,1);
+                break;
+                default:
+                    temp = function_body();
+                break;
+                
+            }
+            
             
         }
-        
-        
+    }else{
+        temp = statement();
+        ast_add_parent(podmienka,temp,1);
+        if(peek().type == KEYWORD_ELSE){
+            AST_NODE* els;
+            next();
+            
+            switch(peek().type){
+                case TOKEN_TYPE_EOL:
+                    els =  ast_create_node_type(NODE_ELSE);
+                    temp = function_body();
+                    ast_add_parent(els,temp,0);
+                    ast_add_parent(root,els,1);
+                break;
+                case KEYWORD_IF:
+                    next();
+                    temp = if_statement();
+                    ast_add_parent(root,temp,1);
+                break;
+                default:
+                    temp = function_body();
+                break;
+                
+            }
+            
+            
+        }
     }
+    
     return root;
 }
 
