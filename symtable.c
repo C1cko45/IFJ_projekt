@@ -23,7 +23,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /* DJB2 Hash */
-uint32_t DJBHash(const char *key)
+static uint32_t DJBHash(const char *key)
 {
     uint32_t hash = 5381;
 
@@ -34,7 +34,7 @@ uint32_t DJBHash(const char *key)
     return hash;
 }
 /* BKDR Hash */
-uint32_t BKDRHash(const char *key)
+static uint32_t BKDRHash(const char *key)
 {
     uint32_t hash = 0;
 
@@ -246,6 +246,9 @@ void resizeScope(HTable *scope)
 /*
  * Searches for entry of specified entry_type (FUNCTION/VARIABLE) in HTable
  * Returns TRUE if found, FALSE otherwise
+ *
+ * Implemented mainly for use in isIdentifier()
+ * Please use isIdentifier() for resolving identifiers
  */
 bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
 {
@@ -271,6 +274,9 @@ bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
 /*
  * Searches for entry of specified entry_type (FUNCTION/VARIABLE) in table
  * Returns pointer to entry if found, NULL otherwise
+ *
+ * Implemented mainly for use in getIdentifier()
+ * Please use getIdentifier() for resolving identifiers
  */
 HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
 {
@@ -293,6 +299,45 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
 
     return NULL;
 }
+
+/*
+ * Resolves specified identifier based on its lexical scope
+ * Identifiers are bound in the local scope they're defined in and its subblocks (nested inner local scopes)
+ * -> Searches for identifier starting with current local scope towards global scope
+ *
+ * Function assumes correctly initialized sym_table (at least has global scope)
+ * Returns boolean TRUE if found, FALSE otherwise
+ */
+bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
+{
+    for (size_t scope_index = sym_table->current_scope; scope_index >= 0; scope_index--)
+    {
+        if (isEntry(identifier, entry_type, &sym_table->scopes[scope_index]))
+            return true;
+    }
+    return false;
+}
+/*
+ * Resolves specified identifier based on its lexical scope
+ * Identifiers are bound in the local scope they're defined in and its subblocks (nested inner local scopes)
+ * -> Searches for identifier starting with current local scope towards global scope
+ *
+ * Function assumes correctly initialized sym_table (at least has global scope)
+ * Returns pointer to the identifier entry in symTable if found, NULL otherwise
+ */
+HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
+{
+    HTEntry *target_identifier = NULL;
+    for (size_t scope_index = sym_table->current_scope; scope_index >= 0; scope_index--)
+    {
+        target_identifier = getEntry(identifier, entry_type, &sym_table->scopes[scope_index]);
+        if (target_identifier != NULL)
+            return target_identifier;
+    }
+    return NULL;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
  * Inserts specified entry into specified table (~ scope)
@@ -347,43 +392,6 @@ bool deleteEntry(HTEntry *entry, HTable *table)
     }
 
     return false;
-}
-
-/*
- * Resolves specified identifier based on its lexical scope
- * Identifiers are bound in the local scope they're defined in and its subblocks (nested inner local scopes)
- * -> Searches for identifier starting with current local scope towards global scope
- *
- * Function assumes correctly initialized sym_table (at least has global scope)
- * Returns boolean TRUE if found, FALSE otherwise
- */
-bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
-{
-    for (size_t scope_index = sym_table->current_scope; scope_index >= 0; scope_index--)
-    {
-        if (isEntry(identifier, entry_type, &sym_table->scopes[scope_index]))
-            return true;
-    }
-    return false;
-}
-/*
- * Resolves specified identifier based on its lexical scope
- * Identifiers are bound in the local scope they're defined in and its subblocks (nested inner local scopes)
- * -> Searches for identifier starting with current local scope towards global scope
- *
- * Function assumes correctly initialized sym_table (at least has global scope)
- * Returns pointer to the identifier entry in symTable if found, NULL otherwise
- */
-HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
-{
-    HTEntry *target_identifier = NULL;
-    for (size_t scope_index = sym_table->current_scope; scope_index >= 0; scope_index--)
-    {
-        target_identifier = getEntry(identifier, entry_type, &sym_table->scopes[scope_index]);
-        if (target_identifier != NULL)
-            return target_identifier;
-    }
-    return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

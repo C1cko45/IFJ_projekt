@@ -89,9 +89,6 @@ typedef struct SymTable
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-uint32_t DJBHash(const char *key);
-uint32_t BKDRHash(const char *key);
-
 SymTable createSymTable();
 void resizeSymTable(SymTable *sym_table);
 void destroySymTable(SymTable *sym_table);
