@@ -1,26 +1,29 @@
 #include "psa.h"
 #include <stddef.h>
+#include <stdio.h>
 #define STACK_MAX 256
 // AI-generated (Claude) - prompt: "vytvor mi 2d pole s mojou hotovou precedencnou tabulkou"
 // Prepis rucne vyplnenej tabulky autora (hodnoty su jeho, AI ich len previedla do kodu).
 
-//                      i  +  -  *  /  (  )  $ +U -U REL EQ !  && ||
+//              i  +  -  *  /  (  )  $ +U -U REL EQ !  && || ++  .
 static const PrecRel prec_table[P_COUNT][P_COUNT] = {
-    /* i   */ { N, G, G, G, G, N, G, G, N, N, G, G, N, G, G },
-    /* +   */ { L, G, G, L, L, L, G, G, L, L, G, G, L, G, G },
-    /* -   */ { L, G, G, L, L, L, G, G, L, L, G, G, L, G, G },
-    /* *   */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G },
-    /* /   */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G },
-    /* (   */ { L, L, L, L, L, L, Q, N, L, L, L, L, L, L, L },
-    /* )   */ { N, G, G, G, G, N, G, G, N, N, G, G, N, G, G },
-    /* $   */ { L, L, L, L, L, L, N, N, L, L, L, L, L, L, L },
-    /* +U  */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G },
-    /* -U  */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G },
-    /* REL */ { L, L, L, L, L, L, G, G, L, L, N, G, L, G, G },
-    /* EQ  */ { L, L, L, L, L, L, G, G, L, L, L, N, L, G, G },
-    /* !   */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G },
-    /* &&  */ { L, L, L, L, L, L, G, G, L, L, L, L, L, G, G },
-    /* ||  */ { L, L, L, L, L, L, G, G, L, L, L, L, L, L, G },
+    /* i   */ { N, G, G, G, G, N, G, G, N, N, G, G, N, G, G, G, G },
+    /* +   */ { L, G, G, L, L, L, G, G, L, L, G, G, L, G, G, G, L },
+    /* -   */ { L, G, G, L, L, L, G, G, L, L, G, G, L, G, G, G, L },
+    /* *   */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L },
+    /* /   */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L },
+    /* (   */ { L, L, L, L, L, L, Q, N, L, L, L, L, L, L, L, L, L },
+    /* )   */ { N, G, G, G, G, N, G, G, N, N, G, G, N, G, G, G, G },
+    /* $   */ { L, L, L, L, L, L, N, N, L, L, L, L, L, L, L, L, L },
+    /* +U  */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L },
+    /* -U  */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L },
+    /* REL */ { L, L, L, L, L, L, G, G, L, L, N, G, L, G, G, L, L },
+    /* EQ  */ { L, L, L, L, L, L, G, G, L, L, L, N, L, G, G, L, L },
+    /* !   */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L },
+    /* &&  */ { L, L, L, L, L, L, G, G, L, L, L, L, L, G, G, L, L },
+    /* ||  */ { L, L, L, L, L, L, G, G, L, L, L, L, L, L, G, L, L },
+    /* ++  */ { L, G, G, L, L, L, G, G, L, L, G, G, L, G, G, G, L },
+    /* .   */ { L, G, G, G, G, N, G, G, N, N, G, G, N, G, G, G, G },
 };
 //Koniec geenerovaneho kodu.
 
@@ -38,7 +41,7 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         case TOKEN_TYPE_BOOL:
         case TOKEN_TYPE_UNIT:
 
-            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz");}
+            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz1");}
 
             item = (STACK_ITEM){.idx = P_I, .token = token};
 
@@ -73,7 +76,7 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         break;
 
         case TOKEN_TYPE_LPAREN:
-            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz");}
+            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz2");}
             item = (STACK_ITEM){.idx = P_LPAREN, .token = token};
             
             
@@ -94,7 +97,12 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         case KEYWORD_THEN: 
         case KEYWORD_DO:
         case TOKEN_TYPE_COMMA:
-            if(prev == P_LPAREN || prev == P_DOLLAR){parser_error_exit(2, "Chyba vyraz");}
+        case KEYWORD_TO:
+        case KEYWORD_UNTIL:
+        case KEYWORD_BY:
+        case KEYWORD_IF:
+        case KEYWORD_ELSE:
+            if(prev == P_LPAREN || prev == P_DOLLAR){parser_error_exit(2, "Chyba vyraz3");}
             item = (STACK_ITEM){.idx = P_DOLLAR, .token = token};
             
         break;
@@ -103,22 +111,33 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         case TOKEN_TYPE_LTE:
         case TOKEN_TYPE_GT:
         case TOKEN_TYPE_GTE:
-            if(prev == P_REL){parser_error_exit(2, "Chyba vyraz");}
+            if(prev == P_REL){parser_error_exit(2, "Chyba vyraz4");}
             item = (STACK_ITEM){.idx = P_REL, .token = token};
             
         break;
 
         case TOKEN_TYPE_EQ:
         case TOKEN_TYPE_NEQ:
-            if(prev == P_EQ){parser_error_exit(2, "Chyba vyraz");}
+            if(prev == P_EQ){parser_error_exit(2, "Chyba vyraz5");}
             item = (STACK_ITEM){.idx = P_EQ, .token = token};
             
         break;
 
         case TOKEN_TYPE_NOT:
-            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz");}
+            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz6");}
             item = (STACK_ITEM){.idx = P_NOT, .token = token};
             
+        break;
+
+        case TOKEN_TYPE_CONCAT:
+            item = (STACK_ITEM){.idx = P_CONCAT, .token = token};
+
+        break;
+
+        case TOKEN_TYPE_DOT:
+            if(prev != P_I && prev != P_RPAREN){parser_error_exit(2, "Chyba vyraz");}
+            item = (STACK_ITEM){.idx = P_DOT, .token = token};
+
         break;
 
         case TOKEN_TYPE_AND:
@@ -131,7 +150,8 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
             
         break;
         default:
-            parser_error_exit(2, "Chyba vyraz");
+            fprintf(stderr, "DEBUG: PSA dostala token typu %d\n", token.type);
+            parser_error_exit(2, "Chyba vyraz7");
         break;
     }
     return item;
@@ -177,12 +197,18 @@ void reduce(){
         case P_EQ:
         case P_AND:
         case P_OR:
-            //pravidlo E->E znamienko E
+        case P_CONCAT:
+        case P_DOT:
+            //pravidlo E->E znamienko E  (pre P_DOT je to E.id)
             if(index < 1 || index + 1 != stack_count - 1 ||
                 stack[index-1].idx != P_EXPR || stack[index+1].idx != P_EXPR){
                 parser_error_exit(2, "Chyba v pravidle E->E op E");
             }
-            temp = ast_create_node(stack[index].token);
+            if(stack[index].idx == P_DOT){
+                temp = ast_create_node_type(NODE_VALMEM);   // clen hodnoty: lavy = prijemca, pravy = nazov clena
+            }else{
+                temp = ast_create_node(stack[index].token);
+            }
             ast_add_parent(temp, stack[index-1].node, 0);
             ast_add_parent(temp, stack[index+1].node, 1);
             stack_pop();
@@ -220,6 +246,7 @@ void reduce(){
 }
 AST_NODE* parse_expression(){
     stack_count = 0;
+    paren_count = 0;
     insert((STACK_ITEM){.idx = P_DOLLAR});
     PrecIndex prev = P_DOLLAR;
 
@@ -264,7 +291,7 @@ AST_NODE* parse_expression(){
             }
     }
     if(stack_count != 2 || stack[1].idx != P_EXPR){
-        parser_error_exit(2, "Chyba vyraz");
+        parser_error_exit(2, "Chyba vyraz8");
     }
     return stack[1].node;
 }
@@ -320,7 +347,7 @@ AST_NODE* parse_expression_from(Token token){
             }
     }
     if(stack_count != 2 || stack[1].idx != P_EXPR){
-        parser_error_exit(2, "Chyba vyraz");
+        parser_error_exit(2, "Chyba vyraz9");
     }
     return stack[1].node;
 }

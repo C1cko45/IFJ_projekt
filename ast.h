@@ -11,6 +11,7 @@ typedef enum{
     NODE_ELSE,
     NODE_WHILE,
     NODE_FOR,
+    NODE_LIMIT,
     NODE_VAR_DEF,
     NODE_VAL_DEF,  
     NODE_TOKEN_ONLY,
