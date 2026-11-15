@@ -234,7 +234,7 @@ bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
     // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
     // scope->capacity == MAX+1
     HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
-    for (size_t i = 1; target_entry->state != EMPTY; i++)
+    for (size_t i = 1; target_entry->state != EMPTY && target_entry->state != DELETED; i++)
     {
         // if identifier type (function/variable) matches and then identifier matches
         if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
@@ -256,7 +256,7 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
     // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
     // scope->capacity == MAX+1
     HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
-    for (size_t i = 1; target_entry->state != EMPTY; i++)
+    for (size_t i = 1; target_entry->state != EMPTY && target_entry->state != DELETED; i++)
     {
         // if identifier type (function/variable) matches and then identifier matches
         if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
@@ -309,12 +309,19 @@ void insertEntry(HTEntry *entry, HTable *table)
     target_entry->state = BUSY;
 }
 /*
- *
+ * Deletes entry from specified HTable (scope)
+ * Returns TRUE if successful, FALSE otherwise
  */
 bool deleteEntry(HTEntry *entry, HTable *table)
 {
-    // TODO:
-    return true;
+    HTEntry *target_entry = getEntry(entry->identifier, entry->entry_type, table);
+    if (target_entry != NULL)
+    {
+        target_entry->state = DELETED;
+        return true;
+    }
+
+    return false;
 }
 
 /*
