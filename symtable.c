@@ -246,12 +246,15 @@ bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
     // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
     // scope->capacity == MAX+1
     HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
-    for (size_t i = 1; target_entry->state != EMPTY && target_entry->state != DELETED; i++)
+    for (size_t i = 1; target_entry->state != EMPTY; i++)
     {
-        // if identifier type (function/variable) matches and then identifier matches
-        if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
-            return true;
-        target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+        if (target_entry->state != DELETED)
+        {
+            // if identifier type (function/variable) matches and then identifier matches
+            if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
+                return true;
+            target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+        }
     }
 
     return false;
@@ -268,12 +271,15 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
 
     // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
     // scope->capacity == MAX+1
-    for (size_t i = 1; target_entry->state != EMPTY && target_entry->state != DELETED; i++)
+    for (size_t i = 1; target_entry->state != EMPTY; i++)
     {
-        // if identifier type (function/variable) matches and then identifier matches
-        if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
-            return target_entry;
-        target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+        if (target_entry->state != DELETED)
+        {
+            // if identifier type (function/variable) matches and then identifier matches
+            if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
+                return target_entry;
+            target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+        }
     }
 
     return NULL;
@@ -298,8 +304,8 @@ void insertEntry(HTEntry *entry, HTable *table)
     size_t probe_step_hash = BKDRHash(entry->identifier);
     HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
 
-    // Find EMPTY place in scope (HTable synonyms list) of SymTable
-    for (size_t i = 1; target_entry->state != EMPTY; i++)
+    // Find EMPTY/DELETED place in HTable (HTable synonyms list) of SymTable
+    for (size_t i = 1; target_entry->state == BUSY; i++)
         target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
 
     size_t str_len = strlen(entry->identifier) + 1; // account for '\0' that strlen() doesn't count
