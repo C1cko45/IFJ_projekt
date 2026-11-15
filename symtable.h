@@ -12,6 +12,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// Data Type
 typedef enum
 {         /* calloc() initializes all fields to 0/NULL */
     UNIT, // -> initial value, void type
@@ -27,16 +28,19 @@ typedef enum
     LIST
 } DataType;
 
+// Entry Type
 typedef enum
 {         /* calloc() initializes all fields to 0/NULL */
     NONE, // -> initial value
 
     FUNCTION,
-    FUNCTION_PARAMETER, // immutable
+    FUNCTION_PARAMETER, // immutable, behaves like VAL
 
     VAR,
     VAL // immutable
 } HTEntryType;
+
+// Entry State
 typedef enum
 {          /* calloc() initializes all fields to 0/NULL */
     EMPTY, // -> initial value
@@ -44,10 +48,14 @@ typedef enum
     BUSY,
     DELETED
 } HTEntryState;
+
+// Entry Data
 typedef union HTEntryData
 {
+    // HTEntryType == VAR|VAL|FUNCTION_PARAMETER
     DataType variable_data_type;
 
+    // HTEntryType == FUNCTION
     struct
     {
         size_t param_count;
@@ -77,6 +85,7 @@ typedef struct HTable
 
     struct HTEntry *entries;
 } HTable;
+
 typedef struct SymTable
 { /* calloc() initializes all fields to 0/NULL */
     size_t capacity;
