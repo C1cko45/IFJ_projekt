@@ -19,7 +19,7 @@ bool stack_init(Stack *stack);
 bool stack_push(Stack *stack, int indent_value);
 
 // odobratie zo zasobniku POP.
-void stack_pop(Stack *stack);
+void stack_pop_scanner(Stack *stack);
 
 // ziskanie hodnoty na vrchole (on top).
 int stack_get_top(Stack *stack);
