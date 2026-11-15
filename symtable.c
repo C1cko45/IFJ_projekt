@@ -11,8 +11,7 @@
 
 #include "symtable.h"
 
-// IFJ26-specific error code
-#define ERROR_INTERNAL 99
+#define ERROR_INTERNAL 99 // internal program error; failed memory allocation, ...
 
 #define HTABLE_MAX_LOAD_FACTOR 7 // Load factor * 10, to avoid floating-point arithmetic and conversion size_t -> double
 #define HTABLE_INIT_CAPACITY 17  // Min. 17 to satisfy load factor for initial global scope - has 10 builtin functions
