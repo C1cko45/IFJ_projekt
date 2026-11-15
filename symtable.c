@@ -347,7 +347,7 @@ bool deleteEntry(HTEntry *entry, HTable *table)
  */
 bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
 {
-    for (size_t scope_index = sym_table->current; scope_index >= 1; scope_index--)
+    for (size_t scope_index = sym_table->current_scope; scope_index >= 1; scope_index--)
     {
         if (isEntry(identifier, entry_type, &sym_table->scopes[scope_index]))
             return true;
@@ -365,7 +365,7 @@ bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_
 HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
 {
     HTEntry *target_identifier;
-    for (size_t scope_index = sym_table->current; scope_index >= 1; scope_index--)
+    for (size_t scope_index = sym_table->current_scope; scope_index >= 1; scope_index--)
     {
         target_identifier = getEntry(identifier, entry_type, &sym_table->scopes[scope_index]);
         if (target_identifier != NULL)
