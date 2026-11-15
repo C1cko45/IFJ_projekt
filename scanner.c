@@ -51,7 +51,7 @@ static const KeywordMap keyword_table[] = {
     {"import", KEYWORD_IMPORT}, {"return", KEYWORD_RETURN}, {"then", KEYWORD_THEN},       {"val", KEYWORD_VAL},
     {"while", KEYWORD_WHILE},   {"var", KEYWORD_VAR},       {"String", KEYWORD_STRING},   {"Double", KEYWORD_DOUBLE},
     {"Int", KEYWORD_INT},       {"Unit", KEYWORD_UNIT},     {"Boolean", KEYWORD_BOOLEAN}, {"for", KEYWORD_FOR},
-    {"List", KEYWORD_LIST},     {"to", KEYWORD_TO},
+    {"List", KEYWORD_LIST},     {"to", KEYWORD_TO},         {"until", KEYWORD_UNTIL},     {"by", KEYWORD_BY},
 };
 
 // vypocet slov v tabulke.
@@ -234,7 +234,7 @@ Token scanner_get_next_token(void)
             case EOF:
                 if (stack_get_top(&stack) > 0)
                 {
-                    stack_pop(&stack);
+                    stack_pop_scanner(&stack);
                     token.type = TOKEN_TYPE_DEDENT;
                     return token;
                 }
@@ -818,7 +818,7 @@ Token scanner_get_next_token(void)
             break;
         case STATE_DEDENT:
             ungetc(character, stdin);
-            stack_pop(&stack);
+            stack_pop_scanner(&stack);
             token.type = TOKEN_TYPE_DEDENT;
             return token;
         }
