@@ -48,9 +48,6 @@ typedef enum
     BUSY,
     DELETED
 } HTEntryState;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 typedef union HTEntryData
 {
     DataType variable_data_type;
@@ -59,8 +56,12 @@ typedef union HTEntryData
     {
         size_t param_count;
         FunctionParameter *params;
+        DataType return_type;
     } function;
 } HTEntryData;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 typedef struct HTEntry
 { /* calloc() initializes all fields to 0/NULL */
     HTEntryState state;
@@ -92,7 +93,7 @@ typedef struct SymTable
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-SymTable createSymTable();
+SymTable *createSymTable();
 void destroySymTable(SymTable *sym_table);
 
 void createScope(SymTable *sym_table);
