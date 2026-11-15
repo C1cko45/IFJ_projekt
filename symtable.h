@@ -26,20 +26,16 @@ typedef enum
     // Composite types
     LIST
 } DataType;
-typedef struct FunctionParameter
-{
-    char *identifier;
-    DataType data_type;
-
-} FunctionParameter;
 
 typedef enum
 {         /* calloc() initializes all fields to 0/NULL */
     NONE, // -> initial value
 
     FUNCTION,
+    FUNCTION_PARAMETER, // immutable
+
     VAR,
-    VAL
+    VAL // immutable
 } HTEntryType;
 typedef enum
 {          /* calloc() initializes all fields to 0/NULL */
@@ -55,7 +51,6 @@ typedef union HTEntryData
     struct
     {
         size_t param_count;
-        FunctionParameter *params;
         DataType return_type;
     } function;
 } HTEntryData;
