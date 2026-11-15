@@ -98,10 +98,10 @@ void destroyScope(SymTable *sym_table);
 bool isEntry(const char *key, HTEntryType entry_type, HTable *table);
 HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table);
 
-void insertEntry(HTEntry *entry, HTable *table);
-bool deleteEntry(HTEntry *entry, HTable *table);
-
 bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table);
 HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table);
+
+void insertEntry(HTEntry *entry, HTable *table);
+bool deleteEntry(HTEntry *entry, HTable *table);
 
 #endif
