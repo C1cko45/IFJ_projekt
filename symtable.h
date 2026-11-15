@@ -40,7 +40,9 @@ typedef enum
 typedef enum
 {          /* calloc() initializes all fields to 0/NULL */
     EMPTY, // -> initial value
-    BUSY
+
+    BUSY,
+    DELETED
 } HTEntryState;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -97,8 +99,13 @@ void createScope(SymTable *sym_table);
 void resizeScope(HTable *scope);
 void destroyScope(SymTable *sym_table);
 
-bool isEntry(const char *identifier, HTEntryType entry_type, HTable *scope);
-HTEntry *getEntry(const char *identifier, HTEntryType entry_type, HTable *scope);
-void insertEntry(HTEntry *entry, HTable *scope);
+bool isEntry(const char *key, HTEntryType entry_type, HTable *table);
+HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table);
+
+void insertEntry(HTEntry *entry, HTable *table);
+bool deleteEntry(HTEntry *entry, HTable *table);
+
+bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table);
+HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table);
 
 #endif

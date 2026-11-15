@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 
 #include "symtable.h"
 
@@ -222,69 +223,72 @@ void resizeScope(HTable *scope)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
- * Returns a boolean indicating whether an identifier exists in specified scope
+ * Searches for entry of specified type (FUNCTION/VARIABLE) in specified HTable
+ * Returns TRUE if found, FALSE otherwise
  */
-bool isEntry(const char *identifier, HTEntryType entry_type, HTable *scope)
+bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
 {
-    size_t index_hash = DJBHash(identifier);
-    size_t probe_step_hash = BKDRHash(identifier);
+    size_t index_hash = DJBHash(key);
+    size_t probe_step_hash = BKDRHash(key);
 
     // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
     // scope->capacity == MAX+1
-    HTEntry *target_entry = &scope->entries[index_hash % (scope->capacity)];
+    HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
     for (size_t i = 1; target_entry->state != EMPTY; i++)
     {
         // if identifier type (function/variable) matches and then identifier matches
-        if (target_entry->entry_type == entry_type && strcmp(identifier, target_entry->identifier) == 0)
+        if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
             return true;
-        target_entry = &scope->entries[(index_hash + i * probe_step_hash) % scope->capacity];
+        target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
     }
 
     return false;
 }
 /*
- * Returns pointer to identifier in specified scope
+ * Searches and fetches entry of specified type (FUNCTION/VARIABLE) in specified table
  * Returns NULL if identifier doesn't exist
  */
-HTEntry *getEntry(const char *identifier, HTEntryType entry_type, HTable *scope)
+HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
 {
-    size_t index_hash = DJBHash(identifier);
-    size_t probe_step_hash = BKDRHash(identifier);
+    size_t index_hash = DJBHash(key);
+    size_t probe_step_hash = BKDRHash(key);
 
     // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
     // scope->capacity == MAX+1
-    HTEntry *target_entry = &scope->entries[index_hash % (scope->capacity)];
+    HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
     for (size_t i = 1; target_entry->state != EMPTY; i++)
     {
         // if identifier type (function/variable) matches and then identifier matches
-        if (target_entry->entry_type == entry_type && strcmp(identifier, target_entry->identifier) == 0)
+        if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
             return target_entry;
-        target_entry = &scope->entries[(index_hash + i * probe_step_hash) % scope->capacity];
+        target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
     }
 
     return NULL;
 }
+
 /*
- * Inserts specified entry into specified scope
+ * Inserts specified entry into specified table (~ scope)
  * Implemented as Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1) (scope->capacity == MAX+1)
+ *
  * Function assumes entry(identifier+identifier_type) isn't already in specified scope
- * First invoke isEntry(entry, entry_type, scope) to check that assumption
+ * First invoke isEntry(entry->identifier, entry->entry_type, table) to check that assumption
  */
-void insertEntry(HTEntry *entry, HTable *scope)
+void insertEntry(HTEntry *entry, HTable *table)
 {
     // If inserting exceeds load_factor -> grow HTable, rehash
     // COUNT+1 > MAX_COUNT
     // MAX_COUNT = (CAPACITY * 0.7 (load factor)) * 10 -- To avoid floating-points
-    if ((scope->count + 1) * 10 > (scope->capacity * HTABLE_MAX_LOAD_FACTOR))
-        resizeScope(scope);
+    if ((table->count + 1) * 10 > (table->capacity * HTABLE_MAX_LOAD_FACTOR))
+        resizeScope(table);
 
     size_t index_hash = DJBHash(entry->identifier);
     size_t probe_step_hash = BKDRHash(entry->identifier);
 
     // Find EMPTY place in scope (HTable synonyms list) of SymTable
-    HTEntry *target_entry = &scope->entries[index_hash % (scope->capacity)];
+    HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
     for (size_t i = 1; target_entry->state != EMPTY; i++)
-        target_entry = &scope->entries[(index_hash + i * probe_step_hash) % scope->capacity];
+        target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
 
     size_t str_len = strlen(entry->identifier) + 1; // account for '\0' that strlen() doesn't count
     target_entry->identifier = calloc(str_len, sizeof(char *));
@@ -303,6 +307,51 @@ void insertEntry(HTEntry *entry, HTable *scope)
     // It should stay for the lifetime of SymTable no?
     target_entry->entry_data = entry->entry_data;
     target_entry->state = BUSY;
+}
+/*
+ *
+ */
+bool deleteEntry(HTEntry *entry, HTable *table)
+{
+    // TODO:
+    return true;
+}
+
+/*
+ * Tries to resolve specified identifier based on its lexical scope
+ * -> It searches for it in the innermost local scope, then the outer local scope until it finds it or not
+ * Identifiers are bound in the local scope they're defined in and its subblocks (nested inner local scopes)
+ *
+ * Function assumes correctly initialized sym_table (at least has global scope)
+ * Returns boolean TRUE if found, FALSE otherwise
+ */
+bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
+{
+    for (size_t scope_index = sym_table->current; scope_index >= 1; scope_index--)
+    {
+        if (isEntry(identifier, entry_type, &sym_table->scopes[scope_index]))
+            return true;
+    }
+    return false;
+}
+/*
+ * Tries to resolve specified identifier based on its lexical scope
+ * -> It searches for it in the innermost local scope, then the outer local scope until it finds it or not
+ * Identifiers are bound in the local scope they're defined in and its subblocks (nested inner local scopes)
+ *
+ * Function assumes correctly initialized sym_table (at least has global scope)
+ * Returns pointer to the identifier entry in symTable if found, NULL otherwise
+ */
+HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
+{
+    HTEntry *target_identifier;
+    for (size_t scope_index = sym_table->current; scope_index >= 1; scope_index--)
+    {
+        target_identifier = getEntry(identifier, entry_type, &sym_table->scopes[scope_index]);
+        if (target_identifier != NULL)
+            return target_identifier;
+    }
+    return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
