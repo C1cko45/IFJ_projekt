@@ -81,7 +81,7 @@ typedef struct SymTable
 { /* calloc() initializes all fields to 0/NULL */
     size_t capacity;
     size_t count;
-    size_t current;
+    size_t current_scope;
 
     struct HTable *scopes;
 } SymTable;

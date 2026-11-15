@@ -101,7 +101,7 @@ static size_t nextPrime(size_t number)
 SymTable createSymTable()
 {
     SymTable sym_table = {
-        .capacity = SYMTABLE_INIT_CAPACITY, .count = SYMTABLE_INIT_CAPACITY, .current = 0, .scopes = NULL};
+        .capacity = SYMTABLE_INIT_CAPACITY, .count = SYMTABLE_INIT_CAPACITY, .current_scope = 0, .scopes = NULL};
     sym_table.scopes = calloc(1, sizeof(HTable));
     if (sym_table.scopes == NULL)
     {
@@ -132,7 +132,7 @@ void destroySymTable(SymTable *sym_table)
     sym_table->scopes = NULL;
     sym_table->count = 0;
     sym_table->capacity = 0;
-    sym_table->current = 0;
+    sym_table->current_scope = 0;
 }
 /*
  * Grows symTable, should be called only when symTable becomes full
@@ -156,8 +156,10 @@ void resizeSymTable(SymTable *sym_table)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
- * Creates and initializes new scope at the end of the SymTable; updates SymTable->count
+ * Creates and initializes new scope after current scope in SymTable
  * Resizes the SymTable if needed
+ *
+ * Should only be called when entering a new local scope in IFJ26 code
  */
 void createScope(SymTable *sym_table)
 {
@@ -173,11 +175,15 @@ void createScope(SymTable *sym_table)
         // TODO: cleanup(); -- must free AST memory
         exit(ERROR_INTERNAL);
     }
+
     sym_table->count++;
+    sym_table->current_scope++;
 }
 /*
- * Destroys the last (most local) scope and updates SymTable->count
- * Works only on local scopes, global scope must exist for the duration of SymTable's lifetime
+ * Destroys the current local scope in SymTable
+ * Works only on local scopes (global scope must exist for the duration of SymTable's lifetime)
+ *
+ * Should only be called when exiting current local scope in IFJ26 code
  */
 void destroyScope(SymTable *sym_table)
 {
@@ -188,11 +194,18 @@ void destroyScope(SymTable *sym_table)
         exit(ERROR_INTERNAL);
     }
 
-    sym_table->scopes[sym_table->count - 1].count = 0;
-    sym_table->scopes[sym_table->count - 1].capacity = 0;
+    for (size_t capacity = sym_table->scopes[sym_table->count - 1].capacity; capacity > 0; capacity--)
+    {
+        if (sym_table->scopes[sym_table->count - 1].entries[capacity - 1].state != EMPTY)
+            free(sym_table->scopes[sym_table->count - 1].entries[capacity - 1].identifier);
+    }
     free(sym_table->scopes[sym_table->count - 1].entries);
     sym_table->scopes[sym_table->count - 1].entries = NULL;
+    sym_table->scopes[sym_table->count - 1].count = 0;
+    sym_table->scopes[sym_table->count - 1].capacity = 0;
+
     sym_table->count--;
+    sym_table->current_scope--;
 }
 /*
  * Grows the HTable, should only be called when count exceeds HTABLE_MAX_LOAD_FACTOR
@@ -214,9 +227,8 @@ void resizeScope(HTable *scope)
 
     scope->capacity = new_capacity;
     for (size_t i = 0; i < scope->count; i++)
-    {
         insertEntry(&old_entries[i], scope); // rehash
-    }
+
     free(old_entries);
 }
 
@@ -252,10 +264,10 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
 {
     size_t index_hash = DJBHash(key);
     size_t probe_step_hash = BKDRHash(key);
+    HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
 
     // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
     // scope->capacity == MAX+1
-    HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
     for (size_t i = 1; target_entry->state != EMPTY && target_entry->state != DELETED; i++)
     {
         // if identifier type (function/variable) matches and then identifier matches
@@ -284,9 +296,9 @@ void insertEntry(HTEntry *entry, HTable *table)
 
     size_t index_hash = DJBHash(entry->identifier);
     size_t probe_step_hash = BKDRHash(entry->identifier);
+    HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
 
     // Find EMPTY place in scope (HTable synonyms list) of SymTable
-    HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
     for (size_t i = 1; target_entry->state != EMPTY; i++)
         target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
 
@@ -315,6 +327,7 @@ void insertEntry(HTEntry *entry, HTable *table)
 bool deleteEntry(HTEntry *entry, HTable *table)
 {
     HTEntry *target_entry = getEntry(entry->identifier, entry->entry_type, table);
+
     if (target_entry != NULL)
     {
         target_entry->state = DELETED;
