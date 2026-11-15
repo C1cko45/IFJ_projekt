@@ -19,7 +19,7 @@ typedef enum
     INT,
     DOUBLE,
     STRING,
-    BOOL,
+    BOOLEAN,
 
     LIST
 } DataType;
