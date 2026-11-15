@@ -9,11 +9,6 @@ void generate_assignment(AST_NODE *identifier, AST_NODE *expression, CodegenCont
 
 CodegenType codegen_expression_type(const AST_NODE *node, const CodegenContext *ctx);
 
-
 #endif
 
-
-
-
-
-//FB0
+// FB0

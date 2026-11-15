@@ -3,16 +3,10 @@
 
 #include "codegen.h"
 
-
-
 void generate_function(AST_NODE *node, CodegenContext *ctx);
 void generate_frame_enter(CodegenContext *ctx);
 void generate_frame_leave(CodegenContext *ctx);
 
 #endif
 
-
-
-
-
-//FB0
+// FB0
