@@ -14,13 +14,16 @@
 
 typedef enum
 {         /* calloc() initializes all fields to 0/NULL */
-    UNIT, // -> initial value
+    UNIT, // -> initial value, void type
+    ANY,  // placeholder type, indicates value of any type
 
+    // Primitive types
     INT,
     DOUBLE,
     STRING,
     BOOLEAN,
 
+    // Composite types
     LIST
 } DataType;
 typedef struct FunctionParameter
