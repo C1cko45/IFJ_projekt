@@ -93,23 +93,97 @@ static size_t nextPrime(size_t number)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
+ * Helper function for createSymTable()
+ * Pushes builtin functions into SymTable's global scope
+ *
+ * Assumes initialized SymTable with initialized global scope
+ */
+static void insertBuiltins(SymTable *sym_table)
+{
+    HTEntry builtin_function = {.state = BUSY,
+                                .identifier = "print",
+                                .entry_type = FUNCTION,
+                                .entry_data.function.param_count = 0,
+                                .entry_data.function.return_type = UNIT};
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "readLine";
+    builtin_function.entry_data.function.return_type = STRING;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "readInt";
+    builtin_function.entry_data.function.return_type = INT;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "readDouble";
+    builtin_function.entry_data.function.return_type = DOUBLE;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "toStr";
+    builtin_function.entry_data.function.param_count = 1;
+    builtin_function.entry_data.function.return_type = STRING;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "toInt";
+    builtin_function.entry_data.function.return_type = INT;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "strLength";
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "subStr";
+    builtin_function.entry_data.function.param_count = 3;
+    builtin_function.entry_data.function.return_type = STRING;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "ord";
+    builtin_function.entry_data.function.param_count = 2;
+    builtin_function.entry_data.function.return_type = INT;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "chr";
+    builtin_function.entry_data.function.param_count = 1;
+    builtin_function.entry_data.function.return_type = STRING;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+}
+/*
  * Returns SymTable initialized with global scope
  * Global scope is pre-filled with builtin functions
  */
-SymTable createSymTable()
+SymTable *createSymTable()
 {
-    SymTable sym_table = {
-        .capacity = SYMTABLE_INIT_CAPACITY, .count = SYMTABLE_INIT_CAPACITY, .current_scope = 0, .scopes = NULL};
-    sym_table.scopes = calloc(SYMTABLE_INIT_CAPACITY, sizeof(HTable));
-    if (sym_table.scopes == NULL)
+    SymTable *sym_table = calloc(1, sizeof(SymTable));
+    if (sym_table == NULL)
     {
         fprintf(stderr, "createSymTable() -- calloc() failed.\n");
         // TODO: cleanup(); -- must free AST memory
         exit(ERROR_INTERNAL);
     }
 
-    createScope(&sym_table);
-    // TODO: Then push the builtin functions into SymTable.scopes[SYMTABLE_GLOBAL_SCOPE]
+    // Initialize symTable with global scope
+    sym_table->capacity = SYMTABLE_INIT_CAPACITY;
+    sym_table->count = SYMTABLE_INIT_CAPACITY;
+    sym_table->current_scope = 0;
+    sym_table->scopes = calloc(SYMTABLE_INIT_CAPACITY, sizeof(HTable));
+    if (sym_table->scopes == NULL)
+    {
+        fprintf(stderr, "createSymTable() -- calloc() failed.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
+    // Initialize global scope
+    sym_table->scopes[sym_table->current_scope].count = HTABLE_INIT_CAPACITY;
+    sym_table->scopes[sym_table->current_scope].capacity = HTABLE_INIT_CAPACITY;
+    sym_table->scopes[sym_table->current_scope].entries = calloc(HTABLE_INIT_CAPACITY, sizeof(HTEntry));
+    if (sym_table->scopes[sym_table->current_scope].entries == NULL)
+    {
+        fprintf(stderr, "createScope() -- calloc() failed.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
+    insertBuiltins(sym_table);
 
     return sym_table;
 }
