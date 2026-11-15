@@ -107,6 +107,13 @@ static CodegenType get_expression_type(const AST_NODE *node, const CodegenContex
         case TOKEN_TYPE_MINUS:
         case TOKEN_TYPE_MUL:
         case TOKEN_TYPE_DIV: {
+            if(node->right_ch == NULL && node->left_ch != NULL &&
+            (node->token.type == TOKEN_TYPE_PLUS || node->token.type == TOKEN_TYPE_MINUS)){
+                CodegenType type = get_expression_type(node->left_ch, ctx);
+
+                return (type == CG_TYPE_INT || type == CG_TYPE_DOUBLE) ? type : CG_TYPE_UNKNOWN;
+            }
+
             if(node->left_ch == NULL || node->right_ch == NULL){
                 return CG_TYPE_UNKNOWN;
             }
@@ -180,34 +187,66 @@ static CodegenType get_declared_type(const AST_NODE *identifier){
         return CG_TYPE_LIST;
     }
 
-    if(type_node->type != NODE_TOKEN_ONLY || type_node->token.type != TOKEN_TYPE_KEYWORD){
-        return CG_TYPE_UNKNOWN;
-    }
+    if(type_node->type != NODE_TOKEN_ONLY){
+    return CG_TYPE_UNKNOWN;
+}
 
-    switch(type_node->token.attr.keyword){
-        case KEYWORD_INT:
+    switch(type_node->token.type){
+        case KEYWORD_INT:     
             return CG_TYPE_INT;
 
-        case KEYWORD_DOUBLE:
+        case KEYWORD_DOUBLE:  
             return CG_TYPE_DOUBLE;
 
-        case KEYWORD_STRING:
+        case KEYWORD_STRING:  
             return CG_TYPE_STRING;
 
-        case KEYWORD_BOOLEAN:
+        case KEYWORD_BOOLEAN: 
             return CG_TYPE_BOOL;
 
-        case KEYWORD_UNIT:
+        case KEYWORD_UNIT:    
             return CG_TYPE_UNIT;
 
-        default:
+        default:              
             return CG_TYPE_UNKNOWN;
-    }
+}
 }
 
 
 static void generate_numeric_operation(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code != 0){
+        return;
+    }
+
+    if(node->right_ch == NULL && node->left_ch != NULL &&
+    (node->token.type == TOKEN_TYPE_PLUS || node->token.type == TOKEN_TYPE_MINUS)){
+        CodegenType type = get_expression_type(node->left_ch, ctx);
+
+        if(type != CG_TYPE_INT && type != CG_TYPE_DOUBLE){
+            ctx->error_code = 99;
+            return;
+        }
+
+        generate_expression(node->left_ch, ctx);
+
+        if(ctx->error_code != 0){
+            return;
+        }
+
+        if(node->token.type == TOKEN_TYPE_MINUS){
+            fputs("POPS GF@%cg_tmp\n", ctx->output);
+
+            if(type == CG_TYPE_INT){
+                fputs("PUSHS int@0\n", ctx->output);
+            }
+
+            else{
+                fputs("PUSHS float@0x0p+0\n", ctx->output);
+            }
+
+            fputs("PUSHS GF@%cg_tmp\nSUBS\n", ctx->output);
+        }
+
         return;
     }
 
@@ -439,7 +478,7 @@ static void generate_boolean_operation(AST_NODE *node, CodegenContext *ctx){
     fprintf(ctx->output, "JUMP $$bool_end_%u\n"
                         "LABEL $$bool_short_%u\n"
                         "PUSHS bool@%s\n"
-                        "LABEL $$bool_end_%u", id, id, short_value, id);
+                        "LABEL $$bool_end_%u\n", id, id, short_value, id);
 }
 
 
@@ -538,11 +577,6 @@ void generate_definition(AST_NODE *node, CodegenContext *ctx){
     }
 
     const char *name = identifier->token.attr.str_val;
-
-    if(fprintf(ctx->output, "DEFVAR LF@%s\n", name) < 0){
-        ctx->error_code = 99;
-        return;
-    }
 
     generate_expression(expression, ctx);
 

@@ -92,7 +92,7 @@ void codegen_generate_node(AST_NODE *node, CodegenContext *ctx){
             break;
 
         case NODE_TOKEN_ONLY:
-            if(node->token.type == TOKEN_TYPE_KEYWORD && node->token.attr.keyword == KEYWORD_RETURN){
+            if(node->token.type == KEYWORD_RETURN){
                 generate_return(node,ctx);
             }
             
@@ -191,15 +191,39 @@ static void generate_call(AST_NODE *node, CodegenContext *ctx){
     const char *name = name_node->token.attr.str_val;
 
     if(strcmp(name, "print") == 0){
-        int count = generate_call_arguments(node->right_ch, ctx);
+        AST_NODE *arg = node->right_ch;
 
-        if(count != 1 ||  ctx->error_code != 0){
+        if(arg != NULL && arg->type == NODE_PROGRAM){
+            if(arg->left_ch == NULL || arg->right_ch != NULL){
+                ctx->error_code = 99;
+                return;
+            }
+
+            arg = arg->left_ch;
+        }
+
+        if(arg == NULL){
             ctx->error_code = 99;
             return;
         }
 
-        fputs("POPS GF@%cg_tmp\n"
-            "WRITE GF@%cg_tmp\n", ctx->output);
+        CodegenType arg_type = codegen_expression_type(arg, ctx);
+
+        generate_expression(arg, ctx);
+
+        if(ctx->error_code != 0){
+            return;
+        }
+
+        if(arg_type == CG_TYPE_UNIT){
+            fputs("POPS GF@%cg_tmp\n"
+                "WRITE string@()\n", ctx->output);
+        }
+
+        else{
+            fputs("POPS GF@%cg_tmp\n"
+                "WRITE GF@%cg_tmp\n", ctx->output);
+        }
     }
 
     else if(codegen_builtin_return_type(node) != CG_TYPE_UNKNOWN){
@@ -220,6 +244,10 @@ static void generate_call(AST_NODE *node, CodegenContext *ctx){
         }
 
         fprintf(ctx->output, "CALL $%s\n", name);
+
+        if(fputs("POPS GF@%cg_tmp\n", ctx->output) == EOF){
+            ctx->error_code = 99;
+        }
     }
 }
 
@@ -243,7 +271,8 @@ CodegenType codegen_builtin_return_type(const AST_NODE *node){
 
     if(strcmp(name, "readInt") == 0 ||
         strcmp(name, "toInt") == 0 ||
-        strcmp(name, "strLength") == 0){
+        strcmp(name, "strLength") == 0 ||
+        strcmp(name, "ord") == 0){
             return CG_TYPE_INT;
     }
 
@@ -253,7 +282,8 @@ CodegenType codegen_builtin_return_type(const AST_NODE *node){
 
     if(strcmp(name, "readLine") == 0 ||
         strcmp(name, "toStr") == 0 ||
-        strcmp(name, "chr") == 0){
+        strcmp(name, "chr") == 0 ||
+        strcmp(name, "subStr") == 0){
             return CG_TYPE_STRING;
     }
 
@@ -262,6 +292,134 @@ CodegenType codegen_builtin_return_type(const AST_NODE *node){
     }
 
     return CG_TYPE_UNKNOWN;
+}
+
+
+static int get_builtin_arguments(AST_NODE *args, AST_NODE **out, int expected){
+    if(args == NULL || out == NULL || expected < 1){
+        return 0;
+    }
+
+    if(args->type != NODE_PROGRAM){
+        if(expected != 1){
+            return 0;
+        }
+
+        out[0] = args;
+        return 1;
+    }
+
+    int count = 0;
+
+    for(AST_NODE *current = args; current != NULL; current = current->right_ch){
+        if(current->type != NODE_PROGRAM ||
+            current->left_ch == NULL ||
+            count >= expected){
+            return 0;
+        }
+
+        out[count++] = current->left_ch;
+    }
+
+    return count == expected;
+}
+
+
+
+static void emit_builtin_ord(CodegenContext *ctx){
+    unsigned int id = ctx->label_counter++;
+
+    fputs("CREATEFRAME\n"
+        "PUSHFRAME\n"
+        "DEFVAR LF@%cg_text\n"
+        "DEFVAR LF@%cg_index\n"
+        "DEFVAR LF@%cg_length\n"
+        "DEFVAR LF@%cg_result\n"
+        "DEFVAR LF@%cg_check\n"
+        "POPS LF@%cg_index\n"
+        "POPS LF@%cg_text\n"
+        "STRLEN LF@%cg_length LF@%cg_text\n"
+        "MOVE LF@%cg_result int@-1\n"
+        "LT LF@%cg_check LF@%cg_index int@0\n", ctx->output);
+
+    fprintf(ctx->output,
+        "JUMPIFEQ $$cg_ord_end_%u LF@%%cg_check bool@true\n", id);
+
+    fputs(
+        "LT LF@%cg_check LF@%cg_index LF@%cg_length\n", ctx->output);
+
+    fprintf(ctx->output,
+        "JUMPIFEQ $$cg_ord_end_%u LF@%%cg_check bool@false\n", id);
+
+    fputs(
+        "STRI2INT LF@%cg_result LF@%cg_text LF@%cg_index\n", ctx->output);
+
+    fprintf(ctx->output, "LABEL $$cg_ord_end_%u\n", id);
+
+    fputs("PUSHS LF@%cg_result\n"
+        "POPFRAME\n", ctx->output);
+}
+
+
+
+static void emit_builtin_substr(CodegenContext *ctx){
+    unsigned int id = ctx->label_counter++;
+
+    fputs("CREATEFRAME\n"
+        "PUSHFRAME\n"
+        "DEFVAR LF@%cg_text\n"
+        "DEFVAR LF@%cg_start\n"
+        "DEFVAR LF@%cg_end\n"
+        "DEFVAR LF@%cg_length\n"
+        "DEFVAR LF@%cg_index\n"
+        "DEFVAR LF@%cg_char\n"
+        "DEFVAR LF@%cg_result\n"
+        "DEFVAR LF@%cg_check\n"
+        "POPS LF@%cg_end\n"
+        "POPS LF@%cg_start\n"
+        "POPS LF@%cg_text\n"
+        "STRLEN LF@%cg_length LF@%cg_text\n", ctx->output);
+
+    fputs("LT LF@%cg_check LF@%cg_start int@0\n", ctx->output);
+    
+    fprintf(ctx->output, "JUMPIFEQ $$cg_sub_invalid_%u LF@%%cg_check bool@true\n", id);
+
+    fputs("LT LF@%cg_check LF@%cg_end int@0\n", ctx->output);
+    
+    fprintf(ctx->output, "JUMPIFEQ $$cg_sub_invalid_%u LF@%%cg_check bool@true\n", id);
+
+    fputs("GT LF@%cg_check LF@%cg_start LF@%cg_end\n", ctx->output);
+   
+    fprintf(ctx->output, "JUMPIFEQ $$cg_sub_invalid_%u LF@%%cg_check bool@true\n", id);
+
+    fputs("LT LF@%cg_check LF@%cg_start LF@%cg_length\n", ctx->output);
+   
+    fprintf(ctx->output, "JUMPIFEQ $$cg_sub_invalid_%u LF@%%cg_check bool@false\n", id);
+
+    fputs("GT LF@%cg_check LF@%cg_end LF@%cg_length\n", ctx->output);
+    
+    fprintf(ctx->output, "JUMPIFEQ $$cg_sub_invalid_%u LF@%%cg_check bool@true\n", id);
+
+    fputs("MOVE LF@%cg_result string@\n"
+        "MOVE LF@%cg_index LF@%cg_start\n", ctx->output);
+
+    fprintf(ctx->output, "LABEL $$cg_sub_loop_%u\n", id);
+
+    fputs("LT LF@%cg_check LF@%cg_index LF@%cg_end\n", ctx->output);
+
+    fprintf(ctx->output, "JUMPIFEQ $$cg_sub_finish_%u LF@%%cg_check bool@false\n", id);
+
+    fputs("GETCHAR LF@%cg_char LF@%cg_text LF@%cg_index\n"
+        "CONCAT LF@%cg_result LF@%cg_result LF@%cg_char\n"
+        "ADD LF@%cg_index LF@%cg_index int@1\n", ctx->output);
+
+    fprintf(ctx->output, "JUMP $$cg_sub_loop_%u\n"
+                        "LABEL $$cg_sub_invalid_%u\n"
+                        "EXIT int@40\n"
+                        "LABEL $$cg_sub_finish_%u\n", id, id, id);
+
+    fputs("PUSHS LF@%cg_result\n"
+        "POPFRAME\n", ctx->output);
 }
 
 
@@ -301,7 +459,6 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
         fallback = "bool@false";
     }
 
-
     if(read_type != NULL){
         if(node->right_ch != NULL){
             ctx->error_code = 99;
@@ -319,7 +476,59 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
         return;
     }
 
+    if(strcmp(name, "ord") == 0 || strcmp(name, "subStr") == 0){
+        int is_ord = strcmp(name, "ord") == 0;
+
+        int count = is_ord ? 2 : 3;
+
+        AST_NODE *args[3] = {NULL, NULL, NULL};
+
+        if(!get_builtin_arguments(node->right_ch, args, count)){
+            ctx->error_code = 99;
+            return;
+        }
+
+        if(codegen_expression_type(args[0], ctx) != CG_TYPE_STRING){
+            ctx->error_code = 99;
+            return;
+        }
+
+        for(int i = 1; i < count; i++){
+            if(codegen_expression_type(args[i], ctx) != CG_TYPE_INT){
+                ctx->error_code = 99;
+                return;
+            }
+        }
+
+        for(int i = 0; i < count; i++){
+            generate_expression(args[i], ctx);
+
+            if(ctx->error_code != 0){
+                return;
+            }
+        }
+
+        if(is_ord){
+            emit_builtin_ord(ctx);
+        }
+        else{
+            emit_builtin_substr(ctx);
+        }
+
+        return;
+    }
+
+
     AST_NODE *arg = node->right_ch;
+
+    if(arg != NULL && arg->type == NODE_PROGRAM){
+        if(arg->left_ch == NULL || arg->right_ch != NULL){
+            ctx->error_code = 99;
+            return;
+        }
+
+        arg = arg->left_ch;
+    }
 
     if(arg == NULL){
         ctx->error_code = 99;
@@ -352,6 +561,10 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
                 "PUSHS GF@%cg_tmp\n", ctx->output);
     }
 
+    else if(strcmp(name, "chr") == 0){
+        fputs("INT2CHARS\n", ctx->output);
+    }
+
     else if(strcmp(name, "toStr") == 0){
         switch(type){
             case CG_TYPE_INT:
@@ -370,7 +583,7 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
                                     "PUSHS string@true\n"
                                     "JUMP $$cg_bool_end_%u\n"
                                     "LABEL $$cg_bool_false_%u\n"
-                                    "PUSHS string@@false\n"
+                                    "PUSHS string@false\n"
                                     "LABEL $$cg_bool_end_%u\n", id, id, id, id);
                 break;
             }
