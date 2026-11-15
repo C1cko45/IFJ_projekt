@@ -41,7 +41,7 @@ Token next(void){
     }else{
         t = scanner_get_next_token();
     }
-    fprintf(stderr, "next: %s\n", token_type_name(t.type));
+    
     return t;
 }
 
@@ -374,7 +374,99 @@ AST_NODE* while_loop(){
 // for_loop: cyklus for
 //! Volana z: nikde zatial (ma ju volat statement() vo vetve KEYWORD_FOR)
 AST_NODE* for_loop(){
-    return NULL;
+    AST_NODE* root = ast_create_node_type(NODE_FOR);
+    AST_NODE* temp;
+    AST_NODE* limit_typ;
+    AST_NODE* limit;
+    AST_NODE* nazov_p;
+    AST_NODE* last_temp;
+    switch(peek().type){
+        case TOKEN_TYPE_EOL:
+            next();
+            if(next().type != TOKEN_TYPE_INDENT){parser_error_exit(2,"Chyba v for_loop" );}
+            if(peek().type != TOKEN_TYPE_IDENTIFIER){parser_error_exit(2,"Chyba v for_loop" );}
+            //Vytvorenie a pridanie uzla s nazvom premmennej k root
+            nazov_p = ast_create_node(next());
+            if(next().type != TOKEN_TYPE_ARROW){parser_error_exit(2,"Chyba v for_loop");}
+            ast_add_parent(root,nazov_p,0); 
+            limit = ast_create_node_type(NODE_LIMIT);
+            ast_add_parent(nazov_p,limit,0 );
+            
+            temp = parse_expression();
+            switch(peek().type){
+                case KEYWORD_TO:
+                case KEYWORD_UNTIL:
+                    limit_typ = ast_create_node(next());
+                    ast_add_parent(limit,limit_typ,0);
+                    ast_add_parent(limit_typ, temp,0);
+                    temp = parse_expression();
+                    ast_add_parent(limit_typ, temp,1);
+                    if(peek().type == KEYWORD_BY){
+                        next();
+                        temp = parse_expression();
+                        ast_add_parent(limit, temp,1);
+                    }
+                    break;
+                default:
+                    ast_add_parent(limit, temp, 0);
+                    break;
+            }
+            
+            if(next().type != TOKEN_TYPE_EOL){parser_error_exit(2,"Chyba v for_loop" );}
+            last_temp = nazov_p;
+            while(peek().type == KEYWORD_IF){
+                next();
+                temp = ast_create_node_type(NODE_PODMIENKA);  
+                ast_add_parent(temp, parse_expression(),0);
+                ast_add_parent(last_temp, temp,1);
+                last_temp = temp;
+                if(next().type != TOKEN_TYPE_EOL){parser_error_exit(2,"Chyba v for_loop");}
+            }
+            if(next().type != TOKEN_TYPE_DEDENT){parser_error_exit(2,"Chyba v for_loop" );}
+            if(next().type != KEYWORD_DO){parser_error_exit(2,"Chyba v for_loop" );}
+            break;
+
+
+
+
+
+        case TOKEN_TYPE_IDENTIFIER:
+            if(peek().type != TOKEN_TYPE_IDENTIFIER){parser_error_exit(2,"Chyba v for_loop" );}
+            //Vytvorenie a pridanie uzla s nazvom premmennej k root
+            nazov_p = ast_create_node(next());
+            if(next().type != TOKEN_TYPE_ARROW){parser_error_exit(2,"Chyba v for_loop");}
+            ast_add_parent(root,nazov_p,0); 
+            limit = ast_create_node_type(NODE_LIMIT);
+            ast_add_parent(nazov_p,limit,0 );
+            
+            temp = parse_expression();
+            switch(peek().type){
+                case KEYWORD_TO:
+                case KEYWORD_UNTIL:
+                    limit_typ = ast_create_node(next());
+                    ast_add_parent(limit,limit_typ,0);
+                    ast_add_parent(limit_typ, temp,0);
+                    temp = parse_expression();
+                    ast_add_parent(limit_typ, temp,1);
+                    if(peek().type == KEYWORD_BY){
+                        next();
+                        temp = parse_expression();
+                        ast_add_parent(limit, temp,1);
+                    }
+                    break;
+                default:
+                    ast_add_parent(limit, temp, 0);
+                    break;
+            }
+            if(next().type != KEYWORD_DO){parser_error_exit(2,"Chyba v for_loop" );}
+            break;
+        default:
+            parser_error_exit(2,"Chyba v for_loop" );
+            break;
+    }
+    ast_add_parent(root,function_body(),1); 
+        
+    return root;
 }
 
 /* ============================================================
@@ -395,12 +487,10 @@ AST_NODE* statement(){
         case KEYWORD_IF:
             next(); 
             root = if_statement();
-            
             break;
         case KEYWORD_WHILE:
             next(); 
             root = while_loop();
-            //TODO
             break;
         case KEYWORD_VAR:
             next(); 
@@ -423,8 +513,8 @@ AST_NODE* statement(){
                     root = call_f(current_token, current_token_second);
                     break;
                 default:
+                //pripad kedy je na riadku iba b+1 
                     root = parse_expression_from(current_token);
-                    
                     break;
             }
 
@@ -432,17 +522,20 @@ AST_NODE* statement(){
             break;
         }
         case KEYWORD_FOR:
-            //For loop
-            //TODO
+            next();
+            root = for_loop();
             break;
         
         case KEYWORD_RETURN:
-            //return
-            //TODO
+            root = ast_create_node(next());
+            if(peek().type != TOKEN_TYPE_EOL){
+                AST_NODE* temp = parse_expression();
+                ast_add_parent(root,temp,0);
+            }
+            
             break;
         case TOKEN_TYPE_EOL:
-            //medzera treba nacitat  novy 
-            //TODO
+            
             break;
         
         default:
@@ -477,6 +570,10 @@ AST_NODE* function_body_block(){
     
     //pre pripad prazdneho bloku. Blok nemoze byt prazdny.
     current_token = peek();
+    while(current_token.type == TOKEN_TYPE_EOL){       // prazdne riadky / komentare na zaciatku bloku
+        next();
+        current_token = peek();
+    }
     if(current_token.type == TOKEN_TYPE_DEDENT){parser_error_exit(2, "Syntakticka chyba, function_body_block2");}
     last_program_node = root;
     
@@ -485,6 +582,10 @@ AST_NODE* function_body_block(){
         temp = statement();
         ast_add_parent(last_program_node,temp,0);
         current_token = peek();
+        while(current_token.type == TOKEN_TYPE_EOL){   // prazdne riadky / komentare za prikazom
+            next();
+            current_token = peek();
+        }
         if(current_token.type == TOKEN_TYPE_EOF){
             next();
             parser_error_exit(2, "Chyba lexera. Koniec programu EOL ale neuzavrety blok kodu.");
@@ -513,6 +614,7 @@ AST_NODE* function_body(){
     Token current_token = peek();
     if(current_token.type == TOKEN_TYPE_EOL){
         next();
+        while(peek().type == TOKEN_TYPE_EOL){ next(); }   // prazdne riadky pred INDENT
         root = function_body_block();
     }else{
         root = parse_expression();
