@@ -388,16 +388,3 @@ HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable 
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-int main(void)
-{
-    // char string[] = "asdfasdf";
-    //
-    // uint32_t hash = DJBHash(string);
-    // printf("%u, %u\n", *string, hash);
-    //
-    // hash = BKDRHash(string);
-    // printf("%u\n", hash);
-
-    return 0;
-}
