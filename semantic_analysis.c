@@ -4,6 +4,7 @@
  */
 
 #include "semantic_analysis.h"
+#include "ast.h"
 #include "symtable.h"
 
 #define SEM_ERROR_UNDEF 3 // use of undef function/var/type; missing @main-tagged function
@@ -21,3 +22,98 @@
  * Might as well fill the global scope in SymTable with function identifiers
  *
  */
+
+/*
+ * Pushes builtin functions into SymTable's global scope
+ * Should be called after initializing a SymTable instance for the global scope and function def body local scopes
+ *
+ * Assumes initialized SymTable with initialized global scope
+ */
+static void insertBuiltins(SymTable *sym_table)
+{
+    HTEntry builtin_function = {.state = BUSY,
+                                .identifier = "print",
+                                .entry_type = FUNCTION,
+                                .entry_data.function.param_count = 0,
+                                .entry_data.function.return_type = UNIT};
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "head";
+    builtin_function.entry_data.function.return_type = ANY;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "tail";
+    builtin_function.entry_data.function.return_type = LIST;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "toList";
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "readLine";
+    builtin_function.entry_data.function.return_type = STRING;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "readInt";
+    builtin_function.entry_data.function.return_type = INT;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "readDouble";
+    builtin_function.entry_data.function.return_type = DOUBLE;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "readBoolean";
+    builtin_function.entry_data.function.return_type = BOOLEAN;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "toStr";
+    builtin_function.entry_data.function.param_count = 1;
+    builtin_function.entry_data.function.return_type = STRING;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "chr";
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "drop";
+    builtin_function.entry_data.function.return_type = LIST;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "take";
+    builtin_function.entry_data.function.return_type = LIST;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "toInt";
+    builtin_function.entry_data.function.return_type = INT;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "strLength";
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "ord";
+    builtin_function.entry_data.function.param_count = 2;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "subStr";
+    builtin_function.entry_data.function.param_count = 3;
+    builtin_function.entry_data.function.return_type = STRING;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    // Dubious one, language spec supports builtin range(start, end) AND builtin range(start,end,step)
+    // -> Which normally leads to re-definition error in SymTable
+    // Language spec itself explicitly doesn't support function overloading, like at all
+    // So I just decided to insert range(start,end,step), will have to handle this builtin function separately
+    // knowing that range().paramCount == 3 in SymTable, but, in reality, can be either 2 or 3
+    builtin_function.identifier = "range";
+    builtin_function.entry_data.function.return_type = LIST;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+}
+
+/*
+ * Entry point for semantic analysis
+ * Return an array[2] of symTables;
+ * symTable[0] -- global scope, function def body local scopes
+ * symTable[1] -- temporary scopes; (while, for, if-else body local scopes)
+ */
+SymTable *semanticAnalysis(AST_NODE *ast)
+{
+    return NULL;
+}
