@@ -15,6 +15,9 @@
 #define ERROR_INTERNAL 99     // internal program error; failed memory allocation, ...
 
 /*
- * First traverse AST and check for @main function ->
+ * Initialize symTable first with createSymTable();
+ *
+ * First traverse AST and check for @main function
+ * Might as well fill the global scope in SymTable with function identifiers
  *
  */
