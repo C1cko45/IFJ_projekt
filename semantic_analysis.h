@@ -7,5 +7,8 @@
 #define SEMANTIC_ANALYSIS_H
 
 #include "ast.h"
+#include "symtable.h"
+
+SymTable *semanticAnalysis(AST_NODE *root_ast);
 
 #endif

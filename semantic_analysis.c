@@ -3,17 +3,21 @@
  * Author: Pham Vu Duy Anh, xphamv00
  */
 
-#include "semantic_analysis.h"
+#include <stdio.h>
+
 #include "ast.h"
+#include "semantic_analysis.h"
 #include "symtable.h"
 
-#define SEM_ERROR_UNDEF 3 // use of undef function/var/type; missing @main-tagged function
-#define SEM_ERROR_REDEF 4 // illegal re-def function/var/type
-#define SEM_ERROR_PARAM 5 // incorrect count/type of arguments in function call; illegal @main-tagged function params
-#define SEM_ERROR_TYPE 6  // type incompat | incorrect type infer in expr, assign, init, return type, control flow
-#define SEM_ERROR_IMMUTABLE 7 // assign attempt to immutable variable/function parameter
-#define SEM_ERROR_OTHER 10    // other semantic errors; (illegal return, non-exhaustive match, range with 0-step, ...)
-#define ERROR_INTERNAL 99     // internal program error; failed memory allocation, ...
+#define ERROR_SYNTACTIC 2
+
+#define ERROR_UNDEF 3     // use of undef function/var/type; missing @main-tagged function
+#define ERROR_REDEF 4     // illegal re-def function/var/type
+#define ERROR_PARAM 5     // incorrect count/type of arguments in function call; illegal @main-tagged function params
+#define ERROR_TYPE 6      // type incompat | incorrect type infer in expr, assign, init, return type, control flow
+#define ERROR_IMMUTABLE 7 // assign attempt to immutable variable/function parameter
+#define ERROR_OTHER 10    // other semantic errors; (illegal return, non-exhaustive match, range with 0-step, ...)
+#define ERROR_INTERNAL 99 // internal program error; failed memory allocation, ...
 
 /*
  * Initialize symTable first with createSymTable();
@@ -113,7 +117,25 @@ static void insertBuiltins(SymTable *sym_table)
  * symTable[0] -- global scope, function def body local scopes
  * symTable[1] -- temporary scopes; (while, for, if-else body local scopes)
  */
-SymTable *semanticAnalysis(AST_NODE *ast)
+SymTable *semanticAnalysis(AST_NODE *root_ast)
 {
+    AST_NODE *parent_node = root_ast;
+    // Traverse AST PreOrder
+    while (parent_node != NULL)
+    {
+        // Process parent_node; Should never happen, correct AST structure of top-level guaranteed by syntactic analysis
+        if (parent_node != NODE_PROGRAM && parent_node->left_ch->type != NODE_FUNC_DEF)
+        {
+            fprintf(stderr, "ERROR_SYNTACTIC\n");
+            // cleanup();
+            exit(ERROR_SYNTACTIC);
+        }
+
+        // Process left_child
+        // nodeDispatcher(parent_node->left_ch);
+
+        parent_node = parent_node->right_ch;
+    }
+
     return NULL;
 }
