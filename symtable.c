@@ -13,8 +13,8 @@
 
 #define ERROR_INTERNAL 99 // internal program error; failed memory allocation, ...
 
-#define HTABLE_MAX_LOAD_FACTOR 7 // Load factor * 10, to avoid floating-point arithmetic and conversion size_t -> double
-#define HTABLE_INIT_CAPACITY 17  // Min. 17 to satisfy load factor for initial global scope - has 10 builtin functions
+#define HTABLE_MAX_LOAD_FACTOR 7 // Load factor*10, to avoid floating-point conversion and arithmetic
+#define HTABLE_INIT_CAPACITY 29  // Min value to satisfy load factor for initial global scope - has 19 builtin functions
 
 #define SYMTABLE_INIT_CAPACITY 1
 #define SYMTABLE_GLOBAL_SCOPE 0
@@ -117,6 +117,10 @@ static void insertBuiltins(SymTable *sym_table)
 
     builtin_function.identifier = "readDouble";
     builtin_function.entry_data.function.return_type = DOUBLE;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "readBoolean";
+    builtin_function.entry_data.function.return_type = BOOLEAN;
     insertEntry(&builtin_function, &sym_table->scopes[0]);
 
     builtin_function.identifier = "toStr";
