@@ -166,9 +166,11 @@ static void insertBuiltins(SymTable *sym_table)
     builtin_function.entry_data.function.return_type = STRING;
     insertEntry(&builtin_function, &sym_table->scopes[0]);
 
-    // Dubious one, specs support range(start, end) AND range(start,end,step)
-    // -> Which normally leads to re-definition by SymTable design
-    // Language spec itself explicitly doesn't support it for user-defined functions...
+    // Dubious one, language spec supports builtin range(start, end) AND builtin range(start,end,step)
+    // -> Which normally leads to re-definition error in SymTable
+    // Language spec itself explicitly doesn't support function overloading, like at all
+    // So I just decided to insert range(start,end,step), will have to handle this builtin function separately
+    // knowing that range().paramCount == 3 in SymTable, but, in reality, can be either 2 or 3
     builtin_function.identifier = "range";
     builtin_function.entry_data.function.return_type = LIST;
     insertEntry(&builtin_function, &sym_table->scopes[0]);
