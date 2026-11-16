@@ -107,6 +107,17 @@ static void insertBuiltins(SymTable *sym_table)
                                 .entry_data.function.return_type = UNIT};
     insertEntry(&builtin_function, &sym_table->scopes[0]);
 
+    builtin_function.identifier = "head";
+    builtin_function.entry_data.function.return_type = ANY;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "tail";
+    builtin_function.entry_data.function.return_type = LIST;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "toList";
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
     builtin_function.identifier = "readLine";
     builtin_function.entry_data.function.return_type = STRING;
     insertEntry(&builtin_function, &sym_table->scopes[0]);
@@ -128,6 +139,17 @@ static void insertBuiltins(SymTable *sym_table)
     builtin_function.entry_data.function.return_type = STRING;
     insertEntry(&builtin_function, &sym_table->scopes[0]);
 
+    builtin_function.identifier = "chr";
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "drop";
+    builtin_function.entry_data.function.return_type = LIST;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
+    builtin_function.identifier = "take";
+    builtin_function.entry_data.function.return_type = LIST;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
     builtin_function.identifier = "toInt";
     builtin_function.entry_data.function.return_type = INT;
     insertEntry(&builtin_function, &sym_table->scopes[0]);
@@ -135,19 +157,20 @@ static void insertBuiltins(SymTable *sym_table)
     builtin_function.identifier = "strLength";
     insertEntry(&builtin_function, &sym_table->scopes[0]);
 
+    builtin_function.identifier = "ord";
+    builtin_function.entry_data.function.param_count = 2;
+    insertEntry(&builtin_function, &sym_table->scopes[0]);
+
     builtin_function.identifier = "subStr";
     builtin_function.entry_data.function.param_count = 3;
     builtin_function.entry_data.function.return_type = STRING;
     insertEntry(&builtin_function, &sym_table->scopes[0]);
 
-    builtin_function.identifier = "ord";
-    builtin_function.entry_data.function.param_count = 2;
-    builtin_function.entry_data.function.return_type = INT;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
-
-    builtin_function.identifier = "chr";
-    builtin_function.entry_data.function.param_count = 1;
-    builtin_function.entry_data.function.return_type = STRING;
+    // Dubious one, specs support range(start, end) AND range(start,end,step)
+    // -> Which normally leads to re-definition by SymTable design
+    // Language spec itself explicitly doesn't support it for user-defined functions...
+    builtin_function.identifier = "range";
+    builtin_function.entry_data.function.return_type = LIST;
     insertEntry(&builtin_function, &sym_table->scopes[0]);
 }
 /*
