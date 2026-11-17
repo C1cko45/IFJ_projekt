@@ -85,7 +85,9 @@ typedef struct HTable
 { /* calloc() initializes all fields to 0/NULL */
     size_t capacity;
     size_t count;
-    struct HTEntry *entries; // The hash array of identifiers in the scope
+    HTEntry *entries; // The hash array of identifiers in the scope
+
+    struct HTable *outer_scope; // pointer to its outer scope; helps for searching through the SymTable hierarchically
 } HTable;
 
 typedef struct SymTable
@@ -101,6 +103,7 @@ typedef struct SymTable
     // -> within temp_scope, its outer function scope is visible
     // temp_scopes within a function scope grouped together; ordered according to order of function definitions
     // in IFJ26 program
+    bool temp_active; // indicates when we're currently in a temp scope
     size_t temp_count;
     size_t temp_current;
 
