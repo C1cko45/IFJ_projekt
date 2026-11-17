@@ -9,6 +9,6 @@
 #include "ast.h"
 #include "symtable.h"
 
-SymTable *semanticAnalysis(AST_NODE *root_ast);
+void semanticAnalysis(AST_NODE *root_ast);
 
 #endif

@@ -40,66 +40,66 @@ static void insertBuiltins(SymTable *sym_table)
                                 .entry_type = FUNCTION,
                                 .entry_data.function.param_count = 0,
                                 .entry_data.function.return_type = UNIT};
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "head";
     builtin_function.entry_data.function.return_type = ANY;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "tail";
     builtin_function.entry_data.function.return_type = LIST;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "toList";
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "readLine";
     builtin_function.entry_data.function.return_type = STRING;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "readInt";
     builtin_function.entry_data.function.return_type = INT;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "readDouble";
     builtin_function.entry_data.function.return_type = DOUBLE;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "readBoolean";
     builtin_function.entry_data.function.return_type = BOOLEAN;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "toStr";
     builtin_function.entry_data.function.param_count = 1;
     builtin_function.entry_data.function.return_type = STRING;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "chr";
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "drop";
     builtin_function.entry_data.function.return_type = LIST;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "take";
     builtin_function.entry_data.function.return_type = LIST;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "toInt";
     builtin_function.entry_data.function.return_type = INT;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "strLength";
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "ord";
     builtin_function.entry_data.function.param_count = 2;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "subStr";
     builtin_function.entry_data.function.param_count = 3;
     builtin_function.entry_data.function.return_type = STRING;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 
     // Dubious one, language spec supports builtin range(start, end) AND builtin range(start,end,step)
     // -> Which normally leads to re-definition error in SymTable
@@ -108,22 +108,25 @@ static void insertBuiltins(SymTable *sym_table)
     // knowing that range().paramCount == 3 in SymTable, but, in reality, can be either 2 or 3
     builtin_function.identifier = "range";
     builtin_function.entry_data.function.return_type = LIST;
-    insertEntry(&builtin_function, &sym_table->scopes[0]);
+    createIdentifier(&builtin_function, sym_table);
 }
 
 /*
- * Entry point for semantic analysis
- * Return an array[2] of symTables;
- * symTable[0] -- global scope, function def body local scopes
- * symTable[1] -- temporary scopes; (while, for, if-else body local scopes)
+ *
  */
-SymTable *semanticAnalysis(AST_NODE *root_ast)
+void semanticAnalysis(AST_NODE *root_ast)
 {
+    // Create and initialize sym_table[2]
+    // sym_table[0] -- global scope, function def body local scopes
+    // symTable[1] -- temporary scopes; (while, for, if-else body local scopes)
+
+    // Semantic analysis
     AST_NODE *parent_node = root_ast;
     // Traverse AST PreOrder
     while (parent_node != NULL)
     {
-        // Process parent_node; Should never happen, correct AST structure of top-level guaranteed by syntactic analysis
+        // Process parent_node ~ Check correct AST_NODE_TYPE
+        // Should never happen, correct AST structure of top-level guaranteed by syntactic analysis
         if (parent_node != NODE_PROGRAM && parent_node->left_ch->type != NODE_FUNC_DEF)
         {
             fprintf(stderr, "ERROR_SYNTACTIC\n");
@@ -131,11 +134,11 @@ SymTable *semanticAnalysis(AST_NODE *root_ast)
             exit(ERROR_SYNTACTIC);
         }
 
-        // Process left_child
+        // Process parent_node->left_child
+        // Should always be function definition statement
         // nodeDispatcher(parent_node->left_ch);
 
+        // Process parent_node->right_child
         parent_node = parent_node->right_ch;
     }
-
-    return NULL;
 }
