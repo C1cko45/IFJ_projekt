@@ -19,6 +19,8 @@
 #define ERROR_OTHER 10    // other semantic errors; (illegal return, non-exhaustive match, range with 0-step, ...)
 #define ERROR_INTERNAL 99 // internal program error; failed memory allocation, ...
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 /*
  * Initialize symTable first with createSymTable();
  *
@@ -111,14 +113,16 @@ static void insertBuiltins(SymTable *sym_table)
     createIdentifier(&builtin_function, sym_table);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 /*
  *
  */
 void semanticAnalysis(AST_NODE *root_ast)
 {
-    // Create and initialize sym_table[2]
-    // sym_table[0] -- global scope, function def body local scopes
-    // symTable[1] -- temporary scopes; (while, for, if-else body local scopes)
+    // Create and initialize sym_table with global scope
+    SymTable *sym_table = createSymTable();
+    insertBuiltins(sym_table);
 
     // Semantic analysis
     AST_NODE *parent_node = root_ast;
@@ -141,4 +145,7 @@ void semanticAnalysis(AST_NODE *root_ast)
         // Process parent_node->right_child
         parent_node = parent_node->right_ch;
     }
+
+    // Free any allocated memory in sym_table
+    destroySymTable(sym_table);
 }
