@@ -34,10 +34,10 @@ typedef enum
     NONE, // -> initial value
 
     FUNCTION,
-    FUNCTION_PARAMETER, // immutable, behaves like VAL
+    MAIN_FUNCTION, // @main-tagged function
 
     VAR,
-    VAL // immutable
+    VAL // immutable, includes FUNCTION_PARAMETER; they behave the same in function's scope
 } HTEntryType;
 
 // Entry State
@@ -52,7 +52,7 @@ typedef enum
 // Entry Data
 typedef union HTEntryData
 {
-    // HTEntryType == VAR|VAL|FUNCTION_PARAMETER
+    // HTEntryType == VAR|VAL
     DataType variable_data_type;
 
     // HTEntryType == FUNCTION
@@ -65,12 +65,15 @@ typedef union HTEntryData
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*
+ * IFJ26 supports function and variable with the same identifier (doesn't lead to re-defition error)
+ * -> identifier and entry_type (function/variable) both become keys
+ * Although function identifiers should only be in global_scope anyway, the only type of entries there
+ */
 typedef struct HTEntry
 { /* calloc() initializes all fields to 0/NULL */
     HTEntryState state;
 
-    // IFJ26 supports function and variable with the same identifier (doesn't lead to re-defition error)
-    // -> identifier and entry_type (function/variable) both become keys
     char *identifier;       // key#1
     HTEntryType entry_type; // key#2|tag
 
@@ -82,22 +85,35 @@ typedef struct HTable
 { /* calloc() initializes all fields to 0/NULL */
     size_t capacity;
     size_t count;
-
-    struct HTEntry *entries;
+    struct HTEntry *entries; // The hash array of identifiers in the scope
 } HTable;
 
 typedef struct SymTable
-{ /* calloc() initializes all fields to 0/NULL */
-    size_t capacity;
-    size_t count;
-    size_t current_scope;
+{                           /* calloc() initializes all fields to 0/NULL */
+    size_t scopes_capacity; // 1 (global scope) + function_count + temp_count
 
-    struct HTable *scopes;
+    // local scopes, effectively in correct IFJ26 program, are only function body blocks
+    // ordered corresponds to order of function definitions in IFJ26 program
+    size_t function_count;   // number of local scopes; in correct IFJ26 program should stay constant (= local_capacity)
+    size_t function_current; // current active local scope index
+
+    // temporary scopes; self-contained scopes nested inside function body blocks (blocks in while, if-else, for, ...)
+    // -> within temp_scope, its outer function scope is visible
+    // temp_scopes within a function scope grouped together; ordered according to order of function definitions
+    // in IFJ26 program
+    size_t temp_count;
+    size_t temp_current;
+
+    // Array of all scopes[1 + local_count + temp_count] (HTables)
+    // scopes[0] -> global_scope
+    // scopes[1..local_count] -> local_scopes
+    // scopes[(local_count+1)..(local_count+temp_count)] -> temp_scopes
+    struct HTable *scopes; // Array of HTables (scopes)
 } SymTable;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-SymTable *createSymTable();
+SymTable *createSymTable(size_t capacity);
 void destroySymTable(SymTable *sym_table);
 
 void createScope(SymTable *sym_table);
