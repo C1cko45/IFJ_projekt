@@ -87,7 +87,9 @@ typedef struct HTable
     size_t count;
     HTEntry *entries; // The hash array of identifiers in the scope
 
-    struct HTable *outer_scope; // pointer to its outer scope; helps for searching through the SymTable hierarchically
+    // pointer to its outer scope; helps for searching through the SymTable hierarchically
+    // This allows nested scopes (temp_scopes) ~ outer scope is visible within nested scopes, ...
+    struct HTable *outer_scope;
 } HTable;
 
 typedef struct SymTable
@@ -95,7 +97,7 @@ typedef struct SymTable
     size_t scopes_capacity; // 1 (global scope) + function_count + temp_count
 
     // local scopes, effectively in correct IFJ26 program, are only function body blocks
-    // ordered corresponds to order of function definitions in IFJ26 program
+    // order in scopes[] corresponds to order of function definitions in IFJ26 program
     size_t function_count;   // number of local scopes; in correct IFJ26 program should stay constant (= local_capacity)
     size_t function_current; // current active local scope index
 
@@ -103,7 +105,7 @@ typedef struct SymTable
     // -> within temp_scope, its outer function scope is visible
     // temp_scopes within a function scope grouped together; ordered according to order of function definitions
     // in IFJ26 program
-    bool temp_active; // indicates when we're currently in a temp scope
+    bool temp_active; // indicates when we're currently in a temp scope; mainly for searching SymTable
     size_t temp_count;
     size_t temp_current;
 
