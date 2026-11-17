@@ -34,7 +34,6 @@ typedef enum
     NONE, // -> initial value
 
     FUNCTION,
-    MAIN_FUNCTION, // @main-tagged function
 
     VAR,
     VAL // immutable, includes FUNCTION_PARAMETER; they behave the same in function's scope
@@ -87,19 +86,20 @@ typedef struct HTable
     size_t count;
     HTEntry *entries; // The hash array of identifiers in the scope
 
-    // pointer to its outer scope; helps for searching through the SymTable hierarchically
+    // outer scope index; for searching through SymTable hierarchically outside current scope -> global scope
     // This allows nested scopes (temp_scopes) ~ outer scope is visible within nested scopes, ...
-    struct HTable *outer_scope;
+    // Index, not pointer to HTable; avoids potential dangling pointers (SymTable internally does a lot of resizing)
+    size_t outer_scope_index;
 } HTable;
 
 typedef struct SymTable
 {                           /* calloc() initializes all fields to 0/NULL */
-    size_t scopes_capacity; // 1 (global scope) + function_count + temp_count
+    size_t scopes_capacity; // HTable array's max size;
 
     // local scopes, effectively in correct IFJ26 program, are only function body blocks
     // order in scopes[] corresponds to order of function definitions in IFJ26 program
     size_t function_count;   // number of local scopes; in correct IFJ26 program should stay constant (= local_capacity)
-    size_t function_current; // current active local scope index
+    size_t function_current; // current active local scope index, if (function_current == 0) -> currently inactive
 
     // temporary scopes; self-contained scopes nested inside function body blocks (blocks in while, if-else, for, ...)
     // -> within temp_scope, its outer function scope is visible
@@ -107,7 +107,8 @@ typedef struct SymTable
     // in IFJ26 program
     bool temp_active; // indicates when we're currently in a temp scope; mainly for searching SymTable
     size_t temp_count;
-    size_t temp_current;
+    size_t temp_current; // current active temp scope index
+                         // if (temp_current == function_current || temp_current == 0) -> currently inactive
 
     // Array of all scopes[1 + local_count + temp_count] (HTables)
     // scopes[0] -> global_scope
@@ -118,19 +119,18 @@ typedef struct SymTable
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-SymTable *createSymTable(size_t capacity);
+SymTable *createSymTable();
 void destroySymTable(SymTable *sym_table);
 
-void createScope(SymTable *sym_table);
-void destroyScope(SymTable *sym_table);
-
-bool isEntry(const char *key, HTEntryType entry_type, HTable *table);
-HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table);
+void createFunctionScope(SymTable *sym_table);
+void createTempScope(SymTable *sym_table);
+void destroyScope(HTable *scope);
 
 bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table);
 HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table);
 
-void insertEntry(HTEntry *entry, HTable *table);
-bool deleteEntry(HTEntry *entry, HTable *table);
+// TODO: void enterTempScope(); -- createTempScope(); sym_table->temp_active = true;
+// TODO: void exitTempScope(); -- sym_table->temp_active = false;
+// TODO: void enterFunctionScope(); -- increment function_current
 
 #endif
