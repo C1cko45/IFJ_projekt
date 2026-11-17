@@ -374,16 +374,16 @@ void createIdentifier(HTEntry *entry, SymTable *sym_table)
     insertEntry(entry, &sym_table->scopes[sym_table->current]);
 }
 /*
- * Finds specified local immutable variable (in current scope) and updates its data type
+ * Finds specified local immutable variable and updates its data type
  *
  * Should be called when assigning value to a mutable variable that previously held value of different data type
- * Function assumes existence of specified variable identifier in current scope and that it is mutable
+ * Function assumes existence of specified variable identifier visible in current scope and that it is mutable
  *
  * Returns TRUE if found such a variable and changed data type, otherwise FALSE
  */
 bool changeVarType(const char *identifier, DataType target_type, SymTable *sym_table)
 {
-    HTEntry *target_entry = getEntry(identifier, VAR, &sym_table->scopes[sym_table->current]);
+    HTEntry *target_entry = getIdentifier(identifier, VAR, sym_table);
 
     if (target_entry != NULL)
     {
