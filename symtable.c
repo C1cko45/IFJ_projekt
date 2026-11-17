@@ -108,7 +108,7 @@ static size_t nextPrime(size_t number)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
- * Returns SymTable initialized (but empty) with global scope
+ * Returns SymTable with initialized (but empty) global scope
  */
 SymTable *createSymTable()
 {
@@ -129,58 +129,50 @@ SymTable *createSymTable()
         exit(ERROR_INTERNAL);
     }
 
-    // Initialize symTable's struct fields
-    sym_table->function_count = 0;
-    sym_table->function_current = 0;
-    sym_table->temp_count = 0;
-    sym_table->temp_active = false;
-    sym_table->temp_current = 0;
+    // Initialize symTable
+    sym_table->capacity = 1;
+    sym_table->current = 0;
 
     // Initialize global scope
     sym_table->scopes[GLOBAL_SCOPE_INDEX].entries = calloc(HTABLE_INIT_CAPACITY, sizeof(HTEntry));
     if (sym_table->scopes[GLOBAL_SCOPE_INDEX].entries == NULL)
     {
-        fprintf(stderr, "createScope() -- calloc() failed.\n");
+        fprintf(stderr, "createSymTable() -- calloc() failed.\n");
         // TODO: cleanup(); -- must free AST memory
         exit(ERROR_INTERNAL);
     }
     sym_table->scopes[GLOBAL_SCOPE_INDEX].count = HTABLE_INIT_CAPACITY;
     sym_table->scopes[GLOBAL_SCOPE_INDEX].capacity = HTABLE_INIT_CAPACITY;
-    sym_table->scopes[GLOBAL_SCOPE_INDEX].outer_scope_index = 0;
 
     return sym_table;
 }
 /*
  * Destroys the whole SymTable
- * ~> Free memory of every scope, every scopes Hash array, set capacity and count to 0
+ * ~> Free memory of every scope's hash array, free the stack, set stack's to uninitialized
  */
 void destroySymTable(SymTable *sym_table)
 {
     // Destroy all existing scopes
     // This particular way avoids size_t underflow, that would cause infinite loop otherwise
-    size_t scopes_count = 1 + sym_table->function_count + sym_table->temp_count;
-    while (scopes_count > 0)
-        destroyScope(&sym_table->scopes[--scopes_count]);
+    sym_table->capacity = sym_table->current + 1;
+    while (sym_table->capacity > 0)
+        popScope(sym_table);
 
     free(sym_table->scopes);
     sym_table->scopes = NULL;
-    sym_table->scopes_capacity = 0;
-    sym_table->function_count = 0;
-    sym_table->function_current = 0;
-    sym_table->temp_count = 0;
-    sym_table->temp_current = 0;
-    sym_table->temp_active = false;
+    sym_table->capacity = 0;
+    sym_table->current = 0;
 }
 /*
  * Grows symTable, should be called only when symTable becomes full
  * Dynamic array semantics -> double the capacity
  *
- * Helper function for createScope()
+ * Mainly helper function for pushScope()
  */
 static void resizeSymTable(SymTable *sym_table)
 {
     // Assigning to tmp variable -> if realloc() failed, we would lose access to original unfreed memory
-    HTable *new_scopes = realloc(sym_table->scopes, sizeof(HTable) * sym_table->scopes_capacity * 2);
+    HTable *new_scopes = realloc(sym_table->scopes, sizeof(HTable) * sym_table->capacity * 2);
     if (new_scopes == NULL)
     {
         fprintf(stderr, "resizeSymTable() -- realloc() failed.\n");
@@ -189,78 +181,42 @@ static void resizeSymTable(SymTable *sym_table)
     }
 
     sym_table->scopes = new_scopes;
-    sym_table->scopes_capacity *= 2;
+    sym_table->capacity *= 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
- * Creates and initializes function scope after function_current scope in SymTable
- * Resizes the SymTable if needed
- *
- * Mainly helper function used in semantic analysis when initializing SymTable
- * -> At start of semantic analysis, it goes through the whole program to count num of functions
- *  and creates that many function scopes in SymTable, that num should not change for duration of SymTable's lifetime
+ * Creates, initializes and pushes new current scope onto sym_table's stack
+ * Resizes sym_table if needed
  */
-void createFunctionScope(SymTable *sym_table)
+void pushScope(SymTable *sym_table)
 {
     // scopes_count + 1 > scopes_capacity -> grow SymTable
-    if ((sym_table->function_count + sym_table->temp_count + 1) + 1 > sym_table->scopes_capacity)
+    if ((sym_table->current + 1) + 1 > sym_table->capacity)
         resizeSymTable(sym_table);
 
     // Initialize created scope
-    sym_table->scopes[sym_table->function_current + 1].entries = calloc(HTABLE_INIT_CAPACITY, sizeof(HTEntry));
-    if (sym_table->scopes[sym_table->function_current + 1].entries == NULL)
+    sym_table->scopes[sym_table->current + 1].entries = calloc(HTABLE_INIT_CAPACITY, sizeof(HTEntry));
+    if (sym_table->scopes[sym_table->current + 1].entries == NULL)
     {
-        fprintf(stderr, "createFunctionScope() -- calloc() failed.\n");
+        fprintf(stderr, "pushScope() -- calloc() failed.\n");
         // TODO: cleanup(); -- must free AST memory
         exit(ERROR_INTERNAL);
     }
-    sym_table->scopes[sym_table->function_current + 1].count = HTABLE_INIT_CAPACITY;
-    sym_table->scopes[sym_table->function_current + 1].capacity = HTABLE_INIT_CAPACITY;
-    sym_table->scopes[sym_table->function_current + 1].outer_scope_index = GLOBAL_SCOPE_INDEX;
+    sym_table->scopes[sym_table->current + 1].count = HTABLE_INIT_CAPACITY;
+    sym_table->scopes[sym_table->current + 1].capacity = HTABLE_INIT_CAPACITY;
 
-    // Update symTable function_scopes info
-    sym_table->function_count++;
-    sym_table->function_current++;
+    // Update sym_table's stack pointer
+    sym_table->current++;
 }
 /*
- * Creates and initializes temp scope after temp_current scope in SymTable
- * Resizes the SymTable if needed
- *
- * Mainly helper function for enterTempScope() -> should not be invoked on its own
+ * Pops current scope off the sym_table's stack
  */
-void createTempScope(SymTable *sym_table)
+void popScope(SymTable *sym_table)
 {
-    // scopes_count + 1 > scopes_capacity -> grow SymTable
-    if ((sym_table->function_count + sym_table->temp_count + 1) + 1 > sym_table->scopes_capacity)
-        resizeSymTable(sym_table);
-
-    // Initialize created scope
-    sym_table->scopes[sym_table->temp_current + 1].entries = calloc(HTABLE_INIT_CAPACITY, sizeof(HTEntry));
-    if (sym_table->scopes[sym_table->temp_current + 1].entries == NULL)
-    {
-        fprintf(stderr, "createTempScope() -- calloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
-    }
-    sym_table->scopes[sym_table->temp_current + 1].count = HTABLE_INIT_CAPACITY;
-    sym_table->scopes[sym_table->temp_current + 1].capacity = HTABLE_INIT_CAPACITY;
-    sym_table->scopes[sym_table->temp_current + 1].outer_scope_index = GLOBAL_SCOPE_INDEX;
-
-    // Update symTable tem_scopes info
-    sym_table->temp_count++;
-    sym_table->temp_current++;
-}
-/*
- * Destroys specified scope in SymTable
- *
- * Mainly a helper function for destroySymTable()
- * -> Should only be called then
- */
-void destroyScope(HTable *scope)
-{
-    // free memory of all non-empty entries in HTable
+    HTable *scope = &sym_table->scopes[sym_table->current];
+    // free memory of all non-empty entries in scope (HTable)
     // This particular way avoids size_t underflow, that would cause infinite loop otherwise
     while (scope->capacity > 0)
         if (scope->entries[scope->capacity - 1].state != EMPTY)
@@ -270,13 +226,15 @@ void destroyScope(HTable *scope)
     scope->entries = NULL;
     scope->count = 0;
     scope->capacity = 0;
-    scope->outer_scope_index = 0;
+
+    // Update sym_table's stack pointer
+    sym_table->current--;
 }
 /*
- * Grows the HTable, should only be called when count exceeds HTABLE_MAX_LOAD_FACTOR
- * Hash table resizing -> double the capacity, find the closest greater prime number (to guarantee probe coverage)
- * Rehash existing entries into the new HTable (new capacity changes order of entries)
+ * Grow hash table -> double the capacity, find the closest greater prime number (to guarantee full probe coverage)
+ * Rehash existing entries into the new HTable (new capacity changes order of existing entries)
  *
+ * Should only be called when count exceeds HTABLE_MAX_LOAD_FACTOR
  * Helper function for insertEntry() - it's only use case
  */
 static void resizeScope(HTable *scope)
@@ -293,7 +251,7 @@ static void resizeScope(HTable *scope)
         exit(ERROR_INTERNAL);
     }
     scope->capacity = new_capacity;
-    for (size_t index = 0; index < scope->count; index++)
+    for (size_t index = 0; index < scope->count; ++index)
         insertEntry(&old_entries[index], scope); // rehash
 
     // Memory cleanup of old HTable
@@ -311,10 +269,10 @@ static void resizeScope(HTable *scope)
  * Searches for entry of specified entry_type (FUNCTION/VARIABLE) in HTable
  * Returns TRUE if found, FALSE otherwise
  *
- * Implemented mainly for use in isIdentifier()
- * Please use isIdentifier() for resolving identifiers
+ * Mainly used for checking for function/variable re-definition (searches local scope only)
+ * For resolving identifiers, see isIdentifier()
  */
-static bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
+bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
 {
     size_t index_hash = DJBHash(key);
     size_t probe_step_hash = BKDRHash(key);
@@ -322,7 +280,7 @@ static bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
 
     // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
     // table->capacity == MAX+1
-    for (size_t i = 1; target_entry->state != EMPTY; i++) // while not at end of synonyms list
+    for (size_t i = 1; target_entry->state != EMPTY; ++i) // while not at end of synonyms list
     {
         if (target_entry->state != DELETED) // if valid entry
         {
@@ -339,10 +297,10 @@ static bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
  * Searches for entry of specified entry_type (FUNCTION/VARIABLE) in table
  * Returns pointer to entry if found, NULL otherwise
  *
- * Implemented mainly for use in getIdentifier()
- * Please use getIdentifier() for resolving identifiers
+ * Mainly used for checking for function/variable re-definition (searches local scope only)
+ * For resolving identifiers, see isIdentifier()
  */
-static HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
+HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
 {
     size_t index_hash = DJBHash(key);
     size_t probe_step_hash = BKDRHash(key);
@@ -350,7 +308,7 @@ static HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
 
     // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
     // scope->capacity == MAX+1
-    for (size_t i = 1; target_entry->state != EMPTY; i++)
+    for (size_t i = 1; target_entry->state != EMPTY; ++i)
     {
         if (target_entry->state != DELETED)
         {
@@ -365,84 +323,12 @@ static HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
 }
 
 /*
- * Resolves identifier based on lexical scope rules of IFJ26
- * Identifiers are valid from place of definition until end of block (current scope) including its subblocks
- * -> Searches for identifier starting with current local scope towards global scope
- *
- * Function assumes correctly initialized sym_table (at least has global scope)
- * Returns boolean TRUE if found, FALSE otherwise
- */
-bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
-{
-    if (entry_type == FUNCTION)
-        return isEntry(identifier, entry_type, &sym_table->scopes[GLOBAL_SCOPE_INDEX]);
-
-    if (entry_type != NONE) // entry_type == VAR||VAL
-    {                       // Check every scope except global scope (where only function identifiers should be)
-        if (sym_table->temp_active)
-        {
-            for (size_t index = sym_table->temp_current; index > 0; index = sym_table->scopes[index].outer_scope_index)
-            {
-                if (isEntry(identifier, entry_type, &sym_table->scopes[index]))
-                    return true;
-            }
-        }
-
-        for (size_t index = sym_table->function_current; index > 0; index = sym_table->scopes[index].outer_scope_index)
-        {
-            if (isEntry(identifier, entry_type, &sym_table->scopes[index]))
-                return true;
-        }
-    }
-
-    return false;
-}
-/*
- * Resolves identifier based on lexical scope rules of IFJ26
- * Identifiers are valid from place of definition until end of block (current scope) including its subblocks
- * -> Searches for identifier starting with current local scope towards global scope
- *
- * Function assumes correctly initialized sym_table (at least has global scope)
- * Returns pointer to the identifier entry in symTable if found, NULL otherwise
- */
-HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
-{
-    if (entry_type == FUNCTION)
-        return getEntry(identifier, entry_type, &sym_table->scopes[GLOBAL_SCOPE_INDEX]);
-
-    if (entry_type != NONE) // entry_type == VAR||VAL
-    {                       // Check every scope except global scope (where only function identifiers should be)
-        HTEntry *target_identifier = NULL;
-        if (sym_table->temp_active)
-        {
-            for (size_t index = sym_table->temp_current; index > 0; index = sym_table->scopes[index].outer_scope_index)
-            {
-                target_identifier = getEntry(identifier, entry_type, &sym_table->scopes[index]);
-                if (target_identifier != NULL)
-                    return target_identifier;
-            }
-        }
-
-        for (size_t index = sym_table->function_current; index > 0; index = sym_table->scopes[index].outer_scope_index)
-        {
-            target_identifier = getEntry(identifier, entry_type, &sym_table->scopes[index]);
-            if (target_identifier != NULL)
-                return target_identifier;
-        }
-    }
-
-    return NULL;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/*
- * Inserts specified entry into specified table (~ scope)
+ * Inserts entry into table (~ scope)
  * Uses double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1) (scope->capacity == MAX+1)
  *
- * Assumes no function/variable re-definition in current scope
- * -> CALL ONLY if isEntry(entry->identifier, entry->entry_type, table) == FALSE
- * Mainly a helper function for insertIdentifier() -> to push identifiers into symTable, use insertIdentifier()
+ * Check for possible variable/function re-definition with isEntry() before use
+ * Mainly a helper function for createIdentifier()
+ * To push identifiers into symTable, use createIdentifier()
  */
 static void insertEntry(HTEntry *entry, HTable *table)
 {
@@ -470,29 +356,97 @@ static void insertEntry(HTEntry *entry, HTable *table)
     }
 
     // Insert specified entry into correct HTable index
-    // Avoids shallow copy - non-pointer struct fields passed by value, pointer struct fields handled separately
+    // Avoids shallow copy -- non-pointer struct fields passed by value, pointer struct fields handled separately
     strncpy(target_entry->identifier, entry->identifier, str_len); // Rest of target_entry->identifier filled with '\0'
     target_entry->entry_type = entry->entry_type;
     target_entry->entry_data = entry->entry_data;
     target_entry->state = BUSY;
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 /*
- * Deletes entry from specified HTable (scope)
- *
- * Should only be called when deleting the whole SymTable (normal SymTable use-case does not require deleting entries)
- * Returns TRUE if successful, FALSE otherwis
+ * Creates identifier entry in SymTable's current scope
+ * Check for possible variable/function re-definition with isEntry() before use
  */
-bool deleteEntry(HTEntry *entry, HTable *table)
+void createIdentifier(HTEntry *entry, SymTable *sym_table)
 {
-    HTEntry *target_entry = getEntry(entry->identifier, entry->entry_type, table);
+    insertEntry(entry, &sym_table->scopes[sym_table->current]);
+}
+/*
+ * Finds specified local immutable variable (in current scope) and updates its data type
+ *
+ * Should be called when assigning value to a mutable variable that previously held value of different data type
+ * Function assumes existence of specified variable identifier in current scope and that it is mutable
+ *
+ * Returns TRUE if found such a variable and changed data type, otherwise FALSE
+ */
+bool changeVarType(const char *identifier, DataType target_type, SymTable *sym_table)
+{
+    HTEntry *target_entry = getEntry(identifier, VAR, &sym_table->scopes[sym_table->current]);
 
     if (target_entry != NULL)
     {
-        target_entry->state = DELETED;
+        target_entry->entry_data.variable_data_type = target_type;
         return true;
     }
 
     return false;
+}
+
+/*
+ * Resolves identifier based on lexical scope rules of IFJ26
+ * Identifiers are valid from place of definition until end of block (current scope) including its subblocks
+ * -> Searches for identifier starting with current local scope towards global scope
+ *
+ * Function assumes correctly initialized sym_table (at least has global scope)
+ * Returns TRUE if found, FALSE otherwise
+ */
+bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
+{
+    if (entry_type == FUNCTION)
+        return isEntry(identifier, entry_type, &sym_table->scopes[GLOBAL_SCOPE_INDEX]);
+
+    if (entry_type != NONE) // entry_type == VAR||VAL
+    {
+        // Check every scope except global scope (which should contain only function names)
+        // IFJ26 doesn't support global variables
+        for (size_t index = sym_table->current; index > 0; --index)
+        {
+            if (isEntry(identifier, entry_type, &sym_table->scopes[index]))
+                return true;
+        }
+    }
+
+    return false;
+}
+/*
+ * Resolves identifier based on lexical scope rules of IFJ26
+ * Identifiers are valid from place of definition until end of block (current scope) including its subblocks
+ * -> Searches for identifier starting with current local scope towards global scope
+ *
+ * Function assumes correctly initialized sym_table (at least has global scope)
+ * Returns pointer to the identifier entry in symTable if found, NULL otherwise
+ */
+HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
+{
+    if (entry_type == FUNCTION)
+        return getEntry(identifier, entry_type, &sym_table->scopes[GLOBAL_SCOPE_INDEX]);
+
+    if (entry_type != NONE) // entry_type == VAR||VAL
+    {
+        // Check every scope except global scope (which should contain only function names)
+        // IFJ26 doesn't support global variables
+        HTEntry *target_identifier = NULL;
+        for (size_t index = sym_table->current; index > 0; --index)
+        {
+            target_identifier = getEntry(identifier, entry_type, &sym_table->scopes[index]);
+            if (target_identifier != NULL)
+                return target_identifier;
+        }
+    }
+
+    return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
