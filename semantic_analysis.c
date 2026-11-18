@@ -244,8 +244,33 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*
+ * Central statement dispatcher -> calls appropriate function for NODE_PROGRAM's left child (its contents)
+ *
+ * This function should be used for NODE_PROGRAM inside function blocks (not in top-level scope)
+ * (Types of statements allowed for top-level NODE_PROGRAM differs from NODE_PROGRAM inside function scope)
+ */
 static void programStatement(AST_NODE *program_node)
 {
+    switch (program_node->left_ch->type)
+    {
+        default:
+            return;
+    }
+}
+/*
+ * Top-level statement dispatcher -> calls appropriate function for NODE_PROGRAM's left child (its contents)
+ *
+ * This function should be used for NODE_PROGRAM in top-level scope
+ * (Types of statements allowed for top-level NODE_PROGRAM differs from NODE_PROGRAM inside function scope)
+ */
+static void topLevelStatement(AST_NODE *program_node)
+{
+    switch (program_node->left_ch->type)
+    {
+        default:
+            return;
+    }
 }
 
 static void functionDefinition(AST_NODE *function_node, SymTable *sym_table)
