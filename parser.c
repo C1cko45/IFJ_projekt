@@ -711,6 +711,15 @@ AST_NODE* function_list(){
             ast_add_parent(root, temp, 0);
             last_program_node = temp;
         
+        }else if(current_token.type == TOKEN_TYPE_EOL){ //spotrebovanie EOL tokenu aby mohol byt na inom riadku ako def
+            current_token = next();
+            if(current_token.type == KEYWORD_DEF){
+            temp = ast_create_node_type(NODE_FUNC_DEF);
+            ast_add_parent(root, temp, 0);
+            last_program_node = temp;      
+            }else{
+                parser_error_exit(2, "Syntakticka chyba,function_list");
+            }
         }else{
             parser_error_exit(2, "Syntakticka chyba,function_list");
         }
