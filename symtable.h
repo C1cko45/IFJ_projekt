@@ -30,7 +30,8 @@ typedef enum
     LIST_STRING,
     LIST_BOOLEAN,
     LIST_UNIT,
-    LIST_ANY
+
+    LIST_ANY // Placeholder for function return type annotations; this cannot be assigned to a variable
 } DataType;
 
 // Entry Type
