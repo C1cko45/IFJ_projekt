@@ -15,8 +15,10 @@
 // Data Type
 typedef enum
 {
-    UNIT, // -> initial value, void type
-    ANY,  // placeholder type, indicates value of any type
+    NIL, // -> initial value, sym_table's arbitrary type indicating it's uninitialized
+    ANY, // Placeholder for function return type annotations; this cannot be assigned to a variable
+
+    UNIT, // Indicates lack of value
 
     // Primitive types
     INT,
@@ -30,7 +32,6 @@ typedef enum
     LIST_STRING,
     LIST_BOOLEAN,
     LIST_UNIT,
-
     LIST_ANY // Placeholder for function return type annotations; this cannot be assigned to a variable
 } DataType;
 
