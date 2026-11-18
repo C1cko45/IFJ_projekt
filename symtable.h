@@ -25,7 +25,12 @@ typedef enum
     BOOLEAN,
 
     // Composite types
-    LIST
+    LIST_INT,
+    LIST_DOUBLE,
+    LIST_STRING,
+    LIST_BOOLEAN,
+    LIST_UNIT,
+    LIST_ANY
 } DataType;
 
 // Entry Type
