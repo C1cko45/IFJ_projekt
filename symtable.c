@@ -532,7 +532,7 @@ static void insertEntry(HTEntry *entry, HTable *table)
     HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
 
     // Find EMPTY/DELETED place in HTable (HTable synonyms list)
-    for (size_t i = 1; target_entry->state == BUSY; i++)
+    for (size_t i = 1; target_entry->state == BUSY; ++i)
         target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
 
     size_t str_len = strlen(entry->identifier) + 1; // account for '\0' that strlen() doesn't count
