@@ -3,13 +3,13 @@
  * Author: Pham Vu Duy Anh, xphamv00
  */
 
+#include <stdbool.h>
 #include <stdio.h>
 
 #include "ast.h"
 #include "semantic_analysis.h"
 #include "symtable.h"
-
-#define ERROR_SYNTACTIC 2
+#include "token.h"
 
 #define ERROR_UNDEF 3     // use of undef function/var/type; missing @main-tagged function
 #define ERROR_REDEF 4     // illegal re-def function/var/type
@@ -20,14 +20,6 @@
 #define ERROR_INTERNAL 99 // internal program error; failed memory allocation, ...
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/*
- * Initialize symTable first with createSymTable();
- *
- * First traverse AST and check for @main function
- * Might as well fill the global scope in SymTable with function identifiers
- *
- */
 
 /*
  * Pushes builtin functions into SymTable's global scope
@@ -113,37 +105,212 @@ static void insertBuiltins(SymTable *sym_table)
     createIdentifier(&builtin_function, sym_table);
 }
 
+/*
+ * Returns count of function's number of parameters
+ */
+static size_t countParams(AST_NODE *param_node)
+{
+    size_t param_count = 0;
+    while (param_node != NULL)
+    {
+        ++param_count;
+        param_node = param_node->right_ch;
+    }
+
+    return param_count;
+}
+
+/*
+ * Returns function's return type
+ *
+ * If it's passed the wrong argument node, crashes the whole compilation
+ */
+static DataType functionReturnType(AST_NODE *ret_type_node)
+{
+    switch (ret_type_node->token.type)
+    {
+        case KEYWORD_STRING:
+            return STRING;
+        case KEYWORD_DOUBLE:
+            return DOUBLE;
+        case KEYWORD_INT:
+            return INT;
+        case KEYWORD_BOOLEAN:
+            return BOOLEAN;
+        case KEYWORD_LIST:
+            return LIST;
+        case KEYWORD_UNIT:
+            return UNIT;
+        default:
+            fprintf(stderr, "functionReturnType() -- called on wrong AST Node.\n");
+            // TODO: cleanup()
+            exit(ERROR_INTERNAL);
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
+ * Traverse top-level scope of AST to find @main-tagged function
+ * Also checks and guarantees top-level scope contains only function definitions
  *
+ * Crashes the compilation if at least one requirement for @main-tagged function and top-level scope is not met
  */
-void semanticAnalysis(AST_NODE *root_ast)
+static void checkMain(AST_NODE *root, SymTable *sym_table)
+{
+    bool main_found = false;
+    while (root != NULL)
+    {
+        if (root->type != NODE_PROGRAM)
+        {
+            fprintf(stderr, "checkMain() -- top-level scope contains a non-statement\n");
+            // TODO: cleanup()
+            exit(ERROR_OTHER);
+        }
+        if (root->left_ch->type != NODE_MAIN || root->left_ch->type != NODE_FUNC_DEF)
+        {
+            fprintf(stderr, "checkMain() -- top-level scope contains an unsupported statement\n");
+            // TODO: cleanup()
+            exit(ERROR_OTHER);
+        }
+
+        if (root->left_ch->type == NODE_MAIN)
+        {
+            if (main_found)
+            {
+                fprintf(stderr, "checkMain() -- Program contains more than one @main-tagged functions\n");
+                // TODO: cleanup()
+                exit(ERROR_REDEF);
+            }
+
+            main_found = true;
+
+            if (root->left_ch->left_ch->left_ch->left_ch->token.type != KEYWORD_UNIT)
+            {
+                fprintf(stderr, "checkMain() -- @main-tagged function has wrong return type\n");
+                // TODO: cleanup()
+                exit(ERROR_TYPE);
+            }
+
+            if (root->left_ch->left_ch->left_ch->right_ch != NULL)
+            {
+                fprintf(stderr, "checkMain() -- non-parametric @main-tagged function contains parameters\n");
+                // TODO: cleanup()
+                exit(ERROR_PARAM);
+            }
+        }
+
+        root = root->right_ch;
+    }
+
+    if (!main_found)
+    {
+        fprintf(stderr, "checkMain() -- no @main-tagged function in program\n");
+        // TODO: cleanup()
+        exit(ERROR_UNDEF);
+    }
+}
+/*
+ * Fill sym_table's global scope with all function names in top-level scope
+ *
+ * Should be called before semantic analysis (to support function calls before their respective definition)
+ */
+static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
+{
+    HTEntry function_entry = {0};
+    while (root != NULL)
+    {
+        if (root->left_ch->type == NODE_MAIN)
+        {
+            function_entry.identifier = root->left_ch->left_ch->left_ch->token.attr.str_val;
+            function_entry.entry_type = FUNCTION;
+            function_entry.entry_data.function.return_type = UNIT;
+            function_entry.entry_data.function.param_count = 0;
+            createIdentifier(&function_entry, sym_table);
+        }
+
+        if (root->left_ch->type == NODE_FUNC_DEF)
+        {
+            function_entry.identifier = root->left_ch->left_ch->token.attr.str_val;
+            function_entry.entry_type = FUNCTION;
+            function_entry.entry_data.function.return_type = functionReturnType(root->left_ch->left_ch->left_ch);
+            function_entry.entry_data.function.param_count = countParams(root->left_ch->left_ch->right_ch);
+            createIdentifier(&function_entry, sym_table);
+        }
+
+        root = root->right_ch;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static void programStatement(AST_NODE *program_node)
+{
+}
+
+static void functionDefinition(AST_NODE *function_node, SymTable *sym_table)
+{
+    pushScope(sym_table);
+    // TODO: Just need to find identifier in symTable and that's it...
+    // Also need to push params as immutable variables into function scope
+    popScope(sym_table);
+}
+
+static void ifStatement(AST_NODE *if_node, SymTable *sym_table)
+{
+    // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
+    pushScope(sym_table);
+    popScope(sym_table);
+}
+static void elseifStatement(AST_NODE *elseif_node, SymTable *sym_table)
+{
+    // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
+    pushScope(sym_table);
+    popScope(sym_table);
+}
+static void elseStatement(AST_NODE *else_node, SymTable *sym_table)
+{
+    // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
+    pushScope(sym_table);
+    popScope(sym_table);
+}
+
+static void whileStatement(AST_NODE *while_node, SymTable *sym_table)
+{
+    // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
+    pushScope(sym_table);
+    popScope(sym_table);
+}
+
+static void forStatement(AST_NODE *for_node, SymTable *sym_table)
+{
+    // TODO: Must evaluate the condition, among other things in this complicated mess of a construct (LMAO)
+    pushScope(sym_table);
+    popScope(sym_table);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * Entry point of semantic analysis
+ */
+void semanticAnalysis(AST_NODE *root)
 {
     // Create and initialize sym_table with global scope
     SymTable *sym_table = createSymTable();
     insertBuiltins(sym_table);
 
+    checkMain(root, sym_table);
+    insertAllFunctions(root, sym_table);
+
     // Semantic analysis
-    AST_NODE *parent_node = root_ast;
     // Traverse AST PreOrder
-    while (parent_node != NULL)
+    while (root != NULL)
     {
-        // Process parent_node ~ Check correct AST_NODE_TYPE
-        // Should never happen, correct AST structure of top-level guaranteed by syntactic analysis
-        if (parent_node != NODE_PROGRAM && parent_node->left_ch->type != NODE_FUNC_DEF)
-        {
-            fprintf(stderr, "ERROR_SYNTACTIC\n");
-            // cleanup();
-            exit(ERROR_SYNTACTIC);
-        }
-
         // Process parent_node->left_child
-        // Should always be function definition statement
-        // nodeDispatcher(parent_node->left_ch);
+        programStatement(root->left_ch);
 
-        // Process parent_node->right_child
-        parent_node = parent_node->right_ch;
+        root = root->right_ch;
     }
 
     // Free any allocated memory in sym_table
