@@ -83,6 +83,13 @@ SymTable *createSymTable()
  */
 void destroySymTable(SymTable *sym_table)
 {
+    if (sym_table == NULL)
+    {
+        fprintf(stderr, "destroySymTable() -- passed argument sym_table is NULL.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
     // Destroy all existing scopes
     // This particular way avoids size_t underflow, that would cause infinite loop otherwise
     sym_table->capacity = sym_table->current + 1;
@@ -103,6 +110,13 @@ void destroySymTable(SymTable *sym_table)
  */
 void pushScope(SymTable *sym_table)
 {
+    if (sym_table == NULL)
+    {
+        fprintf(stderr, "pushScope() -- passed argument sym_table is NULL.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
     // scopes_count + 1 > scopes_capacity -> grow SymTable
     if ((sym_table->current + 1) + 1 > sym_table->capacity)
         resizeSymTable(sym_table);
@@ -126,6 +140,13 @@ void pushScope(SymTable *sym_table)
  */
 void popScope(SymTable *sym_table)
 {
+    if (sym_table == NULL)
+    {
+        fprintf(stderr, "popScope() -- passed argument sym_table is NULL.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
     HTable *scope = &sym_table->scopes[sym_table->current];
     // free memory of all non-empty entries in scope (HTable)
     // This particular way avoids size_t underflow, that would cause infinite loop otherwise
@@ -153,6 +174,13 @@ void popScope(SymTable *sym_table)
  */
 bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
 {
+    if (key == NULL || table == NULL || entry_type == NONE)
+    {
+        fprintf(stderr, "isEntry() -- at least one argument is invalid.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
     size_t index_hash = DJBHash(key);
     size_t probe_step_hash = BKDRHash(key);
     HTEntry *target_entry = &table->entries[index_hash % table->capacity];
@@ -181,6 +209,13 @@ bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
  */
 HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
 {
+    if (key == NULL || table == NULL || entry_type == NONE)
+    {
+        fprintf(stderr, "getEntry() -- at least one argument is invalid.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
     size_t index_hash = DJBHash(key);
     size_t probe_step_hash = BKDRHash(key);
     HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
@@ -209,6 +244,13 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
  */
 void createIdentifier(HTEntry *entry, SymTable *sym_table)
 {
+    if (entry == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "createIdentifier() -- at least one argument is invalid.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
     insertEntry(entry, &sym_table->scopes[sym_table->current]);
 }
 /*
@@ -221,6 +263,13 @@ void createIdentifier(HTEntry *entry, SymTable *sym_table)
  */
 bool changeVarType(const char *identifier, DataType target_type, SymTable *sym_table)
 {
+    if (identifier == NULL || sym_table == NULL || target_type == ANY)
+    {
+        fprintf(stderr, "changeVarType() -- at least one argument is invalid.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
     HTEntry *target_entry = getIdentifier(identifier, VAR, sym_table);
 
     if (target_entry != NULL)
@@ -242,6 +291,13 @@ bool changeVarType(const char *identifier, DataType target_type, SymTable *sym_t
  */
 bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
 {
+    if (identifier == NULL || sym_table == NULL || entry_type == NONE)
+    {
+        fprintf(stderr, "isIdentifier() -- at least one argument is invalid.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
     if (entry_type == FUNCTION)
         return isEntry(identifier, entry_type, &sym_table->scopes[GLOBAL_SCOPE_INDEX]);
 
@@ -268,6 +324,13 @@ bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_
  */
 HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table)
 {
+    if (identifier == NULL || sym_table == NULL || entry_type == NONE)
+    {
+        fprintf(stderr, "isIdentifier() -- at least one argument is invalid.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
     if (entry_type == FUNCTION)
         return getEntry(identifier, entry_type, &sym_table->scopes[GLOBAL_SCOPE_INDEX]);
 
@@ -293,6 +356,13 @@ HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable 
 /* DJB2 Hash */
 static uint32_t DJBHash(const char *key)
 {
+    if (key == NULL)
+    {
+        fprintf(stderr, "DJBHash() -- Passed argument is NULL.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
     uint32_t hash = 5381;
 
     int c;
@@ -304,6 +374,13 @@ static uint32_t DJBHash(const char *key)
 /* BKDR Hash */
 static uint32_t BKDRHash(const char *key)
 {
+    if (key == NULL)
+    {
+        fprintf(stderr, "DJBHash() -- Passed argument is NULL.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
     uint32_t hash = 0;
 
     while (*key)
@@ -315,7 +392,7 @@ static uint32_t BKDRHash(const char *key)
 /*
  * nextPrime() helper function
  * Returns boolean indicating if number is a prime
- * Works on trial-division principle
+ * Implements trial-division principle
  */
 static bool isPrime(size_t number)
 {
@@ -367,6 +444,13 @@ static size_t nextPrime(size_t number)
  */
 static void resizeSymTable(SymTable *sym_table)
 {
+    if (sym_table == NULL)
+    {
+        fprintf(stderr, "resizeSymTable() -- argument sym_table is NULL.\n");
+        // TODO: cleanup();
+        exit(ERROR_INTERNAL);
+    }
+
     // Assigning to tmp variable -> if realloc() failed, we would lose access to original unfreed memory
     HTable *new_scopes = realloc(sym_table->scopes, sizeof(HTable) * sym_table->capacity * 2);
     if (new_scopes == NULL)
@@ -389,6 +473,13 @@ static void resizeSymTable(SymTable *sym_table)
  */
 static void resizeScope(HTable *scope)
 {
+    if (scope == NULL)
+    {
+        fprintf(stderr, "resizeScope() -- passed argument scope is NULL.\n");
+        // TODO: cleanup();
+        exit(ERROR_INTERNAL);
+    }
+
     size_t old_capacity = scope->capacity;
     HTEntry *old_entries = scope->entries;
     size_t new_capacity = nextPrime(scope->capacity * 2);
@@ -423,6 +514,13 @@ static void resizeScope(HTable *scope)
  */
 static void insertEntry(HTEntry *entry, HTable *table)
 {
+    if (entry == NULL || table == NULL)
+    {
+        fprintf(stderr, "insertEntry() -- at least one argument is invalid.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
     // If inserting exceeds load_factor (0.7) -> grow HTable, rehash
     // COUNT+1 > MAX_COUNT
     // MAX_COUNT = (CAPACITY * 0.7) * 10 -- To avoid floating-points
