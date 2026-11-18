@@ -29,6 +29,12 @@
  */
 static void insertBuiltins(SymTable *sym_table)
 {
+    if (sym_table == NULL)
+    {
+        fprintf(stderr, "insertBuiltins() -- passed sym_table argument is NULL.\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
     HTEntry builtin_function = {.state = BUSY,
                                 .identifier = "print",
                                 .entry_type = FUNCTION,
@@ -107,6 +113,8 @@ static void insertBuiltins(SymTable *sym_table)
 
 /*
  * Returns count of function's number of parameters
+ *
+ * Function assumes correct argument passing (NULL means function has 0 parameters)
  */
 static size_t countParams(AST_NODE *param_node)
 {
@@ -127,6 +135,12 @@ static size_t countParams(AST_NODE *param_node)
  */
 static DataType functionReturnType(AST_NODE *ret_type_node)
 {
+    if (ret_type_node == NULL)
+    {
+        fprintf(stderr, "functionReturnType() -- passed AST node argument is NULL.\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
     switch (ret_type_node->token.type)
     {
         case KEYWORD_STRING:
@@ -155,9 +169,16 @@ static DataType functionReturnType(AST_NODE *ret_type_node)
  * Also checks and guarantees top-level scope contains only function definitions
  *
  * Crashes the compilation if at least one requirement for @main-tagged function and top-level scope is not met
+ * Function assumes correct argument passing (if root == NULL -> end of IFJ26 program)
  */
 static void checkMain(AST_NODE *root, SymTable *sym_table)
 {
+    if (sym_table == NULL)
+    {
+        fprintf(stderr, "checkMain() -- passed sym_table argument is NULL\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
     bool main_found = false;
     while (root != NULL)
     {
@@ -217,7 +238,14 @@ static void checkMain(AST_NODE *root, SymTable *sym_table)
  */
 static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
 {
-    HTEntry function_entry = {0};
+    if (root == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "insertAllFunctions() -- at least one passed argument is NULL\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    HTEntry function_entry = {0}; // Initialize HTEntry
     while (root != NULL)
     {
         if (root->left_ch->type == NODE_MAIN)
@@ -243,35 +271,6 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/*
- * Central statement dispatcher -> calls appropriate function for NODE_PROGRAM's left child (its contents)
- *
- * This function should be used for NODE_PROGRAM inside function blocks (not in top-level scope)
- * (Types of statements allowed for top-level NODE_PROGRAM differs from NODE_PROGRAM inside function scope)
- */
-static void programStatement(AST_NODE *program_node)
-{
-    switch (program_node->left_ch->type)
-    {
-        default:
-            return;
-    }
-}
-/*
- * Top-level statement dispatcher -> calls appropriate function for NODE_PROGRAM's left child (its contents)
- *
- * This function should be used for NODE_PROGRAM in top-level scope
- * (Types of statements allowed for top-level NODE_PROGRAM differs from NODE_PROGRAM inside function scope)
- */
-static void topLevelStatement(AST_NODE *program_node)
-{
-    switch (program_node->left_ch->type)
-    {
-        default:
-            return;
-    }
-}
 
 static void functionDefinition(AST_NODE *function_node, SymTable *sym_table)
 {
@@ -317,6 +316,60 @@ static void forStatement(AST_NODE *for_node, SymTable *sym_table)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
+ * Central statement dispatcher -> calls appropriate function for NODE_PROGRAM's left child (its contents)
+ *
+ * This function should be used for NODE_PROGRAM inside function blocks (not in top-level scope)
+ * (Types of statements allowed for top-level NODE_PROGRAM differs from NODE_PROGRAM inside function scope)
+ * Function assumes correct argument passing (if program_node == NULL -> end of IFJ26 program)
+ */
+static void programStatement(AST_NODE *program_node)
+{
+    if (program_node != NULL)
+    {
+        if (program_node->type != NODE_PROGRAM)
+        {
+            fprintf(stderr, "programStatement() -- passed program_node is not a statement\n");
+            // TODO: cleanup()
+            exit(ERROR_OTHER);
+        }
+
+        switch (program_node->left_ch->type)
+        {
+            default:
+                return;
+        }
+    }
+}
+/*
+ * Top-level statement dispatcher -> calls appropriate function for NODE_PROGRAM's left child (its contents)
+ *
+ * This function should be used for NODE_PROGRAM in top-level scope
+ * (Types of statements allowed for top-level NODE_PROGRAM differs from NODE_PROGRAM inside function scope)
+ * Function assumes correct argument passing (if program_node == NULL -> end of IFJ26 program)
+ */
+static void topLevelStatement(AST_NODE *program_node)
+{
+    if (program_node != NULL)
+    {
+        if (program_node->type != NODE_PROGRAM)
+        {
+            fprintf(stderr, "topLevelStatement() -- passed program_node is not a statement\n");
+            // TODO: cleanup()
+            exit(ERROR_OTHER);
+        }
+
+        switch (program_node->left_ch->type)
+        {
+
+            default:
+                return;
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
  * Entry point of semantic analysis
  */
 void semanticAnalysis(AST_NODE *root)
@@ -333,7 +386,7 @@ void semanticAnalysis(AST_NODE *root)
     while (root != NULL)
     {
         // Process parent_node->left_child
-        programStatement(root->left_ch);
+        topLevelStatement(root);
 
         root = root->right_ch;
     }
