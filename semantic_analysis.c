@@ -20,6 +20,29 @@
 #define ERROR_INTERNAL 99 // internal program error; failed memory allocation, ...
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static void insertBuiltins(SymTable *sym_table);
+
+static void checkMain(AST_NODE *root, SymTable *sym_table);
+static void insertAllFunctions(AST_NODE *root, SymTable *sym_table);
+
+static size_t countParams(AST_NODE *param_node);
+static DataType functionReturnType(AST_NODE *ret_type_node);
+static void functionDefinition(AST_NODE *function_node, SymTable *sym_table);
+static void functionCall(AST_NODE *call_node, SymTable *sym_table);
+
+static void ifStatement(AST_NODE *if_node, SymTable *sym_table);
+static void elseifStatement(AST_NODE *elseif_node, SymTable *sym_table);
+static void elseStatement(AST_NODE *else_node, SymTable *sym_table);
+static void whileStatement(AST_NODE *while_node, SymTable *sym_table);
+static void forStatement(AST_NODE *for_node, SymTable *sym_table);
+
+static void programStatement(AST_NODE *program_node);
+static void topLevelStatement(AST_NODE *program_node);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
  * Pushes builtin functions into SymTable's global scope
@@ -109,57 +132,6 @@ static void insertBuiltins(SymTable *sym_table)
     builtin_function.identifier = "range";
     builtin_function.entry_data.function.return_type = LIST;
     createIdentifier(&builtin_function, sym_table);
-}
-
-/*
- * Returns count of function's number of parameters
- *
- * Function assumes correct argument passing (NULL means function has 0 parameters)
- */
-static size_t countParams(AST_NODE *param_node)
-{
-    size_t param_count = 0;
-    while (param_node != NULL)
-    {
-        ++param_count;
-        param_node = param_node->right_ch;
-    }
-
-    return param_count;
-}
-
-/*
- * Returns function's return type
- *
- * If it's passed the wrong argument node, crashes the whole compilation
- */
-static DataType functionReturnType(AST_NODE *ret_type_node)
-{
-    if (ret_type_node == NULL)
-    {
-        fprintf(stderr, "functionReturnType() -- passed AST node argument is NULL.\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
-    }
-    switch (ret_type_node->token.type)
-    {
-        case KEYWORD_STRING:
-            return STRING;
-        case KEYWORD_DOUBLE:
-            return DOUBLE;
-        case KEYWORD_INT:
-            return INT;
-        case KEYWORD_BOOLEAN:
-            return BOOLEAN;
-        case KEYWORD_LIST:
-            return LIST;
-        case KEYWORD_UNIT:
-            return UNIT;
-        default:
-            fprintf(stderr, "functionReturnType() -- called on wrong AST Node.\n");
-            // TODO: cleanup()
-            exit(ERROR_INTERNAL);
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -270,15 +242,74 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/*
+ * Returns count of function's number of parameters
+ *
+ * Function assumes correct argument passing (NULL means function has 0 parameters)
+ */
+static size_t countParams(AST_NODE *param_node)
+{
+    size_t param_count = 0;
+    while (param_node != NULL)
+    {
+        ++param_count;
+        param_node = param_node->right_ch;
+    }
 
+    return param_count;
+}
+/*
+ * Returns function's return type
+ *
+ * If it's passed the wrong argument node, crashes the whole compilation
+ */
+static DataType functionReturnType(AST_NODE *ret_type_node)
+{
+    if (ret_type_node == NULL)
+    {
+        fprintf(stderr, "functionReturnType() -- passed AST node argument is NULL.\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+    switch (ret_type_node->token.type)
+    {
+        case KEYWORD_STRING:
+            return STRING;
+        case KEYWORD_DOUBLE:
+            return DOUBLE;
+        case KEYWORD_INT:
+            return INT;
+        case KEYWORD_BOOLEAN:
+            return BOOLEAN;
+        case KEYWORD_LIST:
+            return LIST;
+        case KEYWORD_UNIT:
+            return UNIT;
+        default:
+            fprintf(stderr, "functionReturnType() -- called on wrong AST Node.\n");
+            // TODO: cleanup()
+            exit(ERROR_INTERNAL);
+    }
+}
 static void functionDefinition(AST_NODE *function_node, SymTable *sym_table)
 {
+    if (function_node == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "functionDefinition() -- at least one argument is invalid.\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
     pushScope(sym_table);
     // TODO: Just need to find identifier in symTable and that's it...
     // Also need to push params as immutable variables into function scope
     popScope(sym_table);
 }
+
+static void functionCall(AST_NODE *call_node, SymTable *sym_table)
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static void ifStatement(AST_NODE *if_node, SymTable *sym_table)
 {
