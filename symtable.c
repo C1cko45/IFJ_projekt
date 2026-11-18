@@ -22,6 +22,7 @@
 #define GLOBAL_SCOPE_INDEX 0
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static uint32_t DJBHash(const char *key);
 static uint32_t BKDRHash(const char *key);
@@ -35,76 +36,6 @@ static void resizeScope(HTable *scope);
 static void insertEntry(HTEntry *entry, HTable *table);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/* DJB2 Hash */
-static uint32_t DJBHash(const char *key)
-{
-    uint32_t hash = 5381;
-
-    int c;
-    while ((c = (*key++)))
-        hash = hash * 33 + c;
-
-    return hash;
-}
-/* BKDR Hash */
-static uint32_t BKDRHash(const char *key)
-{
-    uint32_t hash = 0;
-
-    while (*key)
-        hash = hash * 131 + (*key++);
-
-    return hash;
-}
-
-/*
- * nextPrime() helper function
- * Returns boolean indicating if number is a prime
- * Works on trial-division principle
- */
-static bool isPrime(size_t number)
-{
-    if (number < 2)
-        return false;
-    if (number == 2)
-        return true;
-    if (number % 2 == 0)
-        return false;
-
-    for (size_t i = 3; i * i <= number; i += 2)
-    {
-        if (number % i == 0)
-            return false;
-    }
-    return true;
-}
-/*
- * resizeScope() helper function
- * Returns smallest prime greater than number
- * In context of resizeScope, parameter number is always a multiple of 2 and therefore not a prime
- * We leverage this info about number -> number+1 is odd, and we skip checking multiples of 2
- */
-static size_t nextPrime(size_t number)
-{
-    if (number <= 1)
-        return 2;
-
-    while (!isPrime(++number))
-    {
-        // Exhausted every possible value in range of size_t
-        if (number > SIZE_MAX - 2)
-        {
-            fprintf(stderr, "nextPrime() -- searching for next prime failed, exhausted size_t value range.\n");
-            // TODO: cleanup();
-            exit(ERROR_INTERNAL);
-        }
-        number += 2;
-    }
-
-    return number;
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
@@ -163,26 +94,6 @@ void destroySymTable(SymTable *sym_table)
     sym_table->capacity = 0;
     sym_table->current = 0;
 }
-/*
- * Grows symTable, should be called only when symTable becomes full
- * Dynamic array semantics -> double the capacity
- *
- * Mainly helper function for pushScope()
- */
-static void resizeSymTable(SymTable *sym_table)
-{
-    // Assigning to tmp variable -> if realloc() failed, we would lose access to original unfreed memory
-    HTable *new_scopes = realloc(sym_table->scopes, sizeof(HTable) * sym_table->capacity * 2);
-    if (new_scopes == NULL)
-    {
-        fprintf(stderr, "resizeSymTable() -- realloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
-    }
-
-    sym_table->scopes = new_scopes;
-    sym_table->capacity *= 2;
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -229,38 +140,6 @@ void popScope(SymTable *sym_table)
 
     // Update sym_table's stack pointer
     sym_table->current--;
-}
-/*
- * Grow hash table -> double the capacity, find the closest greater prime number (to guarantee full probe coverage)
- * Rehash existing entries into the new HTable (new capacity changes order of existing entries)
- *
- * Should only be called when count exceeds HTABLE_MAX_LOAD_FACTOR
- * Helper function for insertEntry() - it's only use case
- */
-static void resizeScope(HTable *scope)
-{
-    size_t old_capacity = scope->capacity;
-    HTEntry *old_entries = scope->entries;
-    size_t new_capacity = nextPrime(scope->capacity * 2);
-
-    scope->entries = calloc(new_capacity, sizeof(HTEntry));
-    if (scope->entries == NULL)
-    {
-        fprintf(stderr, "resizeScope() -- calloc() failed.\n");
-        // TODO: cleanup();
-        exit(ERROR_INTERNAL);
-    }
-    scope->capacity = new_capacity;
-    for (size_t index = 0; index < scope->count; ++index)
-        insertEntry(&old_entries[index], scope); // rehash
-
-    // Memory cleanup of old HTable
-    // This particular way avoids size_t underflow, that would cause infinite loop otherwise
-    while (old_capacity > 0)
-        if (old_entries[old_capacity - 1].state != EMPTY)
-            free(old_entries[--old_capacity].identifier);
-
-    free(old_entries);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -320,47 +199,6 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
     }
 
     return NULL;
-}
-
-/*
- * Inserts entry into table (~ scope)
- * Uses double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1) (scope->capacity == MAX+1)
- *
- * Check for possible variable/function re-definition with isEntry() before use
- * Mainly a helper function for createIdentifier()
- * To push identifiers into symTable, use createIdentifier()
- */
-static void insertEntry(HTEntry *entry, HTable *table)
-{
-    // If inserting exceeds load_factor (0.7) -> grow HTable, rehash
-    // COUNT+1 > MAX_COUNT
-    // MAX_COUNT = (CAPACITY * 0.7) * 10 -- To avoid floating-points
-    if ((table->count + 1) * 10 > (table->capacity * HTABLE_MAX_LOAD_FACTOR))
-        resizeScope(table);
-
-    size_t index_hash = DJBHash(entry->identifier);
-    size_t probe_step_hash = BKDRHash(entry->identifier);
-    HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
-
-    // Find EMPTY/DELETED place in HTable (HTable synonyms list)
-    for (size_t i = 1; target_entry->state == BUSY; i++)
-        target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
-
-    size_t str_len = strlen(entry->identifier) + 1; // account for '\0' that strlen() doesn't count
-    target_entry->identifier = calloc(str_len, sizeof(char *));
-    if (target_entry->identifier == NULL)
-    {
-        fprintf(stderr, "insertEntry() -- calloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
-    }
-
-    // Insert specified entry into correct HTable index
-    // Avoids shallow copy -- non-pointer struct fields passed by value, pointer struct fields handled separately
-    strncpy(target_entry->identifier, entry->identifier, str_len); // Rest of target_entry->identifier filled with '\0'
-    target_entry->entry_type = entry->entry_type;
-    target_entry->entry_data = entry->entry_data;
-    target_entry->state = BUSY;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -450,3 +288,168 @@ HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable 
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/* DJB2 Hash */
+static uint32_t DJBHash(const char *key)
+{
+    uint32_t hash = 5381;
+
+    int c;
+    while ((c = (*key++)))
+        hash = hash * 33 + c;
+
+    return hash;
+}
+/* BKDR Hash */
+static uint32_t BKDRHash(const char *key)
+{
+    uint32_t hash = 0;
+
+    while (*key)
+        hash = hash * 131 + (*key++);
+
+    return hash;
+}
+
+/*
+ * nextPrime() helper function
+ * Returns boolean indicating if number is a prime
+ * Works on trial-division principle
+ */
+static bool isPrime(size_t number)
+{
+    if (number < 2)
+        return false;
+    if (number == 2)
+        return true;
+    if (number % 2 == 0)
+        return false;
+
+    for (size_t i = 3; i * i <= number; i += 2)
+    {
+        if (number % i == 0)
+            return false;
+    }
+    return true;
+}
+/*
+ * resizeScope() helper function
+ * Returns smallest prime greater than number
+ * In context of resizeScope, parameter number is always a multiple of 2 and therefore not a prime
+ * We leverage this info about number -> number+1 is odd, and we skip checking multiples of 2
+ */
+static size_t nextPrime(size_t number)
+{
+    if (number <= 1)
+        return 2;
+
+    while (!isPrime(++number))
+    {
+        // Exhausted every possible value in range of size_t
+        if (number > SIZE_MAX - 2)
+        {
+            fprintf(stderr, "nextPrime() -- searching for next prime failed, exhausted size_t value range.\n");
+            // TODO: cleanup();
+            exit(ERROR_INTERNAL);
+        }
+        number += 2;
+    }
+
+    return number;
+}
+
+/*
+ * Grows symTable, should be called only when symTable becomes full
+ * Dynamic array semantics -> double the capacity
+ *
+ * Mainly helper function for pushScope()
+ */
+static void resizeSymTable(SymTable *sym_table)
+{
+    // Assigning to tmp variable -> if realloc() failed, we would lose access to original unfreed memory
+    HTable *new_scopes = realloc(sym_table->scopes, sizeof(HTable) * sym_table->capacity * 2);
+    if (new_scopes == NULL)
+    {
+        fprintf(stderr, "resizeSymTable() -- realloc() failed.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
+    sym_table->scopes = new_scopes;
+    sym_table->capacity *= 2;
+}
+
+/*
+ * Grow hash table -> double the capacity, find the closest greater prime number (to guarantee full probe coverage)
+ * Rehash existing entries into the new HTable (new capacity changes order of existing entries)
+ *
+ * Should only be called when count exceeds HTABLE_MAX_LOAD_FACTOR
+ * Helper function for insertEntry() - it's only use case
+ */
+static void resizeScope(HTable *scope)
+{
+    size_t old_capacity = scope->capacity;
+    HTEntry *old_entries = scope->entries;
+    size_t new_capacity = nextPrime(scope->capacity * 2);
+
+    scope->entries = calloc(new_capacity, sizeof(HTEntry));
+    if (scope->entries == NULL)
+    {
+        fprintf(stderr, "resizeScope() -- calloc() failed.\n");
+        // TODO: cleanup();
+        exit(ERROR_INTERNAL);
+    }
+    scope->capacity = new_capacity;
+    for (size_t index = 0; index < scope->count; ++index)
+        insertEntry(&old_entries[index], scope); // rehash
+
+    // Memory cleanup of old HTable
+    // This particular way avoids size_t underflow, that would cause infinite loop otherwise
+    while (old_capacity > 0)
+        if (old_entries[old_capacity - 1].state != EMPTY)
+            free(old_entries[--old_capacity].identifier);
+
+    free(old_entries);
+}
+
+/*
+ * Inserts entry into table (~ scope)
+ * Uses double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1) (scope->capacity == MAX+1)
+ *
+ * Check for possible variable/function re-definition with isEntry() before use
+ * Mainly a helper function for createIdentifier()
+ * To push identifiers into symTable, use createIdentifier()
+ */
+static void insertEntry(HTEntry *entry, HTable *table)
+{
+    // If inserting exceeds load_factor (0.7) -> grow HTable, rehash
+    // COUNT+1 > MAX_COUNT
+    // MAX_COUNT = (CAPACITY * 0.7) * 10 -- To avoid floating-points
+    if ((table->count + 1) * 10 > (table->capacity * HTABLE_MAX_LOAD_FACTOR))
+        resizeScope(table);
+
+    size_t index_hash = DJBHash(entry->identifier);
+    size_t probe_step_hash = BKDRHash(entry->identifier);
+    HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
+
+    // Find EMPTY/DELETED place in HTable (HTable synonyms list)
+    for (size_t i = 1; target_entry->state == BUSY; i++)
+        target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+
+    size_t str_len = strlen(entry->identifier) + 1; // account for '\0' that strlen() doesn't count
+    target_entry->identifier = calloc(str_len, sizeof(char *));
+    if (target_entry->identifier == NULL)
+    {
+        fprintf(stderr, "insertEntry() -- calloc() failed.\n");
+        // TODO: cleanup(); -- must free AST memory
+        exit(ERROR_INTERNAL);
+    }
+
+    // Insert specified entry into correct HTable index
+    // Avoids shallow copy -- non-pointer struct fields passed by value, pointer struct fields handled separately
+    strncpy(target_entry->identifier, entry->identifier, str_len); // Rest of target_entry->identifier filled with '\0'
+    target_entry->entry_type = entry->entry_type;
+    target_entry->entry_data = entry->entry_data;
+    target_entry->state = BUSY;
+}
