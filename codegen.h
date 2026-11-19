@@ -24,6 +24,9 @@ typedef struct{
 } CodegenSymbol;
 
 
+typedef struct CodegenBinding CodegenBinding;
+
+
 typedef struct{
     FILE *output;
 
@@ -39,13 +42,20 @@ typedef struct{
     int current_is_main;
     CodegenType current_return_type;
 
+    unsigned int variable_counter;
+    CodegenBinding *bindings;
+
+    int force_list_double;
+    int current_function_list_double;
+
 } CodegenContext;
 
 
 CodegenType codegen_builtin_return_type(const AST_NODE *node);
+CodegenType codegen_from_semantic_type(DataType type);
 
 void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx);
-
+void codegen_generate_call_expression(AST_NODE *node, CodegenContext *ctx);
 
 int codegen_generate(AST_NODE *root, FILE *output);
 int codegen_generate_ctx(AST_NODE *root, CodegenContext *ctx);
@@ -57,6 +67,12 @@ void codegen_emit_label(CodegenContext *ctx, const char *label);
 void codegen_emit_jump(CodegenContext *ctx, const char *label);
 
 void generate_return(AST_NODE *node, CodegenContext *ctx);
+
+const char *codegen_variable_name(const AST_NODE *identifier, CodegenContext *ctx);
+
+CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenContext *ctx);
+
+void codegen_set_list_item_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type);
 
 
 

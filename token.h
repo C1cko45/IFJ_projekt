@@ -84,7 +84,8 @@ typedef enum
     //rozsirenie CONTROL:
     KEYWORD_FOR,
     KEYWORD_TO,
-    
+    KEYWORD_UNTIL,
+    KEYWORD_BY,
     //rozsirenie LISTS:
     KEYWORD_LIST,
 } TokenType;

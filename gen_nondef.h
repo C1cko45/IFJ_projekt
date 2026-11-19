@@ -9,6 +9,10 @@ void generate_assignment(AST_NODE *identifier, AST_NODE *expression, CodegenCont
 
 CodegenType codegen_expression_type(const AST_NODE *node, const CodegenContext *ctx);
 
+void codegen_list_range_from_stack(CodegenContext *ctx, int inclusive);
+
+void codegen_generate_list_method_expression(AST_NODE *node, CodegenContext *ctx);
+
 
 #endif
 
