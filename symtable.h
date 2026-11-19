@@ -112,7 +112,7 @@ typedef struct SymTable
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-SymTable *createSymTable();
+SymTable *createSymTable(void);
 void destroySymTable(SymTable *sym_table);
 
 void pushScope(SymTable *sym_table);

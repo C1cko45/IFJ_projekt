@@ -61,6 +61,7 @@ static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table);
 static void insertBuiltins(SymTable *sym_table)
 {
     // TODO: MUST FIX parameters[] in every builtin (right now List builtins fail in parser anyway...)
+    // Because right now builtin functions have undefined parameters
     if (sym_table == NULL)
     {
         fprintf(stderr, "insertBuiltins() -- passed sym_table argument is NULL\n");
@@ -73,16 +74,6 @@ static void insertBuiltins(SymTable *sym_table)
                                 .entry_data.function.param_count = 0,
                                 .entry_data.function.return_type = UNIT};
     createIdentifier(&builtin_function, sym_table);
-    HTEntry *function_entry = getIdentifier("print", FUNCTION, sym_table);
-    DataType **parameters_ptr = &function_entry->entry_data.function.parameters;
-    function_entry->entry_data.function.parameters = calloc(1, sizeof(DataType));
-    if (*parameters_ptr == NULL)
-    {
-        fprintf(stderr, "insertBuiltins() -- calloc() failed\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
-    }
-    *parameters_ptr[0] = ANY;
 
     builtin_function.identifier = "head";
     builtin_function.entry_data.function.return_type = ANY;
@@ -760,6 +751,10 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
 
 static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
 {
+    // Check variable doesn't already exist
+    // check variable has type annotation
+    //
+    //
     // HTEntry var_entry = {.state = BUSY, .entry_type = VAR, .entry_data.variable_data_type = VAR};
     // createIdentifier(&var_entry, sym_table);
 
