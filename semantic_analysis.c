@@ -331,6 +331,9 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
      *          or all branches end with return -> return '()'
      *          or function return type not specified and all branches return '()' -> return '()'
      * Other return statements elsewhere in function body evaluated as they are processed during AST traversal
+     *
+     * If function body contains return statement, function signature must have return type -> otherwise ERROR 6
+     * Else return type annotation not necessary, inferred from last statement/expression in function body
      */
     AST_NODE *program_node = function_node->right_ch;
     while (program_node != NULL)
@@ -339,7 +342,14 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
         {
             // Evaluate return value and compare its type with function return type
             DataType retval_type = programStatement(program_node, function_entry, sym_table);
-            if (retval_type != function_entry->entry_data.function.return_type)
+            DataType *func_ret_type = &function_entry->entry_data.function.return_type;
+
+            // If function signature doesn't have explicit return type (and function has no return statements)
+            // Function return type inferred from its last statement
+            if (*func_ret_type == NIL)
+                *func_ret_type = retval_type;
+
+            if (retval_type != *func_ret_type)
             {
                 fprintf(stderr, "functionDef() -- return value type doesn't match function signature.\n");
                 // TODO: cleanup()
@@ -363,6 +373,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
  */
 static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
 {
+    // Argument error-handling
     if (sym_table == NULL || call_node == NULL)
     {
         fprintf(stderr, "functionCall() -- at least one argument is invalid.\n");
@@ -370,6 +381,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
         exit(ERROR_INTERNAL);
     }
 
+    // Check for call to undefined function
     HTEntry *function_entry = getIdentifier(call_node->left_ch->token.attr.str_val, FUNCTION, sym_table);
     if (function_entry == NULL)
     {
@@ -378,7 +390,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
         exit(ERROR_UNDEF);
     }
 
-    // Compare argument count with function signature
+    // Check argument count matches function def's parameter count
     size_t arg_count = countParams(call_node->right_ch);
     if (arg_count != function_entry->entry_data.function.param_count)
     {
