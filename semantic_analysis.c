@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "ast.h"
 #include "semantic_analysis.h"
@@ -22,24 +23,20 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void insertBuiltins(SymTable *sym_table);
+static size_t countParams(AST_NODE *param_node);
+static DataType resolveDataType(AST_NODE *target_node);
+static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table);
+static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node);
 
+static void insertBuiltins(SymTable *sym_table);
 static void checkMain(AST_NODE *root, SymTable *sym_table);
 static void insertAllFunctions(AST_NODE *root, SymTable *sym_table);
 
-static size_t countParams(AST_NODE *param_node);
-static DataType functionReturnType(AST_NODE *ret_type_node);
-static void functionDefinition(AST_NODE *function_node, SymTable *sym_table);
-static void functionCall(AST_NODE *call_node, SymTable *sym_table);
+static void functionDef(AST_NODE *function_node, SymTable *sym_table);
+static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
 
-static void ifStatement(AST_NODE *if_node, SymTable *sym_table);
-static void elseifStatement(AST_NODE *elseif_node, SymTable *sym_table);
-static void elseStatement(AST_NODE *else_node, SymTable *sym_table);
-static void whileStatement(AST_NODE *while_node, SymTable *sym_table);
-static void forStatement(AST_NODE *for_node, SymTable *sym_table);
-
-static void programStatement(AST_NODE *program_node);
-static void topLevelStatement(AST_NODE *program_node);
+static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry, SymTable *sym_table);
+static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -70,7 +67,7 @@ static void insertBuiltins(SymTable *sym_table)
     createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "tail";
-    builtin_function.entry_data.function.return_type = LIST;
+    builtin_function.entry_data.function.return_type = LIST_ANY;
     createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "toList";
@@ -101,11 +98,11 @@ static void insertBuiltins(SymTable *sym_table)
     createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "drop";
-    builtin_function.entry_data.function.return_type = LIST;
+    builtin_function.entry_data.function.return_type = LIST_ANY;
     createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "take";
-    builtin_function.entry_data.function.return_type = LIST;
+    builtin_function.entry_data.function.return_type = LIST_ANY;
     createIdentifier(&builtin_function, sym_table);
 
     builtin_function.identifier = "toInt";
@@ -130,11 +127,9 @@ static void insertBuiltins(SymTable *sym_table)
     // So I just decided to insert range(start,end,step), will have to handle this builtin function separately
     // knowing that range().paramCount == 3 in SymTable, but, in reality, can be either 2 or 3
     builtin_function.identifier = "range";
-    builtin_function.entry_data.function.return_type = LIST;
+    builtin_function.entry_data.function.return_type = LIST_ANY;
     createIdentifier(&builtin_function, sym_table);
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
  * Traverse top-level scope of AST to find @main-tagged function
@@ -203,6 +198,7 @@ static void checkMain(AST_NODE *root, SymTable *sym_table)
         exit(ERROR_UNDEF);
     }
 }
+
 /*
  * Fill sym_table's global scope with all function names in top-level scope
  *
@@ -226,6 +222,13 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
             function_entry.entry_type = FUNCTION;
             function_entry.entry_data.function.return_type = UNIT;
             function_entry.entry_data.function.param_count = 0;
+
+            if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
+            {
+                fprintf(stderr, "insertAllFunctions() -- Function was already defined\n");
+                // TODO: cleanup()
+                exit(ERROR_REDEF);
+            }
             createIdentifier(&function_entry, sym_table);
         }
 
@@ -233,14 +236,281 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
         {
             function_entry.identifier = root->left_ch->left_ch->token.attr.str_val;
             function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = functionReturnType(root->left_ch->left_ch->left_ch);
+            function_entry.entry_data.function.return_type = resolveDataType(root->left_ch->left_ch);
             function_entry.entry_data.function.param_count = countParams(root->left_ch->left_ch->right_ch);
+
+            if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
+            {
+                fprintf(stderr, "insertAllFunctions() -- Function was previously defined\n");
+                // TODO: cleanup()
+                exit(ERROR_REDEF);
+            }
             createIdentifier(&function_entry, sym_table);
         }
 
         root = root->right_ch;
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * Function assumes correct call sight --> function definition doesn't happen inside function body
+ */
+static void functionDef(AST_NODE *function_node, SymTable *sym_table)
+{
+    // Argument error-handling
+    if (function_node == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "functionDef() -- at least one argument is invalid.\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    // Create new local scope for function body
+    pushScope(sym_table);
+
+    // Push every parameter into its function scope as immutable variable
+    pushParamsIntoScope(function_node->left_ch->right_ch, sym_table);
+    HTEntry *function_entry = getIdentifier(function_node->left_ch->token.attr.str_val, FUNCTION, sym_table);
+
+    // Process function block (loop right childs until NULL -> end of function body)
+    // While looping, if check for for potential return statements anywhere and compare return value with return type
+    // Process last programStatement() separately -> must check whether it's return statement or expression
+    // In case of expression, evaluate its return value type and compare with function return type
+    AST_NODE *program_node = function_node->right_ch;
+    while (program_node != NULL)
+    {
+        if (program_node->right_ch == NULL) // if last statement in function body
+        {
+            // TODO: Evaluate return value and compare its type with function return type
+            DataType return_value_type = programStatement(program_node, function_entry, sym_table);
+            if (return_value_type != function_entry->entry_data.function.return_type)
+            {
+                fprintf(stderr, "functionDef() -- return value type doesn't match function signature.\n");
+                // TODO: cleanup()
+                exit(ERROR_TYPE);
+            }
+        }
+
+        programStatement(program_node, function_entry, sym_table);
+        program_node = program_node->right_ch;
+    }
+
+    // Exit the current local scope of function body
+    popScope(sym_table);
+}
+
+/*
+ * Check that function was defined before use
+ * Check that function argument count and argument types match function signature
+ * Annotate ASTNode with info for codegen
+ * Returns function's return value type
+ */
+static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
+{
+    if (sym_table == NULL || call_node == NULL)
+    {
+        fprintf(stderr, "functionCall() -- at least one argument is invalid.\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    HTEntry *function_entry = getIdentifier(call_node->left_ch->token.attr.str_val, FUNCTION, sym_table);
+    if (function_entry == NULL)
+    {
+        fprintf(stderr, "functionCall() -- call to undefined function.\n");
+        // TODO: cleanup()
+        exit(ERROR_UNDEF);
+    }
+
+    // Compare argument count with function signature
+    size_t arg_count = countParams(call_node->right_ch);
+    if (arg_count != function_entry->entry_data.function.param_count)
+    {
+        fprintf(stderr, "functionCall() -- call to undefined function.\n");
+        // TODO: cleanup()
+        exit(ERROR_PARAM);
+    }
+
+    // Check argument types -- can only be literals and identifiers
+    while (arg_count-- > 0)
+    {
+        // TBD: Must re-design symtable's HTEntryData to include another struct field DataType *Parameters
+        // Will contain ordered parameter types
+        // Then implement in semantic_analysis a function that will walk the argument AST subtree and the HTEntry array
+        ;
+    }
+
+    annotateAST(function_entry, call_node->left_ch);
+
+    return function_entry->entry_data.function.return_type;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static DataType ifStatement(AST_NODE *if_node, SymTable *sym_table)
+{
+    // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
+    pushScope(sym_table);
+    popScope(sym_table);
+}
+
+static DataType whileStatement(AST_NODE *while_node, SymTable *sym_table)
+{
+    // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
+    pushScope(sym_table);
+    popScope(sym_table);
+}
+
+static DataType forStatement(AST_NODE *for_node, SymTable *sym_table)
+{
+    // TODO: Must evaluate the condition, among other things in this complicated mess of a construct (LMAO)
+    pushScope(sym_table);
+    popScope(sym_table);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * Central statement dispatcher -> calls appropriate function for NODE_PROGRAM's left child (its contents)
+ *
+ * This function should be used for NODE_PROGRAM inside function blocks (not in top-level scope)
+ * (Types of statements allowed for top-level NODE_PROGRAM differs from NODE_PROGRAM inside function scope)
+ * Function assumes correct argument passing (if program_node == NULL -> end of IFJ26 program)
+ */
+static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry, SymTable *sym_table)
+{
+    if (program_node == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "programStatement() -- at least one function argument is invalid\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    if (program_node->type != NODE_PROGRAM)
+    {
+        fprintf(stderr, "programStatement() -- passed program_node is not a statement\n");
+        // TODO: cleanup()
+        exit(ERROR_OTHER);
+    }
+
+    switch (program_node->left_ch->type)
+    {
+        case NODE_CALL:
+            return functionCall(program_node->left_ch, sym_table);
+        case (NODE_VAR_DEF || NODE_VAL_DEF):
+            // TODO: variableDef(program_node->left_ch, sym_table);
+        case NODE_WHILE:
+            // TODO: return whileStatement(program_node->left_ch, sym_table);
+        case NODE_FOR:
+            // TODO: return forStatement(program_node->left_ch, sym_table);
+        case NODE_IF:
+            // TODO: return ifStatement(program_node->left_ch, sym_table);
+        case NODE_VALMEM:
+        case NODE_LIST:
+            // TODO: return exprStatement(program_node->left_ch, sym_table);
+        case NODE_TOKEN_ONLY:
+            switch (program_node->left_ch->token.type)
+            {
+                case TOKEN_TYPE_PLUS:
+                case TOKEN_TYPE_MINUS:
+                case TOKEN_TYPE_MUL:
+                case TOKEN_TYPE_DIV:
+                    // TODO: return exprStatement(program_node->left_ch, sym_table);
+                case TOKEN_TYPE_LT:
+                case TOKEN_TYPE_LTE:
+                case TOKEN_TYPE_GT:
+                case TOKEN_TYPE_GTE:
+                case TOKEN_TYPE_EQ:
+                case TOKEN_TYPE_NEQ:
+                case TOKEN_TYPE_AND:
+                case TOKEN_TYPE_OR:
+                case TOKEN_TYPE_NOT:
+                    // TODO: return exprStatement(program_node->left_ch, sym_table);
+                case KEYWORD_RETURN:
+                    // TODO: return returnStatement(program_node->left_ch, sym_table);
+                default:;
+            }
+        default:
+            fprintf(stderr, "programStatement() -- Function contains statement of unsupported type\n");
+            // TODO: cleanup()
+            exit(ERROR_OTHER);
+    }
+}
+/*
+ * Top-level statement dispatcher -> calls appropriate function for NODE_PROGRAM's left child (its contents)
+ *
+ * This function should be used for NODE_PROGRAM in top-level scope
+ * (Types of statements allowed for top-level NODE_PROGRAM differs from NODE_PROGRAM inside function scope)
+ * Function assumes correct argument passing (if program_node == NULL -> end of IFJ26 program)
+ */
+static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table)
+{
+    if (sym_table == NULL)
+    {
+        fprintf(stderr, "topLevelStatement() -- argument sym_table is NULL\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    if (program_node != NULL)
+    {
+        if (program_node->type != NODE_PROGRAM)
+        {
+            fprintf(stderr, "topLevelStatement() -- passed program_node is not a statement\n");
+            // TODO: cleanup()
+            exit(ERROR_OTHER);
+        }
+
+        switch (program_node->left_ch->type)
+        {
+            case NODE_MAIN:
+                functionDef(program_node->left_ch->left_ch, sym_table);
+            case NODE_FUNC_DEF:
+                functionDef(program_node->left_ch->left_ch, sym_table);
+            default:
+                fprintf(stderr, "topLevelStatement() -- Top-level scope contains statement of unsupported type\n");
+                // TODO: cleanup()
+                exit(ERROR_OTHER);
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * Entry point of semantic analysis
+ */
+void semanticAnalysis(AST_NODE *root)
+{
+    // Create and initialize sym_table with global scope
+    SymTable *sym_table = createSymTable();
+    insertBuiltins(sym_table);
+
+    // Traverses top-level scope for @main tagged function, also checks proper top-level structure (only func def's)
+    checkMain(root, sym_table);
+    // Fills sym_table with all func identifiers to support function call before its respective definition
+    // Checks that top-level definitions don't have any function re-definitions
+    insertAllFunctions(root, sym_table);
+
+    // Semantic analysis
+    // Traverse AST
+    while (root != NULL)
+    {
+        // Process parent_node->left_child
+        topLevelStatement(root, sym_table);
+
+        root = root->right_ch;
+    }
+
+    // Free any allocated memory in sym_table
+    destroySymTable(sym_table);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
  * Returns count of function's number of parameters
@@ -259,19 +529,26 @@ static size_t countParams(AST_NODE *param_node)
     return param_count;
 }
 /*
- * Returns function's return type
+ * Returns target_node's type annotation (located at target_node->left_ch)
  *
- * If it's passed the wrong argument node, crashes the whole compilation
+ * Function assumes correct argument passed (target_node->left_ch == NULL -> AST node doesn't have explicit data type)
+ * Please check the argument before calling this function thoroughly
+ * Use mainly for getting function def's return type, variable definition's type annotation
  */
-static DataType functionReturnType(AST_NODE *ret_type_node)
+static DataType resolveDataType(AST_NODE *target_node)
 {
-    if (ret_type_node == NULL)
+    if (target_node == NULL)
     {
-        fprintf(stderr, "functionReturnType() -- passed AST node argument is NULL.\n");
+        fprintf(stderr, "resolveDataType() -- passed AST node argument is NULL.\n");
         // TODO: cleanup()
         exit(ERROR_INTERNAL);
     }
-    switch (ret_type_node->token.type)
+
+    // AST node doesn't have a type annotation
+    if (target_node->left_ch != NULL)
+        return NIL;
+
+    switch (target_node->left_ch->token.type)
     {
         case KEYWORD_STRING:
             return STRING;
@@ -281,147 +558,81 @@ static DataType functionReturnType(AST_NODE *ret_type_node)
             return INT;
         case KEYWORD_BOOLEAN:
             return BOOLEAN;
-        case KEYWORD_LIST:
-            return LIST;
         case KEYWORD_UNIT:
             return UNIT;
+        case KEYWORD_LIST:
+            switch (target_node->left_ch->left_ch->token.type)
+            {
+                case KEYWORD_STRING:
+                    return LIST_STRING;
+                case KEYWORD_DOUBLE:
+                    return LIST_DOUBLE;
+                case KEYWORD_INT:
+                    return LIST_INT;
+                case KEYWORD_BOOLEAN:
+                    return LIST_BOOLEAN;
+                case KEYWORD_UNIT:
+                    return LIST_UNIT;
+                // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
+                //     return LIST_ANY;
+                default:
+                    fprintf(stderr, "resolveDataType() -- Function has indeterminate return type.\n");
+                    // TODO: cleanup()
+                    exit(ERROR_INTERNAL);
+            }
         default:
-            fprintf(stderr, "functionReturnType() -- called on wrong AST Node.\n");
+            fprintf(stderr, "resolveDataType() -- called on wrong AST Node.\n");
             // TODO: cleanup()
             exit(ERROR_INTERNAL);
     }
 }
-static void functionDefinition(AST_NODE *function_node, SymTable *sym_table)
+
+/*
+ * Helper function for functionDef()
+ */
+static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table)
 {
-    if (function_node == NULL || sym_table == NULL)
+    size_t param_count = countParams(param_node);
+
+    HTEntry param_entry = {0};
+    while (param_count-- > 0)
     {
-        fprintf(stderr, "functionDefinition() -- at least one argument is invalid.\n");
+        param_entry.state = BUSY;
+        param_entry.identifier = param_node->token.attr.str_val;
+        param_entry.entry_type = VAL;
+        param_entry.entry_data.variable_data_type = resolveDataType(param_node);
+        if (param_entry.entry_data.variable_data_type == NIL)
+        {
+            fprintf(stderr, "pushParamsIntoScope() -- function parameter doesn't have a supported type annotation.\n");
+            // TODO: cleanup()
+            exit(ERROR_INTERNAL);
+        }
+
+        createIdentifier(&param_entry, sym_table);
+
+        param_node = param_node->right_ch;
+    }
+}
+
+static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node)
+{
+    HTEntry *target_entry = calloc(1, sizeof(HTEntry));
+    if (target_entry == NULL)
+    {
+        fprintf(stderr, "annotateAST() -- calloc() failed.\n");
         // TODO: cleanup()
         exit(ERROR_INTERNAL);
     }
-    pushScope(sym_table);
-    // TODO: Just need to find identifier in symTable and that's it...
-    // Also need to push params as immutable variables into function scope
-    popScope(sym_table);
-}
-
-static void functionCall(AST_NODE *call_node, SymTable *sym_table)
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-static void ifStatement(AST_NODE *if_node, SymTable *sym_table)
-{
-    // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
-    pushScope(sym_table);
-    popScope(sym_table);
-}
-static void elseifStatement(AST_NODE *elseif_node, SymTable *sym_table)
-{
-    // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
-    pushScope(sym_table);
-    popScope(sym_table);
-}
-static void elseStatement(AST_NODE *else_node, SymTable *sym_table)
-{
-    // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
-    pushScope(sym_table);
-    popScope(sym_table);
-}
-
-static void whileStatement(AST_NODE *while_node, SymTable *sym_table)
-{
-    // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
-    pushScope(sym_table);
-    popScope(sym_table);
-}
-
-static void forStatement(AST_NODE *for_node, SymTable *sym_table)
-{
-    // TODO: Must evaluate the condition, among other things in this complicated mess of a construct (LMAO)
-    pushScope(sym_table);
-    popScope(sym_table);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/*
- * Central statement dispatcher -> calls appropriate function for NODE_PROGRAM's left child (its contents)
- *
- * This function should be used for NODE_PROGRAM inside function blocks (not in top-level scope)
- * (Types of statements allowed for top-level NODE_PROGRAM differs from NODE_PROGRAM inside function scope)
- * Function assumes correct argument passing (if program_node == NULL -> end of IFJ26 program)
- */
-static void programStatement(AST_NODE *program_node)
-{
-    if (program_node != NULL)
+    size_t str_len = strlen(function_entry->identifier);
+    target_entry->identifier = calloc(str_len + 1, sizeof(char));
+    if (target_entry->identifier == NULL)
     {
-        if (program_node->type != NODE_PROGRAM)
-        {
-            fprintf(stderr, "programStatement() -- passed program_node is not a statement\n");
-            // TODO: cleanup()
-            exit(ERROR_OTHER);
-        }
-
-        switch (program_node->left_ch->type)
-        {
-            default:
-                return;
-        }
-    }
-}
-/*
- * Top-level statement dispatcher -> calls appropriate function for NODE_PROGRAM's left child (its contents)
- *
- * This function should be used for NODE_PROGRAM in top-level scope
- * (Types of statements allowed for top-level NODE_PROGRAM differs from NODE_PROGRAM inside function scope)
- * Function assumes correct argument passing (if program_node == NULL -> end of IFJ26 program)
- */
-static void topLevelStatement(AST_NODE *program_node)
-{
-    if (program_node != NULL)
-    {
-        if (program_node->type != NODE_PROGRAM)
-        {
-            fprintf(stderr, "topLevelStatement() -- passed program_node is not a statement\n");
-            // TODO: cleanup()
-            exit(ERROR_OTHER);
-        }
-
-        switch (program_node->left_ch->type)
-        {
-
-            default:
-                return;
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/*
- * Entry point of semantic analysis
- */
-void semanticAnalysis(AST_NODE *root)
-{
-    // Create and initialize sym_table with global scope
-    SymTable *sym_table = createSymTable();
-    insertBuiltins(sym_table);
-
-    checkMain(root, sym_table);
-    insertAllFunctions(root, sym_table);
-
-    // Semantic analysis
-    // Traverse AST PreOrder
-    while (root != NULL)
-    {
-        // Process parent_node->left_child
-        topLevelStatement(root);
-
-        root = root->right_ch;
+        fprintf(stderr, "annotateAST() -- calloc() failed.\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
     }
 
-    // Free any allocated memory in sym_table
-    destroySymTable(sym_table);
+    strncpy(target_entry->identifier, function_entry->identifier, str_len);
+    target_entry->entry_type = function_entry->entry_type;
+    target_entry->entry_data = function_entry->entry_data;
 }
