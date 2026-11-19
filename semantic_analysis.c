@@ -839,7 +839,7 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
             break;
         case NODE_VAR_DEF:
         case NODE_VAL_DEF:
-            return variableDef(program_node->left_ch, sym_table);
+            return variableDef(program_node->left_ch, sym_table); // returns UNIT
             break;
         case NODE_WHILE:
             return whileStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
