@@ -31,4 +31,4 @@ $(EXEC): $(SRCS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(EXEC)
+	rm -f $(EXEC)
