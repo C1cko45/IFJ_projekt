@@ -3,7 +3,6 @@
  * Author: Pham Vu Duy Anh, xphamv00
  */
 
-#include <endian.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -39,6 +38,8 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table);
 static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
 static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, SymTable *sym_table);
 
+static DataType variableDef(AST_NODE *def_node, SymTable *sym_table);
+
 static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
 static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable *sym_table);
 
@@ -60,6 +61,7 @@ static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table);
 static void insertBuiltins(SymTable *sym_table)
 {
     // TODO: MUST FIX parameters[] in every builtin (right now List builtins fail in parser anyway...)
+    // Because right now builtin functions have undefined parameters
     if (sym_table == NULL)
     {
         fprintf(stderr, "insertBuiltins() -- passed sym_table argument is NULL\n");
@@ -72,16 +74,6 @@ static void insertBuiltins(SymTable *sym_table)
                                 .entry_data.function.param_count = 0,
                                 .entry_data.function.return_type = UNIT};
     createIdentifier(&builtin_function, sym_table);
-    HTEntry *function_entry = getIdentifier("print", FUNCTION, sym_table);
-    DataType **parameters_ptr = &function_entry->entry_data.function.parameters;
-    function_entry->entry_data.function.parameters = calloc(1, sizeof(DataType));
-    if (*parameters_ptr == NULL)
-    {
-        fprintf(stderr, "insertBuiltins() -- calloc() failed\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
-    }
-    *parameters_ptr[0] = ANY;
 
     builtin_function.identifier = "head";
     builtin_function.entry_data.function.return_type = ANY;
@@ -176,7 +168,7 @@ static void checkMain(AST_NODE *root, SymTable *sym_table)
             // TODO: cleanup()
             exit(ERROR_OTHER);
         }
-        if (root->left_ch->type != NODE_MAIN || root->left_ch->type != NODE_FUNC_DEF)
+        if (root->left_ch->type != NODE_MAIN && root->left_ch->type != NODE_FUNC_DEF)
         {
             fprintf(stderr, "checkMain() -- top-level scope contains an unsupported statement\n");
             // TODO: cleanup()
@@ -369,7 +361,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
                 *func_ret_type = retval_type;
 
             // If function def has explicit return type UNIT -> returns UNIT no matter what (return values discarded)
-            if (*func_ret_type != UNIT)
+            if (*func_ret_type == UNIT)
             {
                 if (retval_type != *func_ret_type)
                 {
@@ -627,7 +619,7 @@ static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, Sy
     }
 
     AST_NODE *cond_expr = while_node->left_ch;
-    if (cond_expr != NULL)
+    if (cond_expr == NULL)
     {
         fprintf(stderr, "whileStatement() -- while-condition doesn't exist\n");
         // TODO: cleanup()
@@ -757,8 +749,16 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void variableDef(AST_NODE *def_node, SymTable *sym_table)
+static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
 {
+    // Check variable doesn't already exist
+    // check variable has type annotation
+    //
+    //
+    // HTEntry var_entry = {.state = BUSY, .entry_type = VAR, .entry_data.variable_data_type = VAR};
+    // createIdentifier(&var_entry, sym_table);
+
+    return UNIT;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -790,19 +790,24 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
     {
         case NODE_CALL:
             return functionCall(program_node->left_ch, sym_table); // returns function's return type (per IFJ26 rules)
+            break;
         case NODE_VAR_DEF:
         case NODE_VAL_DEF:
-            // TODO: variableDef(program_node->left_ch, sym_table);
-            // return UNIT;
+            return variableDef(program_node->left_ch, sym_table);
+            break;
         case NODE_WHILE:
             return whileStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
+            break;
         case NODE_FOR:
             return forStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
+            break;
         case NODE_IF:
             return ifStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
+            break;
         case NODE_VALMEM:
         case NODE_LIST:
             // TODO: return exprStatement(program_node->left_ch, sym_table);
+            // break;
         case NODE_TOKEN_ONLY:
             switch (program_node->left_ch->token.type)
             {
@@ -811,6 +816,7 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
                 case TOKEN_TYPE_MUL:
                 case TOKEN_TYPE_DIV:
                     // TODO: return exprStatement(program_node->left_ch, sym_table);
+                    // break;
                 case TOKEN_TYPE_LT:
                 case TOKEN_TYPE_LTE:
                 case TOKEN_TYPE_GT:
@@ -821,8 +827,10 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
                 case TOKEN_TYPE_OR:
                 case TOKEN_TYPE_NOT:
                     // TODO: return exprStatement(program_node->left_ch, sym_table);
+                    // break;
                 case KEYWORD_RETURN:
                     return returnStatement(program_node->left_ch, function_entry, sym_table);
+                    break;
                 default:;
             }
         default:
@@ -860,8 +868,10 @@ static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table)
         {
             case NODE_MAIN:
                 functionDef(program_node->left_ch->left_ch, sym_table);
+                break;
             case NODE_FUNC_DEF:
-                functionDef(program_node->left_ch->left_ch, sym_table);
+                functionDef(program_node->left_ch, sym_table);
+                break;
             default:
                 fprintf(stderr, "topLevelStatement() -- Top-level scope contains statement of unsupported type\n");
                 // TODO: cleanup()
@@ -1069,7 +1079,7 @@ static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node)
 static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table)
 {
     // TBD:
-    return NIL;
+    return BOOLEAN;
 }
 
 /*
