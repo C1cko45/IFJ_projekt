@@ -43,7 +43,7 @@ static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable
 static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable *sym_table);
 
 static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, SymTable *sym_table);
-static DataType forStatement(AST_NODE *for_node, SymTable *sym_table);
+static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTable *sym_table);
 
 static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry, SymTable *sym_table);
 static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table);
@@ -59,9 +59,10 @@ static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table);
  */
 static void insertBuiltins(SymTable *sym_table)
 {
+    // TODO: MUST FIX parameters[] in every builtin (right now List builtins fail in parser anyway...)
     if (sym_table == NULL)
     {
-        fprintf(stderr, "insertBuiltins() -- passed sym_table argument is NULL.\n");
+        fprintf(stderr, "insertBuiltins() -- passed sym_table argument is NULL\n");
         // TODO: cleanup()
         exit(ERROR_INTERNAL);
     }
@@ -71,6 +72,16 @@ static void insertBuiltins(SymTable *sym_table)
                                 .entry_data.function.param_count = 0,
                                 .entry_data.function.return_type = UNIT};
     createIdentifier(&builtin_function, sym_table);
+    HTEntry *function_entry = getIdentifier("print", FUNCTION, sym_table);
+    DataType **parameters_ptr = &function_entry->entry_data.function.parameters;
+    function_entry->entry_data.function.parameters = calloc(1, sizeof(DataType));
+    if (*parameters_ptr == NULL)
+    {
+        fprintf(stderr, "insertBuiltins() -- calloc() failed\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+    *parameters_ptr[0] = ANY;
 
     builtin_function.identifier = "head";
     builtin_function.entry_data.function.return_type = ANY;
@@ -414,6 +425,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
 
     // Check argument types -- can only be literals and identifiers (Should be guaranteed by syntactic analysis)
     DataType arg_type;
+    DataType func_ret_type = function_entry->entry_data.function.return_type;
     for (size_t index = 0; arg_count > 0; ++index, --arg_count)
     {
         arg_type = resolveDataType(call_node->right_ch);
@@ -423,6 +435,11 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
             // TODO: cleanup()
             exit(ERROR_PARAM);
         }
+
+        // if parameter has type annotation Any, it aceppts any argument type
+        if (function_entry->entry_data.function.parameters[index] == ANY ||
+            function_entry->entry_data.function.parameters[index] == LIST_ANY)
+            continue;
 
         if (arg_type != function_entry->entry_data.function.parameters[index])
         {
@@ -640,11 +657,102 @@ static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, Sy
     return UNIT;
 }
 
-static DataType forStatement(AST_NODE *for_node, SymTable *sym_table)
+/*
+ * Semantic checks for for-loop
+ *
+ * for-loop returns Unit
+ */
+static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTable *sym_table)
 {
-    // TODO: Must evaluate the condition, among other things in this complicated mess of a construct (LMAO)
+    // First pushScope() and then push the generator's new control variable into it (as immutable)
+    // (The generator's control variable on the left is a new control variable that is pushed)
+    // (the right side can be an int literal/int variable/list[Int] literal/list[Int] variable)
+    // Must check what type of generator (3 types):
+    //      from to to
+    //      from to to by step --> step must not be 0 (statically can check only if step is int interal)
+    //      from until until
+    // Generator can contain only int literals/variables (no implicit conversion)
+    // Then run expr() checks on guards (if-expressions)
+
+    // Argument error-handling
+    if (for_node == NULL || function_entry == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "forStatement() -- at least one argument is invalid\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    // TODO: Probably checks for List[Int] literals and variables won't work right now
+    // Check generator for type compatibility -- only int literals/int variables/list[Int] literals/list[Int] variables
+    // Also if variables -> must resole in sym_table and then annotateAST
+    if (for_node->left_ch == NULL || for_node->left_ch->left_ch == NULL)
+    {
+        fprintf(stderr, "forStatement() -- for-loop contains no generator\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+    AST_NODE *limit_node = for_node->left_ch->left_ch;
+    AST_NODE *var_one = limit_node->left_ch->left_ch;
+    AST_NODE *var_two = limit_node->left_ch->right_ch;
+    // TODO: Missing checks for List[Int] literals/variables
+    if (var_one->token.type != KEYWORD_INT || var_one->token.type != TOKEN_TYPE_IDENTIFIER ||
+        var_two->token.type != KEYWORD_INT || var_one->token.type != TOKEN_TYPE_IDENTIFIER)
+    {
+        fprintf(stderr, "forStatement() -- for-loop contains containts non-integer literal/variable\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+    // Step exists
+    if (limit_node->right_ch != NULL)
+    {
+        if (limit_node->right_ch->token.type != KEYWORD_INT ||
+            limit_node->right_ch->token.type != TOKEN_TYPE_IDENTIFIER)
+        {
+            fprintf(stderr, "forStatement() -- for-loop contains containts non-integer literal/variable\n");
+            // TODO: cleanup()
+            exit(ERROR_INTERNAL);
+        }
+
+        if (limit_node->right_ch->token.type == KEYWORD_INT && limit_node->right_ch->token.attr.int_val == 0)
+        {
+            fprintf(stderr, "forStatement() -- for-loop contains containts non-integer literal/variable\n");
+            // TODO: cleanup()
+            exit(ERROR_OTHER);
+        }
+    }
+
+    // Evaluate every guard (if-expression)
+    AST_NODE *cond_node = for_node->left_ch->right_ch;
+    while (cond_node != NULL)
+    {
+        if (evaluateExpr(cond_node->left_ch, sym_table) != BOOLEAN)
+        {
+            fprintf(stderr, "forStatement() -- condition expression is not boolean\n");
+            // TODO: cleanup()
+            exit(ERROR_TYPE);
+        }
+        cond_node = cond_node->right_ch;
+    }
+
     pushScope(sym_table);
+    // push generator's control variable into the new scope
+    HTEntry ctrl_var = {.state = BUSY,
+                        .entry_type = VAL,
+                        .entry_data.variable_data_type = INT,
+                        .identifier = for_node->left_ch->token.attr.str_val};
+    createIdentifier(&ctrl_var, sym_table);
+
+    // Process for-statement block
+    AST_NODE *program_node = for_node->right_ch;
+    while (program_node != NULL)
+    {
+        programStatement(program_node, function_entry, sym_table);
+        program_node = program_node->right_ch;
+    }
+
     popScope(sym_table);
+
+    return UNIT;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -689,9 +797,9 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
         case NODE_WHILE:
             return whileStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
         case NODE_FOR:
-            return forStatement(program_node->left_ch, sym_table);
+            return forStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
         case NODE_IF:
-            return ifStatement(program_node->left_ch, function_entry, sym_table);
+            return ifStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
         case NODE_VALMEM:
         case NODE_LIST:
             // TODO: return exprStatement(program_node->left_ch, sym_table);
