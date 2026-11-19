@@ -53,6 +53,10 @@ static const KeywordMap keyword_table[] = {
     {"Int", KEYWORD_INT},       {"Unit", KEYWORD_UNIT},     {"Boolean", KEYWORD_BOOLEAN}, {"for", KEYWORD_FOR},
     {"List", KEYWORD_LIST},     {"to", KEYWORD_TO},         {"until", KEYWORD_UNTIL},     {"by", KEYWORD_BY},
 };
+//deklaracia scanner_init
+void scanner_init(FILE *source) {
+    (void)source;
+}
 
 // vypocet slov v tabulke.
 #define KEYWORD_COUNT (sizeof(keyword_table) / sizeof(keyword_table[0]))
@@ -73,7 +77,7 @@ bool is_keyword(const char *word, TokenType *out_keyword)
 
 #define START 0
 // hlavna funcia scanneru.
-Token scanner_get_next_token(void)
+static Token get_token_internal(void)
 {
     Token token;
     dstring string;
@@ -233,7 +237,7 @@ Token scanner_get_next_token(void)
             // konec suboru. + kontrola zabudnutych dedentov.
             case EOF:
                 if (stack_get_top(&stack) > 0)
-                {
+                {   
                     stack_pop_scanner(&stack);
                     token.type = TOKEN_TYPE_DEDENT;
                     return token;
@@ -823,4 +827,30 @@ Token scanner_get_next_token(void)
             return token;
         }
     }
+}
+
+// obal nad get_token_internal.
+Token scanner_get_next_token(void) {
+    static TokenType last_type = TOKEN_TYPE_EOL;
+    static bool has_pending = false;
+    static Token pending;
+
+    Token token;
+    if (has_pending) {
+        token = pending;
+        has_pending = false;
+    } else {
+        token = get_token_internal();
+        // DEDENT/EOF prisiel bez predchadzajuceho EOL
+        if ((token.type == TOKEN_TYPE_DEDENT || token.type == TOKEN_TYPE_EOF) &&
+            last_type != TOKEN_TYPE_EOL && last_type != TOKEN_TYPE_DEDENT)
+        {
+            pending = token;
+            has_pending = true;
+            token.type = TOKEN_TYPE_EOL;
+        }
+    }
+
+    last_type = token.type;
+    return token;
 }

@@ -1,8 +1,8 @@
 CC = gcc
 
-CFLAGS = -std=c11 -Wall - Wextra
+CFLAGS = -std=c11 -Wall -Wextra
 
-MAIN_SRC = main.c
+MAIN_SRC = test_main.c
 
 SCANNER_SRCS = scanner.c dstring.c stack.c token.c
 

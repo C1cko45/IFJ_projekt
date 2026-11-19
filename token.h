@@ -107,4 +107,6 @@ typedef struct
 
 void token_free(Token *token);
 
+const char *token_type_name(TokenType type);
+
 #endif // TOKEN_H
