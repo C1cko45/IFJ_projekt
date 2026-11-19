@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #include "ast.h"
 #include "codegen.h"
 #include "parser.h"
@@ -15,8 +17,8 @@ int main()
     // TODO: spustim semanticku analyzu.
     semanticAnalysis(strom);
 
-    int x = codegen_generate(strom, output); // vrati 99 alebo 0
+    // int x = codegen_generate(strom, output); // vrati 99 alebo 0
     ast_free_node(strom);
     fclose(output);
-    exit(x);
+    // exit(x);
 }
