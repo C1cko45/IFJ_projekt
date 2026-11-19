@@ -21,7 +21,7 @@ typedef enum
     TOKEN_TYPE_DOUBLE,
     TOKEN_TYPE_STRING,
     TOKEN_TYPE_UNIT,
-    TOKEN_TYPE_BOOL,// rozsirenie boolthen;
+    TOKEN_TYPE_BOOL, // rozsirenie boolthen;
 
     // Operatory.
     TOKEN_TYPE_PLUS,
@@ -39,29 +39,29 @@ typedef enum
     TOKEN_TYPE_GTE,
 
     // oddelovace z rozsirenia.
-    TOKEN_TYPE_NOT,     // !   (BOOLTHEN)
-    TOKEN_TYPE_AND,     // &&  (BOOLTHEN)
-    TOKEN_TYPE_OR,      // ||  (BOOLTHEN)
-    TOKEN_TYPE_ARROW,   // <-  (CONTROL)
-    TOKEN_TYPE_CONCAT,  // ++  (LISTS)
-    TOKEN_TYPE_DOT,     // .   (VALMEM)
+    TOKEN_TYPE_NOT,    // !   (BOOLTHEN)
+    TOKEN_TYPE_AND,    // &&  (BOOLTHEN)
+    TOKEN_TYPE_OR,     // ||  (BOOLTHEN)
+    TOKEN_TYPE_ARROW,  // <-  (CONTROL)
+    TOKEN_TYPE_CONCAT, // ++  (LISTS)
+    TOKEN_TYPE_DOT,    // .   (VALMEM)
 
     // Oddelovace.
     TOKEN_TYPE_LPAREN,
     TOKEN_TYPE_RPAREN,
-    TOKEN_TYPE_LBRACKET,    // [  rozsirenie lists;
-    TOKEN_TYPE_RBRACKET,    // ]  rozsirenie lists;
+    TOKEN_TYPE_LBRACKET, // [  rozsirenie lists;
+    TOKEN_TYPE_RBRACKET, // ]  rozsirenie lists;
     TOKEN_TYPE_COLON,
     TOKEN_TYPE_COMMA,
     TOKEN_TYPE_SEMICOLON,
     TOKEN_TYPE_AT_MAIN, // @main
 
-    //chyba 1.
+    // chyba 1.
     TOKEN_ERROR_LEX,
-    //token pre parser.
+    // token pre parser.
     TOKEN_TYPE_STATEMENT,
 
-    //keywords:
+    // keywords:
     KEYWORD_DEF,
     KEYWORD_DO,
     KEYWORD_ELSE,
@@ -78,14 +78,16 @@ typedef enum
     KEYWORD_INT,
     KEYWORD_UNIT,
 
-    //rozsirenie BOOLTHEN:
+    // rozsirenie BOOLTHEN:
     KEYWORD_BOOLEAN,
-    
-    //rozsirenie CONTROL:
+
+    // rozsirenie CONTROL:
     KEYWORD_FOR,
     KEYWORD_TO,
-    
-    //rozsirenie LISTS:
+    KEYWORD_UNTIL,
+    KEYWORD_BY,
+
+    // rozsirenie LISTS:
     KEYWORD_LIST,
 } TokenType;
 
@@ -93,16 +95,18 @@ typedef union {
     long long int_val;
     double double_val;
     char *str_val;
-    bool bool_val;      //rozsirenie boolthen;
+    bool bool_val; // rozsirenie boolthen;
 } TokenAttribute;
 
 typedef struct
 {
     TokenType type;
     TokenAttribute attr;
-    //int line;
+    // int line;
 } Token;
 
 void token_free(Token *token);
+
+const char *token_type_name(TokenType type);
 
 #endif // TOKEN_H
