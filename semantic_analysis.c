@@ -619,7 +619,7 @@ static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, Sy
     }
 
     AST_NODE *cond_expr = while_node->left_ch;
-    if (cond_expr != NULL)
+    if (cond_expr == NULL)
     {
         fprintf(stderr, "whileStatement() -- while-condition doesn't exist\n");
         // TODO: cleanup()
@@ -870,7 +870,7 @@ static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table)
                 functionDef(program_node->left_ch->left_ch, sym_table);
                 break;
             case NODE_FUNC_DEF:
-                functionDef(program_node->left_ch->left_ch, sym_table);
+                functionDef(program_node->left_ch, sym_table);
                 break;
             default:
                 fprintf(stderr, "topLevelStatement() -- Top-level scope contains statement of unsupported type\n");
