@@ -417,7 +417,6 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
 
     // Check argument types -- can only be literals and identifiers (Should be guaranteed by syntactic analysis)
     DataType arg_type;
-    DataType func_ret_type = function_entry->entry_data.function.return_type;
     for (size_t index = 0; arg_count > 0; ++index, --arg_count)
     {
         arg_type = resolveDataType(call_node->right_ch);
@@ -444,11 +443,12 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     // If all is correct, annotate AST node with sym_table info for codegen
     annotateAST(function_entry, call_node->left_ch);
 
+    DataType func_ret_type = function_entry->entry_data.function.return_type;
     // If function signature has explicit return type UNIT -> returns UNIT (any other return value discarded)
-    if (function_entry->entry_data.function.return_type == UNIT)
+    if (func_ret_type == UNIT)
         return UNIT;
 
-    return function_entry->entry_data.function.return_type;
+    return func_ret_type;
 }
 
 /*
@@ -756,7 +756,6 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
 static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
 {
     HTEntryType var_modifier;
-    HTEntry var_entry;
     if (def_node->type == NODE_VAL_DEF)
         var_modifier = VAL;
 
@@ -785,6 +784,7 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
         exit(ERROR_TYPE);
     }
 
+    HTEntry var_entry;
     var_entry.entry_type = var_modifier;
     var_entry.state = BUSY;
     var_entry.identifier = def_node->left_ch->token.attr.str_val;
@@ -803,6 +803,8 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
 
     // Variable definition doesn't have type annotation -> infer variable type
     var_entry.entry_data.variable_data_type = rvalue_ret_type;
+
+    createIdentifier(&var_entry, sym_table);
 
     return UNIT;
 }
@@ -853,16 +855,19 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
         case NODE_VALMEM:
         case NODE_LIST:
             // TODO: return exprStatement(program_node->left_ch, sym_table);
-            // break;
+            break;
         case NODE_TOKEN_ONLY:
             switch (program_node->left_ch->token.type)
             {
+                case TOKEN_TYPE_ASSIGN:
+                    // return assignStatement(program_node->left_ch, sym_table) // returns UNIT
+                    break;
                 case TOKEN_TYPE_PLUS:
                 case TOKEN_TYPE_MINUS:
                 case TOKEN_TYPE_MUL:
                 case TOKEN_TYPE_DIV:
                     // TODO: return exprStatement(program_node->left_ch, sym_table);
-                    // break;
+                    break;
                 case TOKEN_TYPE_LT:
                 case TOKEN_TYPE_LTE:
                 case TOKEN_TYPE_GT:
@@ -873,17 +878,20 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
                 case TOKEN_TYPE_OR:
                 case TOKEN_TYPE_NOT:
                     // TODO: return exprStatement(program_node->left_ch, sym_table);
-                    // break;
+                    break;
                 case KEYWORD_RETURN:
                     return returnStatement(program_node->left_ch, function_entry, sym_table);
                     break;
-                default:;
+                default:
+                    break;
             }
         default:
-            fprintf(stderr, "programStatement() -- Function contains statement of unsupported type\n");
-            // TODO: cleanup()
-            exit(ERROR_OTHER);
+            break;
     }
+
+    fprintf(stderr, "programStatement() -- Function contains statement of unsupported type\n");
+    // TODO: cleanup()
+    exit(ERROR_OTHER);
 }
 /*
  * Top-level statement dispatcher -> calls appropriate function for NODE_PROGRAM's left child (its contents)
@@ -1099,6 +1107,9 @@ static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table)
     }
 }
 
+/*
+ * Allocates memory for HTEntry in AST_NODE and passes function_entry info to it
+ */
 static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node)
 {
     HTEntry *target_entry = calloc(1, sizeof(HTEntry));
@@ -1120,6 +1131,8 @@ static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node)
     strncpy(target_entry->identifier, function_entry->identifier, str_len);
     target_entry->entry_type = function_entry->entry_type;
     target_entry->entry_data = function_entry->entry_data;
+
+    identifier_node->identifier_entry = target_entry;
 }
 
 static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table)

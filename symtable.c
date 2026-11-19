@@ -154,6 +154,8 @@ void popScope(SymTable *sym_table)
         if (scope->entries[scope->capacity - 1].state != EMPTY)
         {
             free(scope->entries[scope->capacity - 1].identifier);
+            if (scope->entries[scope->capacity - 1].entry_type == FUNCTION)
+                free(scope->entries[scope->capacity - 1].entry_data.function.parameters);
             --scope->capacity;
         }
 
