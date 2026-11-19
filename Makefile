@@ -1,6 +1,6 @@
 CC = gcc
 
-CFLAGS = -std=c11 -Wall -Wextra
+CFLAGS = -std=c11 -Wall -Wextra -pedantic
 
 MAIN_SRC = test_main.c
 
@@ -24,11 +24,11 @@ all: build
 
 build: $(EXEC)
 
-$(EXEC): $(OBJS)
-	$(CC) $(CFLAGS) $(OBJS) -o $@
+$(EXEC): $(SRCS)
+	$(CC) $(CFLAGS) $(SRCS) -o $@
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(EXEC)
+	rm -f $(EXEC)
