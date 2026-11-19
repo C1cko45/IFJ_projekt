@@ -129,7 +129,7 @@ void pushScope(SymTable *sym_table)
         // TODO: cleanup(); -- must free AST memory
         exit(ERROR_INTERNAL);
     }
-    sym_table->scopes[sym_table->current + 1].count = HTABLE_INIT_CAPACITY;
+    sym_table->scopes[sym_table->current + 1].count = 0;
     sym_table->scopes[sym_table->current + 1].capacity = HTABLE_INIT_CAPACITY;
 
     // Update sym_table's stack pointer
@@ -152,7 +152,10 @@ void popScope(SymTable *sym_table)
     // This particular way avoids size_t underflow, that would cause infinite loop otherwise
     while (scope->capacity > 0)
         if (scope->entries[scope->capacity - 1].state != EMPTY)
-            free(scope->entries[--scope->capacity].identifier);
+        {
+            free(scope->entries[scope->capacity - 1].identifier);
+            --scope->capacity;
+        }
 
     free(scope->entries);
     scope->entries = NULL;
@@ -326,7 +329,7 @@ HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable 
 {
     if (identifier == NULL || sym_table == NULL || entry_type == NONE)
     {
-        fprintf(stderr, "isIdentifier() -- at least one argument is invalid.\n");
+        fprintf(stderr, "getIdentifier() -- at least one argument is invalid.\n");
         // TODO: cleanup(); -- must free AST memory
         exit(ERROR_INTERNAL);
     }
@@ -492,8 +495,10 @@ static void resizeScope(HTable *scope)
         exit(ERROR_INTERNAL);
     }
     scope->capacity = new_capacity;
+    scope->count = 0;
     for (size_t index = 0; index < old_capacity; ++index)
-        insertEntry(&old_entries[index], scope); // rehash
+        if (old_entries[index].state == BUSY)
+            insertEntry(&old_entries[index], scope); // rehash
 
     // Memory cleanup of old HTable
     // This particular way avoids size_t underflow, that would cause infinite loop otherwise

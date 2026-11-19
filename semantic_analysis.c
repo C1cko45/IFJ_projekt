@@ -177,7 +177,7 @@ static void checkMain(AST_NODE *root, SymTable *sym_table)
             // TODO: cleanup()
             exit(ERROR_OTHER);
         }
-        if (root->left_ch->type != NODE_MAIN || root->left_ch->type != NODE_FUNC_DEF)
+        if (root->left_ch->type != NODE_MAIN && root->left_ch->type != NODE_FUNC_DEF)
         {
             fprintf(stderr, "checkMain() -- top-level scope contains an unsupported statement\n");
             // TODO: cleanup()
@@ -760,8 +760,8 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
 
 static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
 {
-    HTEntry var_entry = {};
-    createIdentifier(&var_entry, sym_table);
+    // HTEntry var_entry = {.state = BUSY, .entry_type = VAR, .entry_data.variable_data_type = VAR};
+    // createIdentifier(&var_entry, sym_table);
 
     return UNIT;
 }
@@ -795,18 +795,24 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
     {
         case NODE_CALL:
             return functionCall(program_node->left_ch, sym_table); // returns function's return type (per IFJ26 rules)
+            break;
         case NODE_VAR_DEF:
         case NODE_VAL_DEF:
             return variableDef(program_node->left_ch, sym_table);
+            break;
         case NODE_WHILE:
             return whileStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
+            break;
         case NODE_FOR:
             return forStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
+            break;
         case NODE_IF:
             return ifStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
+            break;
         case NODE_VALMEM:
         case NODE_LIST:
             // TODO: return exprStatement(program_node->left_ch, sym_table);
+            // break;
         case NODE_TOKEN_ONLY:
             switch (program_node->left_ch->token.type)
             {
@@ -815,6 +821,7 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
                 case TOKEN_TYPE_MUL:
                 case TOKEN_TYPE_DIV:
                     // TODO: return exprStatement(program_node->left_ch, sym_table);
+                    // break;
                 case TOKEN_TYPE_LT:
                 case TOKEN_TYPE_LTE:
                 case TOKEN_TYPE_GT:
@@ -825,8 +832,10 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
                 case TOKEN_TYPE_OR:
                 case TOKEN_TYPE_NOT:
                     // TODO: return exprStatement(program_node->left_ch, sym_table);
+                    // break;
                 case KEYWORD_RETURN:
                     return returnStatement(program_node->left_ch, function_entry, sym_table);
+                    break;
                 default:;
             }
         default:
@@ -864,8 +873,10 @@ static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table)
         {
             case NODE_MAIN:
                 functionDef(program_node->left_ch->left_ch, sym_table);
+                break;
             case NODE_FUNC_DEF:
                 functionDef(program_node->left_ch->left_ch, sym_table);
+                break;
             default:
                 fprintf(stderr, "topLevelStatement() -- Top-level scope contains statement of unsupported type\n");
                 // TODO: cleanup()
