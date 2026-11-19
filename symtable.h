@@ -15,7 +15,7 @@
 // Data Type
 typedef enum
 {
-    NIL, // -> initial value, arbitrary sym_table type to indicate uninitialized data type
+    NIL, // -> initial value, arbitrary sym_table type specifically to indicate unspecified function return type
     ANY, // Placeholder for function return type annotations; this cannot be assigned to a variable
 
     UNIT, // Indicates lack of value, values should default to this type
