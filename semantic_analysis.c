@@ -687,8 +687,8 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
     AST_NODE *var_one = limit_node->left_ch->left_ch;
     AST_NODE *var_two = limit_node->left_ch->right_ch;
     // TODO: Missing checks for List[Int] literals/variables
-    if (var_one->token.type != KEYWORD_INT || var_one->token.type != TOKEN_TYPE_IDENTIFIER ||
-        var_two->token.type != KEYWORD_INT || var_one->token.type != TOKEN_TYPE_IDENTIFIER)
+    if ((var_one->token.type != KEYWORD_INT && var_one->token.type != TOKEN_TYPE_IDENTIFIER) ||
+        (var_two->token.type != KEYWORD_INT && var_two->token.type != TOKEN_TYPE_IDENTIFIER))
     {
         fprintf(stderr, "forStatement() -- for-loop contains containts non-integer literal/variable\n");
         // TODO: cleanup()
@@ -697,7 +697,7 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
     // Step exists
     if (limit_node->right_ch != NULL)
     {
-        if (limit_node->right_ch->token.type != KEYWORD_INT ||
+        if (limit_node->right_ch->token.type != KEYWORD_INT &&
             limit_node->right_ch->token.type != TOKEN_TYPE_IDENTIFIER)
         {
             fprintf(stderr, "forStatement() -- for-loop contains containts non-integer literal/variable\n");
