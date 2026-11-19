@@ -536,7 +536,7 @@ static void insertEntry(HTEntry *entry, HTable *table)
         target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
 
     size_t str_len = strlen(entry->identifier) + 1; // account for '\0' that strlen() doesn't count
-    target_entry->identifier = calloc(str_len, sizeof(char *));
+    target_entry->identifier = calloc(str_len, sizeof(char));
     if (target_entry->identifier == NULL)
     {
         fprintf(stderr, "insertEntry() -- calloc() failed.\n");
