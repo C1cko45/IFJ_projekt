@@ -7,33 +7,34 @@
 
 //              i  +  -  *  /  (  )  $ +U -U REL EQ !  && || ++  .
 static const PrecRel prec_table[P_COUNT][P_COUNT] = {
-    /* i   */ { N, G, G, G, G, N, G, G, N, N, G, G, N, G, G, G, G },
-    /* +   */ { L, G, G, L, L, L, G, G, L, L, G, G, L, G, G, G, L },
-    /* -   */ { L, G, G, L, L, L, G, G, L, L, G, G, L, G, G, G, L },
-    /* *   */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L },
-    /* /   */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L },
-    /* (   */ { L, L, L, L, L, L, Q, N, L, L, L, L, L, L, L, L, L },
-    /* )   */ { N, G, G, G, G, N, G, G, N, N, G, G, N, G, G, G, G },
-    /* $   */ { L, L, L, L, L, L, N, N, L, L, L, L, L, L, L, L, L },
-    /* +U  */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L },
-    /* -U  */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L },
-    /* REL */ { L, L, L, L, L, L, G, G, L, L, N, G, L, G, G, L, L },
-    /* EQ  */ { L, L, L, L, L, L, G, G, L, L, L, N, L, G, G, L, L },
-    /* !   */ { L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L },
-    /* &&  */ { L, L, L, L, L, L, G, G, L, L, L, L, L, G, G, L, L },
-    /* ||  */ { L, L, L, L, L, L, G, G, L, L, L, L, L, L, G, L, L },
-    /* ++  */ { L, G, G, L, L, L, G, G, L, L, G, G, L, G, G, G, L },
-    /* .   */ { L, G, G, G, G, N, G, G, N, N, G, G, N, G, G, G, G },
+    /* i   */ {N, G, G, G, G, N, G, G, N, N, G, G, N, G, G, G, G},
+    /* +   */ {L, G, G, L, L, L, G, G, L, L, G, G, L, G, G, G, L},
+    /* -   */ {L, G, G, L, L, L, G, G, L, L, G, G, L, G, G, G, L},
+    /* *   */ {L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L},
+    /* /   */ {L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L},
+    /* (   */ {L, L, L, L, L, L, Q, N, L, L, L, L, L, L, L, L, L},
+    /* )   */ {N, G, G, G, G, N, G, G, N, N, G, G, N, G, G, G, G},
+    /* $   */ {L, L, L, L, L, L, N, N, L, L, L, L, L, L, L, L, L},
+    /* +U  */ {L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L},
+    /* -U  */ {L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L},
+    /* REL */ {L, L, L, L, L, L, G, G, L, L, N, G, L, G, G, L, L},
+    /* EQ  */ {L, L, L, L, L, L, G, G, L, L, L, N, L, G, G, L, L},
+    /* !   */ {L, G, G, G, G, L, G, G, L, L, G, G, L, G, G, G, L},
+    /* &&  */ {L, L, L, L, L, L, G, G, L, L, L, L, L, G, G, L, L},
+    /* ||  */ {L, L, L, L, L, L, G, G, L, L, L, L, L, L, G, L, L},
+    /* ++  */ {L, G, G, L, L, L, G, G, L, L, G, G, L, G, G, G, L},
+    /* .   */ {L, G, G, G, G, N, G, G, N, N, G, G, N, G, G, G, G},
 };
-//Koniec geenerovaneho kodu.
-
+// Koniec geenerovaneho kodu.
 
 static STACK_ITEM stack[STACK_MAX];
 static int stack_count = 0;
 static int paren_count = 0;
-STACK_ITEM get_next_item(Token token, PrecIndex prev){
+STACK_ITEM get_next_item(Token token, PrecIndex prev)
+{
     STACK_ITEM item = {0};
-    switch (token.type){
+    switch (token.type)
+    {
         case TOKEN_TYPE_INT:
         case TOKEN_TYPE_DOUBLE:
         case TOKEN_TYPE_STRING:
@@ -41,60 +42,77 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         case TOKEN_TYPE_BOOL:
         case TOKEN_TYPE_UNIT:
 
-            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz1");}
+            if (prev == P_I || prev == P_RPAREN)
+            {
+                parser_error_exit(2, "Chyba vyraz1");
+            }
 
             item = (STACK_ITEM){.idx = P_I, .token = token};
 
-        break;
+            break;
 
         case TOKEN_TYPE_PLUS:
-            if(prev == P_I || prev == P_RPAREN ){
+            if (prev == P_I || prev == P_RPAREN)
+            {
                 item = (STACK_ITEM){.idx = P_PLUS, .token = token};
-            }else{
+            }
+            else
+            {
                 item = (STACK_ITEM){.idx = P_UPLUS, .token = token};
             }
-            
-        break;
+
+            break;
 
         case TOKEN_TYPE_MINUS:
-            if(prev == P_I || prev == P_RPAREN ){
+            if (prev == P_I || prev == P_RPAREN)
+            {
                 item = (STACK_ITEM){.idx = P_MINUS, .token = token};
-            }else{
+            }
+            else
+            {
                 item = (STACK_ITEM){.idx = P_UMINUS, .token = token};
             }
-            
-        break;
+
+            break;
 
         case TOKEN_TYPE_MUL:
             item = (STACK_ITEM){.idx = P_MUL, .token = token};
-            
-        break;
+
+            break;
 
         case TOKEN_TYPE_DIV:
             item = (STACK_ITEM){.idx = P_DIV, .token = token};
-            
-        break;
+
+            break;
 
         case TOKEN_TYPE_LPAREN:
-            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz2");}
+            if (prev == P_I || prev == P_RPAREN)
+            {
+                parser_error_exit(2, "Chyba vyraz2");
+            }
             item = (STACK_ITEM){.idx = P_LPAREN, .token = token};
-            
-            
-        break;
+
+            break;
 
         case TOKEN_TYPE_RPAREN:
-            if(prev == P_DOLLAR){parser_error_exit(2, "Chyba vyraz");}
-                if(paren_count > 0){
-                    item = (STACK_ITEM){.idx = P_RPAREN, .token = token};
-                }else{
-                    item = (STACK_ITEM){.idx = P_DOLLAR, .token = token};
+            if (prev == P_DOLLAR)
+            {
+                parser_error_exit(2, "Chyba vyraz");
             }
-            
-        break;
+            if (paren_count > 0)
+            {
+                item = (STACK_ITEM){.idx = P_RPAREN, .token = token};
+            }
+            else
+            {
+                item = (STACK_ITEM){.idx = P_DOLLAR, .token = token};
+            }
+
+            break;
 
         case TOKEN_TYPE_EOL:
         case TOKEN_TYPE_SEMICOLON:
-        case KEYWORD_THEN: 
+        case KEYWORD_THEN:
         case KEYWORD_DO:
         case TOKEN_TYPE_COMMA:
         case KEYWORD_TO:
@@ -102,92 +120,121 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         case KEYWORD_BY:
         case KEYWORD_IF:
         case KEYWORD_ELSE:
-            if(prev == P_LPAREN || prev == P_DOLLAR){parser_error_exit(2, "Chyba vyraz3");}
+            if (prev == P_LPAREN || prev == P_DOLLAR)
+            {
+                parser_error_exit(2, "Chyba vyraz3");
+            }
             item = (STACK_ITEM){.idx = P_DOLLAR, .token = token};
-            
-        break;
+
+            break;
 
         case TOKEN_TYPE_LT:
         case TOKEN_TYPE_LTE:
         case TOKEN_TYPE_GT:
         case TOKEN_TYPE_GTE:
-            if(prev == P_REL){parser_error_exit(2, "Chyba vyraz4");}
+            if (prev == P_REL)
+            {
+                parser_error_exit(2, "Chyba vyraz4");
+            }
             item = (STACK_ITEM){.idx = P_REL, .token = token};
-            
-        break;
+
+            break;
 
         case TOKEN_TYPE_EQ:
         case TOKEN_TYPE_NEQ:
-            if(prev == P_EQ){parser_error_exit(2, "Chyba vyraz5");}
+            if (prev == P_EQ)
+            {
+                parser_error_exit(2, "Chyba vyraz5");
+            }
             item = (STACK_ITEM){.idx = P_EQ, .token = token};
-            
-        break;
+
+            break;
 
         case TOKEN_TYPE_NOT:
-            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz6");}
+            if (prev == P_I || prev == P_RPAREN)
+            {
+                parser_error_exit(2, "Chyba vyraz6");
+            }
             item = (STACK_ITEM){.idx = P_NOT, .token = token};
-            
-        break;
+
+            break;
 
         case TOKEN_TYPE_CONCAT:
             item = (STACK_ITEM){.idx = P_CONCAT, .token = token};
 
-        break;
+            break;
 
         case TOKEN_TYPE_DOT:
-            if(prev != P_I && prev != P_RPAREN){parser_error_exit(2, "Chyba vyraz");}
+            if (prev != P_I && prev != P_RPAREN)
+            {
+                parser_error_exit(2, "Chyba vyraz");
+            }
             item = (STACK_ITEM){.idx = P_DOT, .token = token};
 
-        break;
+            break;
 
         case TOKEN_TYPE_AND:
             item = (STACK_ITEM){.idx = P_AND, .token = token};
-            
-        break;
+
+            break;
 
         case TOKEN_TYPE_OR:
             item = (STACK_ITEM){.idx = P_OR, .token = token};
-            
-        break;
+
+            break;
         default:
             fprintf(stderr, "DEBUG: PSA dostala token typu %d\n", token.type);
             parser_error_exit(2, "Chyba vyraz7");
-        break;
+            break;
     }
     return item;
 }
 
-void insert(STACK_ITEM item){
-    if(stack_count == STACK_MAX){parser_error_exit(2, "Pretecenie stack kapacity");}
+void insert(STACK_ITEM item)
+{
+    if (stack_count == STACK_MAX)
+    {
+        parser_error_exit(2, "Pretecenie stack kapacity");
+    }
     stack[stack_count++] = item;
     return;
 }
-STACK_ITEM stack_pop(void){
-    if(stack_count == 0){
+STACK_ITEM stack_pop(void)
+{
+    if (stack_count == 0)
+    {
         parser_error_exit(99, "Pop z prazdneho zasobnika.");
     }
     stack_count--;
     return stack[stack_count];
 }
-static int stack_top_position(void){
-    for (int i = stack_count-1; i>=0; i-- ){
-        if(stack[i].idx < P_COUNT ){
+static int stack_top_position(void)
+{
+    for (int i = stack_count - 1; i >= 0; i--)
+    {
+        if (stack[i].idx < P_COUNT)
+        {
             return i;
         }
     }
     return -1;
 }
-void reduce(){
+void reduce(void)
+{
     int index = stack_top_position();
-    if(index < 0){parser_error_exit(99, "Prazdny zasobnik v reduce");}
-    AST_NODE* temp = NULL;
+    if (index < 0)
+    {
+        parser_error_exit(99, "Prazdny zasobnik v reduce");
+    }
+    AST_NODE *temp = NULL;
 
-    switch (stack[index].idx){
+    switch (stack[index].idx)
+    {
         case P_I:
-            //pravidlo E->i
+            // pravidlo E->i
             temp = ast_create_node(stack[index].token);
             stack[index] = (STACK_ITEM){.idx = P_EXPR, .node = temp};
-        break;
+            break;
 
         case P_PLUS:
         case P_MINUS:
@@ -199,154 +246,182 @@ void reduce(){
         case P_OR:
         case P_CONCAT:
         case P_DOT:
-            //pravidlo E->E znamienko E  (pre P_DOT je to E.id)
-            if(index < 1 || index + 1 != stack_count - 1 ||
-                stack[index-1].idx != P_EXPR || stack[index+1].idx != P_EXPR){
+            // pravidlo E->E znamienko E  (pre P_DOT je to E.id)
+            if (index < 1 || index + 1 != stack_count - 1 || stack[index - 1].idx != P_EXPR ||
+                stack[index + 1].idx != P_EXPR)
+            {
                 parser_error_exit(2, "Chyba v pravidle E->E op E");
             }
-            if(stack[index].idx == P_DOT){
-                temp = ast_create_node_type(NODE_VALMEM);   // clen hodnoty: lavy = prijemca, pravy = nazov clena
-            }else{
+            if (stack[index].idx == P_DOT)
+            {
+                temp = ast_create_node_type(NODE_VALMEM); // clen hodnoty: lavy = prijemca, pravy = nazov clena
+            }
+            else
+            {
                 temp = ast_create_node(stack[index].token);
             }
-            ast_add_parent(temp, stack[index-1].node, 0);
-            ast_add_parent(temp, stack[index+1].node, 1);
+            ast_add_parent(temp, stack[index - 1].node, 0);
+            ast_add_parent(temp, stack[index + 1].node, 1);
             stack_pop();
             stack_pop();
-            stack[stack_count-1] = (STACK_ITEM){.idx = P_EXPR, .node = temp};
-        break;
+            stack[stack_count - 1] = (STACK_ITEM){.idx = P_EXPR, .node = temp};
+            break;
 
         case P_RPAREN:
-            //pravidlo E->(E)
-            if(index < 2 || stack[index-1].idx != P_EXPR || stack[index-2].idx != P_LPAREN){
+            // pravidlo E->(E)
+            if (index < 2 || stack[index - 1].idx != P_EXPR || stack[index - 2].idx != P_LPAREN)
+            {
                 parser_error_exit(2, "Chyba v pravidle E->(E)");
             }
-            stack[index-2] = stack[index-1];
+            stack[index - 2] = stack[index - 1];
             stack_pop();
             stack_pop();
-        break;
+            break;
 
         case P_NOT:
         case P_UPLUS:
         case P_UMINUS:
-            //pravidlo E->unarny op E
-            if(index + 1 != stack_count - 1 || stack[index+1].idx != P_EXPR){
+            // pravidlo E->unarny op E
+            if (index + 1 != stack_count - 1 || stack[index + 1].idx != P_EXPR)
+            {
                 parser_error_exit(2, "Chyba v unarnom pravidle");
             }
             temp = ast_create_node(stack[index].token);
-            ast_add_parent(temp, stack[index+1].node, 0);
+            ast_add_parent(temp, stack[index + 1].node, 0);
             stack_pop();
             stack[index] = (STACK_ITEM){.idx = P_EXPR, .node = temp};
-        break;
+            break;
 
         default:
             parser_error_exit(2, "Chyba v reduce");
-        break;
+            break;
     }
 }
-AST_NODE* parse_expression(){
+AST_NODE *parse_expression(void)
+{
     stack_count = 0;
     paren_count = 0;
     insert((STACK_ITEM){.idx = P_DOLLAR});
     PrecIndex prev = P_DOLLAR;
 
-    while(1){
+    while (1)
+    {
         Token tk = peek();
         // volanie funkcie: na zasobniku je len $ a identifikator, nasleduje '('
-        if(prev == P_I && stack_count == 2 && tk.type == TOKEN_TYPE_LPAREN
-        && stack[1].token.type == TOKEN_TYPE_IDENTIFIER){
+        if (prev == P_I && stack_count == 2 && tk.type == TOKEN_TYPE_LPAREN &&
+            stack[1].token.type == TOKEN_TYPE_IDENTIFIER)
+        {
             Token name = stack[1].token;
-            next();                       // spotrebuje '('
+            next(); // spotrebuje '('
             return call_f(name, tk);
         }
-        STACK_ITEM item = get_next_item(peek(),prev);
-        
+        STACK_ITEM item = get_next_item(peek(), prev);
+
         PrecIndex first = stack[stack_top_position()].idx;
         PrecIndex second = item.idx;
 
-        if(first == P_DOLLAR && second == P_DOLLAR ){
+        if (first == P_DOLLAR && second == P_DOLLAR)
+        {
             break;
         }
 
-        switch(prec_table[first][second]){
-                
-                case L:
-                case Q:
-                    insert(item);
-                    if(second == P_LPAREN){ paren_count++; }
-                    if(second == P_RPAREN){ paren_count--; }
-                    next();
-                    prev = second;
-                    break;
+        switch (prec_table[first][second])
+        {
 
-                case G:
-                    reduce();
-                    break;
+            case L:
+            case Q:
+                insert(item);
+                if (second == P_LPAREN)
+                {
+                    paren_count++;
+                }
+                if (second == P_RPAREN)
+                {
+                    paren_count--;
+                }
+                next();
+                prev = second;
+                break;
 
-                case N:
-                default:
-                    parser_error_exit(2, "Chyba expression");
-                    break;
-                
-            }
+            case G:
+                reduce();
+                break;
+
+            case N:
+            default:
+                parser_error_exit(2, "Chyba expression");
+                break;
+        }
     }
-    if(stack_count != 2 || stack[1].idx != P_EXPR){
+    if (stack_count != 2 || stack[1].idx != P_EXPR)
+    {
         parser_error_exit(2, "Chyba vyraz8");
     }
     return stack[1].node;
 }
 
-//funkcia ak sa uz token ziedol pri desifrovani ktora funkcia to je ale mi ho este potrebujeme
+// funkcia ak sa uz token ziedol pri desifrovani ktora funkcia to je ale mi ho este potrebujeme
 
-AST_NODE* parse_expression_from(Token token){
+AST_NODE *parse_expression_from(Token token)
+{
     stack_count = 0;
     paren_count = 0;
     insert((STACK_ITEM){.idx = P_DOLLAR});
     PrecIndex prev = P_DOLLAR;
     STACK_ITEM item = get_next_item(token, prev);
-    insert(item); 
+    insert(item);
     prev = item.idx;
-    while(1){
+    while (1)
+    {
         Token tk = peek();
         // volanie funkcie: na zasobniku je len $ a identifikator, nasleduje '('
-        if(prev == P_I && stack_count == 2 && tk.type == TOKEN_TYPE_LPAREN
-        && stack[1].token.type == TOKEN_TYPE_IDENTIFIER){
+        if (prev == P_I && stack_count == 2 && tk.type == TOKEN_TYPE_LPAREN &&
+            stack[1].token.type == TOKEN_TYPE_IDENTIFIER)
+        {
             Token name = stack[1].token;
-            next();                       // spotrebuje '('
+            next(); // spotrebuje '('
             return call_f(name, tk);
         }
-        STACK_ITEM item = get_next_item(peek(),prev);
-        
+        STACK_ITEM item = get_next_item(peek(), prev);
+
         PrecIndex first = stack[stack_top_position()].idx;
         PrecIndex second = item.idx;
 
-        if(first == P_DOLLAR && second == P_DOLLAR ){
+        if (first == P_DOLLAR && second == P_DOLLAR)
+        {
             break;
         }
 
-        switch(prec_table[first][second]){
-                
-                case L:
-                case Q:
-                    insert(item);
-                    if(second == P_LPAREN){ paren_count++; }
-                    if(second == P_RPAREN){ paren_count--; }
-                    next();
-                    prev = second;
-                    break;
+        switch (prec_table[first][second])
+        {
 
-                case G:
-                    reduce();
-                    break;
+            case L:
+            case Q:
+                insert(item);
+                if (second == P_LPAREN)
+                {
+                    paren_count++;
+                }
+                if (second == P_RPAREN)
+                {
+                    paren_count--;
+                }
+                next();
+                prev = second;
+                break;
 
-                case N:
-                default:
-                    parser_error_exit(2, "Chyba expression");
-                    break;
-                
-            }
+            case G:
+                reduce();
+                break;
+
+            case N:
+            default:
+                parser_error_exit(2, "Chyba expression");
+                break;
+        }
     }
-    if(stack_count != 2 || stack[1].idx != P_EXPR){
+    if (stack_count != 2 || stack[1].idx != P_EXPR)
+    {
         parser_error_exit(2, "Chyba vyraz9");
     }
     return stack[1].node;

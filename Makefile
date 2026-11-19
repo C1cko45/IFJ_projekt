@@ -1,6 +1,10 @@
 CC = gcc
 
+CLANG = clang
+
 CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -g
+
+CLANGFLAGS = -g -O0 -Wall -Werror -Wpedantic
 
 MAIN_SRC = main.c
 
@@ -25,10 +29,10 @@ all: build
 build: $(EXEC)
 
 $(EXEC): $(SRCS)
-	$(CC) $(CFLAGS) $(SRCS) -o $@
+	$(CLANG) $(CLANGFLAGS) $(SRCS) -o $@
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CLANG) $(CLANGFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(EXEC)

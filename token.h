@@ -91,7 +91,8 @@ typedef enum
     KEYWORD_LIST,
 } TokenType;
 
-typedef union {
+typedef union
+{
     long long int_val;
     double double_val;
     char *str_val;

@@ -4,7 +4,7 @@
 
 // TODO: dopisat ostatne suboru *.h
 
-int main()
+int main(void)
 {
     // TODO: load file pre lexer a generator.
     // FILE *output = fopen("output.txt", "w");
