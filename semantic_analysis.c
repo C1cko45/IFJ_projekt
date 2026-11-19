@@ -29,6 +29,7 @@ static DataType resolveDataType(AST_NODE *target_node);
 static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table);
 static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table);
 static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node);
+static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
 
 static void insertBuiltins(SymTable *sym_table);
 static void checkMain(AST_NODE *root, SymTable *sym_table);
@@ -36,6 +37,8 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table);
 
 static void functionDef(AST_NODE *function_node, SymTable *sym_table);
 static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
+
+static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
 
 static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, SymTable *sym_table);
 static void forStatement(AST_NODE *for_node, SymTable *sym_table);
@@ -440,16 +443,23 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
 /*
  * Processes AST subtree for if statement
  * if-condition is any expression that evaluates to Boolean
+ * Branches: Else-if (optional), Else (optional)
  * every branch has its own scope
+ *
+ * if-statement's return value is UNIT
+ * if-statement different semantics from if-expression, see ifExpr()
  */
-static DataType ifStatement(AST_NODE *if_node, SymTable *sym_table)
+static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table)
 {
-    // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
-    // Probably run this in a while loop, get number of branches by traversing right childs until NULL
-    // If you encounter another ifStatement, invoke programStatement(), preserve scope hierarchy
-    pushScope(sym_table);
-    popScope(sym_table);
-    return UNIT; // TODO:placeholder value
+    // Argument error-handling
+    if (if_node == NULL || function_entry == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "ifStatement() -- at least one argument is invalid\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    // TBD: Loop through if_node->right_ch until NODE_PROGRAM? AST is incorrect
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -536,7 +546,7 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
             // TODO: forStatement(program_node->left_ch, sym_table);
             // return Unit;
         case NODE_IF:
-            // TODO: return ifStatement(program_node->left_ch, sym_table);
+            // TODO: return ifStatement(program_node->left_ch, function_entry, sym_table);
         case NODE_VALMEM:
         case NODE_LIST:
             // TODO: return exprStatement(program_node->left_ch, sym_table);
@@ -805,4 +815,16 @@ static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node)
 
 static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table)
 {
+    // TBD:
+}
+
+/*
+ * if-expression has fixed form: if-branch and else-branch
+ * both branches must have same return value type -> otherwise ERROR_TYPE?
+ */
+static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table)
+{
+    // TBD:
+    pushScope(sym_table);
+    popScope(sym_table);
 }
