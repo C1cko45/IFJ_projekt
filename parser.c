@@ -16,6 +16,7 @@
 
 static Token saved_token;
 static bool has_saved = false;
+static AST_NODE *ast_root = NULL;   // koren AST, aby ho parser_error_exit vedel uvolnit
 
 // peek: nacita dalsi token zo scannera, ale nespotrebuje ho (dalsi peek/next vrati ten isty)
 //! Volana z: get_type(), parser_get_list(), parameter_list(), var_def(), val_def(), call_f(), if_statement(),
@@ -24,6 +25,7 @@ Token peek(void){
     if(!has_saved){
         has_saved = true;
         saved_token = scanner_get_next_token();
+        if(saved_token.type == TOKEN_ERROR_LEX){parser_error_exit(1, "Lexikalna chyba");}
     }
     return saved_token;
 }
@@ -40,18 +42,21 @@ Token next(void){
         return saved_token;
     }else{
         t = scanner_get_next_token();
+        if(t.type == TOKEN_ERROR_LEX){parser_error_exit(1, "Lexikalna chyba");}
     }
     
     return t;
 }
 
 // parser_error_exit: vypise chybu na stderr a ukonci program s danym navratovym kodom
-// TODO: parser_error_exit musi pred exit uvolnit vsetky alokacie (AST uzly, retazce identifikatorov cez token_free) - ast_free_node zatial neexistuje v ast.c
 //! Volana z: get_type(), parser_get_list(), parameter_list(), var_def(), val_def(), call_f(), if_statement(),
 //!     while_loop(), statement(), function_body_block(), function_def(), function_list(), program(), psa.c: viac
 //!     funkcii
 void parser_error_exit(int error_code, const char *message){
     fprintf(stderr, "Chyba (%d): %s\n",error_code,message);
+    if(has_saved){ token_free(&saved_token); has_saved = false; }   // nespotrebovany token
+    ast_free_node(ast_root);                                         // uvolni cast stromu, ktora uz je postavena
+    ast_root = NULL;
     exit(error_code);
 }
 
@@ -92,7 +97,9 @@ AST_NODE* get_type( ){
 //! Volana z: get_type()
 AST_NODE* parser_get_list(){
     AST_NODE* list_node = ast_create_node_type(NODE_LIST);
-    Token current_token = next();
+    Token current_token = next();                 // spotrebuje klucove slovo List
+    if(current_token.type != KEYWORD_LIST){parser_error_exit(2,"Syntakticka chyba,parser_get_list");}
+    current_token = next();
     if(current_token.type !=TOKEN_TYPE_LBRACKET){parser_error_exit(2,"Syntakticka chyba,parser_get_list");}
 
     current_token = peek();
@@ -130,6 +137,7 @@ AST_NODE* parameter_list(){
         
         current_token = next();
         if(current_token.type == TOKEN_TYPE_COMMA){
+            if(peek().type == TOKEN_TYPE_RPAREN){parser_error_exit(2, "Syntakticka chyba, parameter_list: ciarka pred ')'");}
             temp = parameter_list();
             ast_add_parent(last_program_node,temp,1);
             
@@ -253,7 +261,7 @@ AST_NODE* var_assign(Token first, Token second){
 // call_f: volanie funkcie "meno(...)" (zatial nedokoncene)
 //! Volana z: statement(), psa.c: parse_expression (volanie na zaciatku vyrazu)
 AST_NODE* call_f(Token first, Token second){
-    if(first.type == TOKEN_TYPE_IDENTIFIER && second.type == TOKEN_TYPE_LPAREN){
+    if((first.type == TOKEN_TYPE_IDENTIFIER || first.type == KEYWORD_LIST) && second.type == TOKEN_TYPE_LPAREN){
         AST_NODE* root = ast_create_node_type(NODE_CALL);
         ast_add_parent(root, ast_create_node(first), 0);  //pridanie nazvu funkcie 
         AST_NODE* argument;
@@ -272,6 +280,7 @@ AST_NODE* call_f(Token first, Token second){
                 case TOKEN_TYPE_MINUS:
                 case TOKEN_TYPE_PLUS:
                 case TOKEN_TYPE_NOT:
+                case KEYWORD_LIST:
                     argument = parse_expression();
                     ast_add_parent(temp, argument, 0 );
                     
@@ -713,6 +722,7 @@ AST_NODE* function_list(){
         
         }else if(current_token.type == TOKEN_TYPE_EOL){ //spotrebovanie EOL tokenu aby mohol byt na inom riadku ako def
             current_token = next();
+            while(current_token.type == TOKEN_TYPE_EOL){ current_token = next(); }   // aj viac prazdnych riadkov
             if(current_token.type == KEYWORD_DEF){
             temp = ast_create_node_type(NODE_FUNC_DEF);
             ast_add_parent(root, temp, 0);
@@ -749,11 +759,13 @@ AST_NODE* function_list(){
 // prolog: skontroluje povinny prolog "import meno.*" ukonceny EOL
 //! Volana z: program()
 bool prolog(){
-    Token current_token = next(); 
+    Token current_token = next();
+    while(current_token.type == TOKEN_TYPE_EOL){ current_token = next(); }   // pred prologom mozu byt komentare a prazdne riadky
     if (current_token.type != KEYWORD_IMPORT) return false;
     
     current_token = next();       
     if (current_token.type != TOKEN_TYPE_IDENTIFIER) return false;
+    token_free(&current_token);
     
     current_token = next();       
     if (current_token.type != TOKEN_TYPE_DOT) return false;
@@ -771,6 +783,7 @@ bool prolog(){
 //! Volana z: main.c: main
 AST_NODE* program(){
     AST_NODE* root = ast_create_node_type(NODE_PROGRAM);
+    ast_root = root;
     if (prolog() == false){
         parser_error_exit(2,"Syntakticka chyba v prologu.");
     }
