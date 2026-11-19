@@ -2,7 +2,7 @@ CC = gcc
 
 CFLAGS = -std=c11 -Wall -Wextra -pedantic
 
-MAIN_SRC = test_main.c
+MAIN_SRC = main.c
 
 SCANNER_SRCS = scanner.c dstring.c stack.c token.c
 
@@ -12,7 +12,7 @@ SEMANTIC_SRCS = semantic_analysis.c symtable.c
 
 GENERATOR_SRCS = gen_def.c gen_nondef.c codegen.c
 
-SRCS = $(MAIN_SRC) $(SCANNER_SRCS) $(PARSER_SRCS)
+SRCS = $(MAIN_SRC) $(SCANNER_SRCS) $(PARSER_SRCS) $(SEMANTIC_SRCS) $(GENERATOR_SRCS)
 
 OBJS = $(SRCS:.c=.o)
 
