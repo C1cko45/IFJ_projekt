@@ -1069,6 +1069,7 @@ static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node)
 static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table)
 {
     // TBD:
+    return NIL;
 }
 
 /*
@@ -1080,4 +1081,6 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
     // TBD:
     pushScope(sym_table);
     popScope(sym_table);
+
+    return NIL;
 }
