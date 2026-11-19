@@ -1,6 +1,6 @@
 CC = gcc
 
-CFLAGS = -std=c11 -Wall -Wextra -pedantic
+CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -g
 
 MAIN_SRC = main.c
 
@@ -12,7 +12,7 @@ SEMANTIC_SRCS = semantic_analysis.c symtable.c
 
 GENERATOR_SRCS = gen_def.c gen_nondef.c codegen.c
 
-SRCS = $(MAIN_SRC) $(SCANNER_SRCS) $(PARSER_SRCS) $(SEMANTIC_SRCS) $(GENERATOR_SRCS)
+SRCS = $(MAIN_SRC) $(SCANNER_SRCS) $(PARSER_SRCS) $(SEMANTIC_SRCS)
 
 OBJS = $(SRCS:.c=.o)
 
