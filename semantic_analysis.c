@@ -39,9 +39,10 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table);
 static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
 
 static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
+static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable *sym_table);
 
 static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, SymTable *sym_table);
-static void forStatement(AST_NODE *for_node, SymTable *sym_table);
+static DataType forStatement(AST_NODE *for_node, SymTable *sym_table);
 
 static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry, SymTable *sym_table);
 static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table);
@@ -447,7 +448,10 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
  * every branch has its own scope
  *
  * if-statement's return value is UNIT
+ * if-statement is standalone statement in a function block, if-expression is part of an expression
  * if-statement different semantics from if-expression, see ifExpr()
+ *
+ * Due to nature of AST for if-statement must return AST_NODE that is after if-statement
  */
 static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table)
 {
@@ -459,7 +463,80 @@ static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable
         exit(ERROR_INTERNAL);
     }
 
-    // TBD: Loop through if_node->right_ch until NODE_PROGRAM? AST is incorrect
+    AST_NODE *cond_node = if_node->left_ch;
+    if (cond_node == NULL)
+    {
+        fprintf(stderr, "ifStatement() -- AST condition node is invalid\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    // Evaluate the condition first
+    if (evaluateExpr(cond_node->left_ch, sym_table) != BOOLEAN)
+    {
+        fprintf(stderr, "ifStatement() -- condition expression is not boolean\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    // Process if-branch's block
+    pushScope(sym_table);
+
+    AST_NODE *program_node = cond_node->right_ch;
+    while (program_node != NULL)
+    {
+        programStatement(program_node, function_entry, sym_table);
+        program_node = program_node->right_ch;
+    }
+
+    popScope(sym_table);
+
+    // Process optional else-if and else branches
+    if (if_node->right_ch != NULL)
+        elseStatement(if_node->right_ch, function_entry, sym_table);
+
+    return UNIT;
+}
+
+/*
+ * Processes else-if, else branches of if-statement
+ *
+ * Helper function for ifStatement(), should never be called on its own
+ */
+static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable *sym_table)
+{
+    // TBD: Either else_node->left_ch == NODE_PROGRAM (else branch)
+    // or it's else_node->left_ch = NODE_IF (else-if branch)
+    // Argument error-handling
+    if (else_node == NULL || function_entry == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "elseStatement() -- at least one argument is invalid\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    // else_node is else-if branch
+    if (else_node->left_ch->type == NODE_IF)
+    {
+        // process the else-if branch block
+        ifStatement(else_node->left_ch, function_entry, sym_table);
+        // process another else-if/else branch exists
+        if (else_node->right_ch != NULL)
+            elseStatement(else_node->left_ch, function_entry, sym_table);
+    }
+
+    // else_node is else branch
+    // process else branch block
+    pushScope(sym_table);
+
+    AST_NODE *program_node = else_node->left_ch;
+    while (program_node != NULL)
+    {
+        programStatement(program_node, function_entry, sym_table);
+        program_node = program_node->right_ch;
+    }
+
+    popScope(sym_table);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -472,17 +549,33 @@ static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable
  */
 static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, SymTable *sym_table)
 {
+    // Argument error-handling
+    if (while_node == NULL || function_entry == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "whileStatement() -- at least one argument is invalid\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    AST_NODE *cond_expr = while_node->left_ch;
+    if (cond_expr != NULL)
+    {
+        fprintf(stderr, "whileStatement() -- while-condition doesn't exist\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
     // Evaluate the condition first
-    if (evaluateExpr(while_node->left_ch, sym_table) != BOOLEAN)
+    if (evaluateExpr(cond_expr, sym_table) != BOOLEAN)
     {
         fprintf(stderr, "whileStatement() -- condition expression is not boolean\n");
         // TODO: cleanup()
         exit(ERROR_TYPE);
     }
 
+    // Process while's block
     pushScope(sym_table);
 
-    // Process while's body
     AST_NODE *program_node = while_node->right_ch;
     while (program_node != NULL)
     {
@@ -491,10 +584,11 @@ static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, Sy
     }
 
     popScope(sym_table);
+
     return UNIT;
 }
 
-static void forStatement(AST_NODE *for_node, SymTable *sym_table)
+static DataType forStatement(AST_NODE *for_node, SymTable *sym_table)
 {
     // TODO: Must evaluate the condition, among other things in this complicated mess of a construct (LMAO)
     pushScope(sym_table);
@@ -539,14 +633,13 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
         case NODE_VAR_DEF:
         case NODE_VAL_DEF:
             // TODO: variableDef(program_node->left_ch, sym_table);
-            // return Unit;
+            // return UNIT;
         case NODE_WHILE:
             return whileStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
         case NODE_FOR:
-            // TODO: forStatement(program_node->left_ch, sym_table);
-            // return Unit;
+            return forStatement(program_node->left_ch, sym_table);
         case NODE_IF:
-            // TODO: return ifStatement(program_node->left_ch, function_entry, sym_table);
+            return ifStatement(program_node->left_ch, function_entry, sym_table);
         case NODE_VALMEM:
         case NODE_LIST:
             // TODO: return exprStatement(program_node->left_ch, sym_table);
