@@ -3,6 +3,8 @@ import ifj26.*
 @main
 def runFoo(): Unit =
     var x: Int = 32
+    for i <- 1 to x by 1 do
+        print(i)
 
 def main(): Int =
     return x + 5
