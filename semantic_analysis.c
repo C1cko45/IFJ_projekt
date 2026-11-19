@@ -3,6 +3,7 @@
  * Author: Pham Vu Duy Anh, xphamv00
  */
 
+#include <endian.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -34,6 +35,9 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table);
 
 static void functionDef(AST_NODE *function_node, SymTable *sym_table);
 static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
+
+static void whileStatement(AST_NODE *while_node, SymTable *sym_table);
+static void forStatement(AST_NODE *for_node, SymTable *sym_table);
 
 static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry, SymTable *sym_table);
 static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table);
@@ -218,14 +222,28 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
     {
         if (root->left_ch->type == NODE_MAIN)
         {
-            function_entry.identifier = root->left_ch->left_ch->left_ch->token.attr.str_val;
+            AST_NODE *function_node = root->left_ch->left_ch;
+            function_entry.identifier = function_node->left_ch->token.attr.str_val;
             function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = UNIT;
-            function_entry.entry_data.function.param_count = 0;
+            function_entry.entry_data.function.return_type = resolveDataType(function_node->left_ch);
+            if (function_entry.entry_data.function.return_type != UNIT)
+            {
+                fprintf(stderr, "insertAllFunctions() -- @main function has wrong return type\n");
+                // TODO: cleanup()
+                exit(ERROR_TYPE);
+            }
+            function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
+            if (function_entry.entry_data.function.param_count != 0)
+            {
+                fprintf(stderr, "insertAllFunctions() -- @main function contains parameters\n");
+                // TODO: cleanup()
+                exit(ERROR_PARAM);
+            }
+            function_entry.entry_data.function.parameters = NULL;
 
             if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
             {
-                fprintf(stderr, "insertAllFunctions() -- Function was already defined\n");
+                fprintf(stderr, "insertAllFunctions() -- @main function was already defined\n");
                 // TODO: cleanup()
                 exit(ERROR_REDEF);
             }
@@ -234,10 +252,34 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
 
         if (root->left_ch->type == NODE_FUNC_DEF)
         {
-            function_entry.identifier = root->left_ch->left_ch->token.attr.str_val;
+            AST_NODE *function_node = root->left_ch;
+            function_entry.identifier = function_node->left_ch->token.attr.str_val;
             function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = resolveDataType(root->left_ch->left_ch);
-            function_entry.entry_data.function.param_count = countParams(root->left_ch->left_ch->right_ch);
+            function_entry.entry_data.function.return_type = resolveDataType(function_node->left_ch);
+            function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
+
+            size_t param_count = function_entry.entry_data.function.param_count;
+            if (param_count != 0)
+            {
+                // allocate array parameters[countParams]
+                // while-loop right childs until NULL, resolveDataType?
+                function_entry.entry_data.function.parameters = calloc(param_count, sizeof(DataType));
+                if (function_entry.entry_data.function.parameters == NULL)
+                {
+                    fprintf(stderr, "insertAllFunctions() -- calloc() failed\n");
+                    // TODO: cleanup()
+                    exit(ERROR_INTERNAL);
+                }
+
+                AST_NODE *param_node = function_node->left_ch->right_ch;
+                for (size_t index = 0; param_count > 0; ++index, --param_count)
+                {
+                    function_entry.entry_data.function.parameters[index] = resolveDataType(param_node);
+                    param_node = param_node->right_ch;
+                }
+            }
+            else
+                function_entry.entry_data.function.parameters = NULL;
 
             if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
             {
@@ -270,22 +312,34 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
     // Create new local scope for function body
     pushScope(sym_table);
 
-    // Push every parameter into its function scope as immutable variable
-    pushParamsIntoScope(function_node->left_ch->right_ch, sym_table);
+    // update sym_table's function_entry to include info about each parameter's type
     HTEntry *function_entry = getIdentifier(function_node->left_ch->token.attr.str_val, FUNCTION, sym_table);
 
-    // Process function block (loop right childs until NULL -> end of function body)
-    // While looping, if check for for potential return statements anywhere and compare return value with return type
-    // Process last programStatement() separately -> must check whether it's return statement or expression
-    // In case of expression, evaluate its return value type and compare with function return type
+    // Push every parameter into its function scope as immutable variable
+    pushParamsIntoScope(function_node->left_ch->right_ch, sym_table);
+
+    /*
+     * Process function body
+     * check that last statement in function body has correct return value
+     * If Expr -> Evaluate its return value and compare against function return type
+     * if VAR def | assign | for-loop | while-loop | -> return value is '()'
+     * if Function call -> Evaluate its return value and compare against function return type
+     * if if-statement
+     * -- if if-statement is expression -> treat as case Expr
+     * -- if if-statement not expression ->
+     *          allowed as last stat when function return type explicitly Unit
+     *          or all branches end with return -> return '()'
+     *          or function return type not specified and all branches return '()' -> return '()'
+     * Other return statements elsewhere in function body evaluated as they are processed during AST traversal
+     */
     AST_NODE *program_node = function_node->right_ch;
     while (program_node != NULL)
     {
         if (program_node->right_ch == NULL) // if last statement in function body
         {
-            // TODO: Evaluate return value and compare its type with function return type
-            DataType return_value_type = programStatement(program_node, function_entry, sym_table);
-            if (return_value_type != function_entry->entry_data.function.return_type)
+            // Evaluate return value and compare its type with function return type
+            DataType retval_type = programStatement(program_node, function_entry, sym_table);
+            if (retval_type != function_entry->entry_data.function.return_type)
             {
                 fprintf(stderr, "functionDef() -- return value type doesn't match function signature.\n");
                 // TODO: cleanup()
@@ -334,14 +388,16 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     }
 
     // Check argument types -- can only be literals and identifiers
-    while (arg_count-- > 0)
+    DataType arg_type;
+    for (size_t param_index = 0; arg_count > 0; ++param_index, --arg_count)
     {
         // TBD: Must re-design symtable's HTEntryData to include another struct field DataType *Parameters
         // Will contain ordered parameter types
         // Then implement in semantic_analysis a function that will walk the argument AST subtree and the HTEntry array
-        ;
+        arg_type = resolveDataType(call_node->right_ch);
     }
 
+    // Annotate AST node with sym_table info for codegen
     annotateAST(function_entry, call_node->left_ch);
 
     return function_entry->entry_data.function.return_type;
@@ -352,22 +408,32 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
 static DataType ifStatement(AST_NODE *if_node, SymTable *sym_table)
 {
     // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
+    // Probably run this in a while loop, get number of branches by traversing right childs until NULL
+    // If you encounter another ifStatement, invoke programStatement(), preserve scope hierarchy
     pushScope(sym_table);
     popScope(sym_table);
 }
 
-static DataType whileStatement(AST_NODE *while_node, SymTable *sym_table)
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static void whileStatement(AST_NODE *while_node, SymTable *sym_table)
 {
     // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
     pushScope(sym_table);
     popScope(sym_table);
 }
 
-static DataType forStatement(AST_NODE *for_node, SymTable *sym_table)
+static void forStatement(AST_NODE *for_node, SymTable *sym_table)
 {
     // TODO: Must evaluate the condition, among other things in this complicated mess of a construct (LMAO)
     pushScope(sym_table);
     popScope(sym_table);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static void variableDef(AST_NODE *def_node, SymTable *sym_table)
+{
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -399,12 +465,16 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
     {
         case NODE_CALL:
             return functionCall(program_node->left_ch, sym_table);
-        case (NODE_VAR_DEF || NODE_VAL_DEF):
+        case NODE_VAR_DEF:
+        case NODE_VAL_DEF:
             // TODO: variableDef(program_node->left_ch, sym_table);
+            // return Unit;
         case NODE_WHILE:
-            // TODO: return whileStatement(program_node->left_ch, sym_table);
+            // TODO: whileStatement(program_node->left_ch, sym_table);
+            // return Unit;
         case NODE_FOR:
-            // TODO: return forStatement(program_node->left_ch, sym_table);
+            // TODO: forStatement(program_node->left_ch, sym_table);
+            // return Unit;
         case NODE_IF:
             // TODO: return ifStatement(program_node->left_ch, sym_table);
         case NODE_VALMEM:
@@ -544,47 +614,83 @@ static DataType resolveDataType(AST_NODE *target_node)
         exit(ERROR_INTERNAL);
     }
 
-    // AST node doesn't have a type annotation
-    if (target_node->left_ch != NULL)
-        return NIL;
-
-    switch (target_node->left_ch->token.type)
+    // AST node might have type annotation
+    AST_NODE *type_node = target_node->left_ch;
+    if (type_node != NULL)
     {
-        case KEYWORD_STRING:
-            return STRING;
-        case KEYWORD_DOUBLE:
-            return DOUBLE;
-        case KEYWORD_INT:
-            return INT;
-        case KEYWORD_BOOLEAN:
-            return BOOLEAN;
-        case KEYWORD_UNIT:
-            return UNIT;
-        case KEYWORD_LIST:
-            switch (target_node->left_ch->left_ch->token.type)
-            {
-                case KEYWORD_STRING:
-                    return LIST_STRING;
-                case KEYWORD_DOUBLE:
-                    return LIST_DOUBLE;
-                case KEYWORD_INT:
-                    return LIST_INT;
-                case KEYWORD_BOOLEAN:
-                    return LIST_BOOLEAN;
-                case KEYWORD_UNIT:
-                    return LIST_UNIT;
-                // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
-                //     return LIST_ANY;
-                default:
-                    fprintf(stderr, "resolveDataType() -- Function has indeterminate return type.\n");
-                    // TODO: cleanup()
-                    exit(ERROR_INTERNAL);
-            }
-        default:
-            fprintf(stderr, "resolveDataType() -- called on wrong AST Node.\n");
-            // TODO: cleanup()
-            exit(ERROR_INTERNAL);
+        switch (type_node->token.type)
+        {
+            case KEYWORD_STRING:
+                return STRING;
+            case KEYWORD_DOUBLE:
+                return DOUBLE;
+            case KEYWORD_INT:
+                return INT;
+            case KEYWORD_BOOLEAN:
+                return BOOLEAN;
+            case KEYWORD_UNIT:
+                return UNIT;
+            case KEYWORD_LIST:
+                switch (type_node->left_ch->token.type)
+                {
+                    case KEYWORD_STRING:
+                        return LIST_STRING;
+                    case KEYWORD_DOUBLE:
+                        return LIST_DOUBLE;
+                    case KEYWORD_INT:
+                        return LIST_INT;
+                    case KEYWORD_BOOLEAN:
+                        return LIST_BOOLEAN;
+                    case KEYWORD_UNIT:
+                        return LIST_UNIT;
+                    // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
+                    //     return LIST_ANY;
+                    default:;
+                }
+            default:;
+        }
     }
+
+    // passed argument node might be type literal
+    type_node = target_node;
+    if (type_node == NULL)
+    {
+        switch (type_node->token.type)
+        {
+            case KEYWORD_STRING:
+                return STRING;
+            case KEYWORD_DOUBLE:
+                return DOUBLE;
+            case KEYWORD_INT:
+                return INT;
+            case KEYWORD_BOOLEAN:
+                return BOOLEAN;
+            case KEYWORD_UNIT:
+                return UNIT;
+            case KEYWORD_LIST:
+                switch (type_node->left_ch->token.type)
+                {
+                    case KEYWORD_STRING:
+                        return LIST_STRING;
+                    case KEYWORD_DOUBLE:
+                        return LIST_DOUBLE;
+                    case KEYWORD_INT:
+                        return LIST_INT;
+                    case KEYWORD_BOOLEAN:
+                        return LIST_BOOLEAN;
+                    case KEYWORD_UNIT:
+                        return LIST_UNIT;
+                    // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
+                    //     return LIST_ANY;
+                    default:;
+                }
+            default:;
+        }
+    }
+
+    fprintf(stderr, "resolveDataType() -- AST node either doesn't have type annotation or isn't a type literal.\n");
+    // TODO: cleanup()
+    exit(ERROR_INTERNAL);
 }
 
 /*
