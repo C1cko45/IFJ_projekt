@@ -1,10 +1,12 @@
 CC = gcc
 CLANG = clang
 
-CFLAGS = -std=c99 -Wall -Wextra -Wpedantic -g
+CFLAGS = -std=c99 -Wall -Wextra -Wpedantic -Werror -g
 
-CLANGFLAGS = -std=c99 -Wall -Werror -Wpedantic -O0 -g
-CLANG_ANALYSIS = --analyze -std=c99 -Wall -Werror -Wpedantic -Xanalyzer -analyzer-output=text
+CLANGFLAGS = -std=c99 -Wall -Wextra -Wpedantic -O0 -g
+CLANG_STATIC_ANALYSIS = -std=c99 -Wall -Wextra -Wpedantic -Xanalyzer --analyze -analyzer-output=text
+CLANG_RUNTIME_ANALYSIS = -std=c99 -Wall -Wextra -Wpedantic -g -O0 -fsanitize=address,undefined \
+						 -fno-omit-frame-pointer
 
 MAIN_SRC = main.c
 
@@ -19,15 +21,19 @@ OBJS = $(SRCS:.c=.o)
 
 EXEC = ifj26_compiler
 
-.PHONY: all build analyze clean
+.PHONY: all build static runtime clean
 
 all: build
 
 build: $(EXEC)
 
 # use Clang's static analysis tool with aggressive warnings
-analyze: $(SRCS)
-	$(CLANG) $(CLANG_ANALYSIS) $(SRCS)
+static: $(SRCS)
+	$(CLANG) $(CLANG_STATIC_ANALYSIS) $(SRCS)
+
+# use Clang's runtime analysis tool with aggressive warnings
+runtime: $(SRCS)
+	$(CLANG) $(CLANG_RUNTIME_ANALYSIS) $(SRCS) -o $(EXEC)
 
 $(EXEC): $(SRCS)
 	$(CLANG) $(CLANGFLAGS) $(SRCS) -o $@
