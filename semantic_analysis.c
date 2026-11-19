@@ -760,6 +760,9 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
 
 static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
 {
+    HTEntry var_entry = {};
+    createIdentifier(&var_entry, sym_table);
+
     return UNIT;
 }
 

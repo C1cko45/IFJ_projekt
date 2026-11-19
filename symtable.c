@@ -72,7 +72,7 @@ SymTable *createSymTable()
         // TODO: cleanup(); -- must free AST memory
         exit(ERROR_INTERNAL);
     }
-    sym_table->scopes[GLOBAL_SCOPE_INDEX].count = HTABLE_INIT_CAPACITY;
+    sym_table->scopes[GLOBAL_SCOPE_INDEX].count = 0;
     sym_table->scopes[GLOBAL_SCOPE_INDEX].capacity = HTABLE_INIT_CAPACITY;
 
     return sym_table;
@@ -492,14 +492,17 @@ static void resizeScope(HTable *scope)
         exit(ERROR_INTERNAL);
     }
     scope->capacity = new_capacity;
-    for (size_t index = 0; index < scope->count; ++index)
+    for (size_t index = 0; index < old_capacity; ++index)
         insertEntry(&old_entries[index], scope); // rehash
 
     // Memory cleanup of old HTable
     // This particular way avoids size_t underflow, that would cause infinite loop otherwise
     while (old_capacity > 0)
+    {
         if (old_entries[old_capacity - 1].state != EMPTY)
-            free(old_entries[--old_capacity].identifier);
+            free(old_entries[old_capacity - 1].identifier);
+        --old_capacity;
+    }
 
     free(old_entries);
 }
@@ -550,4 +553,6 @@ static void insertEntry(HTEntry *entry, HTable *table)
     target_entry->entry_type = entry->entry_type;
     target_entry->entry_data = entry->entry_data;
     target_entry->state = BUSY;
+
+    table->count++;
 }
