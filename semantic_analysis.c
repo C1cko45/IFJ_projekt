@@ -3,7 +3,6 @@
  * Author: Pham Vu Duy Anh, xphamv00
  */
 
-#include <endian.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -38,6 +37,8 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table);
 static void functionDef(AST_NODE *function_node, SymTable *sym_table);
 static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
 static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, SymTable *sym_table);
+
+static DataType variableDef(AST_NODE *def_node, SymTable *sym_table);
 
 static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
 static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable *sym_table);
@@ -757,8 +758,9 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void variableDef(AST_NODE *def_node, SymTable *sym_table)
+static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
 {
+    return UNIT;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -792,8 +794,7 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
             return functionCall(program_node->left_ch, sym_table); // returns function's return type (per IFJ26 rules)
         case NODE_VAR_DEF:
         case NODE_VAL_DEF:
-            // TODO: variableDef(program_node->left_ch, sym_table);
-            // return UNIT;
+            return variableDef(program_node->left_ch, sym_table);
         case NODE_WHILE:
             return whileStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
         case NODE_FOR:
