@@ -27,6 +27,7 @@
 static size_t countParams(AST_NODE *param_node);
 static DataType resolveDataType(AST_NODE *target_node);
 static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table);
+static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table);
 static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node);
 
 static void insertBuiltins(SymTable *sym_table);
@@ -36,7 +37,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table);
 static void functionDef(AST_NODE *function_node, SymTable *sym_table);
 static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
 
-static void whileStatement(AST_NODE *while_node, SymTable *sym_table);
+static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, SymTable *sym_table);
 static void forStatement(AST_NODE *for_node, SymTable *sym_table);
 
 static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry, SymTable *sym_table);
@@ -435,15 +436,38 @@ static DataType ifStatement(AST_NODE *if_node, SymTable *sym_table)
     // If you encounter another ifStatement, invoke programStatement(), preserve scope hierarchy
     pushScope(sym_table);
     popScope(sym_table);
+    return UNIT; // TODO:placeholder value
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void whileStatement(AST_NODE *while_node, SymTable *sym_table)
+/*
+ * while-condition is any expression that evaluates to Boolean (return value)
+ * execution body has its own scope
+ * while-statement's return value is Unit
+ */
+static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, SymTable *sym_table)
 {
-    // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
+    // Evaluate the condition first
+    if (evaluateExpr(while_node->left_ch, sym_table) != BOOLEAN)
+    {
+        fprintf(stderr, "whileStatement() -- condition expression is not boolean\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
     pushScope(sym_table);
+
+    // Process while's body
+    AST_NODE *program_node = while_node->right_ch;
+    while (program_node != NULL)
+    {
+        programStatement(program_node, function_entry, sym_table);
+        program_node = program_node->right_ch;
+    }
+
     popScope(sym_table);
+    return UNIT;
 }
 
 static void forStatement(AST_NODE *for_node, SymTable *sym_table)
@@ -487,14 +511,13 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
     switch (program_node->left_ch->type)
     {
         case NODE_CALL:
-            return functionCall(program_node->left_ch, sym_table);
+            return functionCall(program_node->left_ch, sym_table); // returns function's return type (per IFJ26 rules)
         case NODE_VAR_DEF:
         case NODE_VAL_DEF:
             // TODO: variableDef(program_node->left_ch, sym_table);
             // return Unit;
         case NODE_WHILE:
-            // TODO: whileStatement(program_node->left_ch, sym_table);
-            // return Unit;
+            return whileStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
         case NODE_FOR:
             // TODO: forStatement(program_node->left_ch, sym_table);
             // return Unit;
@@ -764,4 +787,8 @@ static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node)
     strncpy(target_entry->identifier, function_entry->identifier, str_len);
     target_entry->entry_type = function_entry->entry_type;
     target_entry->entry_data = function_entry->entry_data;
+}
+
+static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table)
+{
 }
