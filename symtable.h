@@ -66,7 +66,7 @@ typedef union HTEntryData
     {
         size_t param_count;
         DataType *parameters;
-        DataType return_type;
+        DataType return_type; // return_type == NIL -> no explicit return type in function signature
     } function;
 } HTEntryData;
 

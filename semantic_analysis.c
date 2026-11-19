@@ -351,11 +351,15 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
             if (*func_ret_type == NIL)
                 *func_ret_type = retval_type;
 
-            if (retval_type != *func_ret_type)
+            // If function def has explicit return type UNIT -> returns UNIT no matter what (return values discarded)
+            if (*func_ret_type != UNIT)
             {
-                fprintf(stderr, "functionDef() -- return value type doesn't match function signature\n");
-                // TODO: cleanup()
-                exit(ERROR_TYPE);
+                if (retval_type != *func_ret_type)
+                {
+                    fprintf(stderr, "functionDef() -- return value type doesn't match function signature\n");
+                    // TODO: cleanup()
+                    exit(ERROR_TYPE);
+                }
             }
         }
 
@@ -424,11 +428,20 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     // If all is correct, annotate AST node with sym_table info for codegen
     annotateAST(function_entry, call_node->left_ch);
 
+    // If function signature has explicit return type UNIT -> returns UNIT (any other return value discarded)
+    if (function_entry->entry_data.function.return_type == UNIT)
+        return UNIT;
+
     return function_entry->entry_data.function.return_type;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*
+ * Processes AST subtree for if statement
+ * if-condition is any expression that evaluates to Boolean
+ * every branch has its own scope
+ */
 static DataType ifStatement(AST_NODE *if_node, SymTable *sym_table)
 {
     // TODO: Must evaluate the condition (which can be any expression that evalutes to Boolean) first
@@ -442,7 +455,8 @@ static DataType ifStatement(AST_NODE *if_node, SymTable *sym_table)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
- * while-condition is any expression that evaluates to Boolean (return value)
+ * Processes AST subtree for while loop
+ * while-condition is any expression that evaluates to Boolean
  * execution body has its own scope
  * while-statement's return value is Unit
  */
