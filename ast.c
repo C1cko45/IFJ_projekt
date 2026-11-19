@@ -52,10 +52,7 @@ void ast_free_node(AST_NODE *node) {
     if (node == NULL) {
         return;
     }
-    // uvolnime potomkov.
-    free(node->left_ch);
-    free(node->right_ch);
-
+    
     ast_free_node(node->left_ch);
     ast_free_node(node->right_ch);
 
