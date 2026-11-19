@@ -814,7 +814,7 @@ AST_NODE *function_body(void)
 // DONE function_def - skontrolovat, ci je navratovy typ povinny (podla zadania)
 // function_def: hlavicka funkcie "meno(parametre) [: typ] =" (bez tela)
 //! Volana z: function_list()
-AST_NODE *function_def()
+AST_NODE *function_def(void)
 {
     AST_NODE *root = NULL;
     Token current_token = next();
