@@ -37,6 +37,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table);
 
 static void functionDef(AST_NODE *function_node, SymTable *sym_table);
 static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
+static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, SymTable *sym_table);
 
 static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
 static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable *sym_table);
@@ -302,6 +303,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
+ * Semantic checks for AST subtree for function definition
  * Function assumes correct call sight --> function definition doesn't happen inside function body
  */
 static void functionDef(AST_NODE *function_node, SymTable *sym_table)
@@ -376,6 +378,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
 }
 
 /*
+ * Semantic checks for function call
  * Check that function was defined before use
  * Check that function argument count and argument types match function signature
  * Annotate ASTNode with info for codegen
@@ -439,19 +442,23 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     return function_entry->entry_data.function.return_type;
 }
 
+static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, SymTable *sym_table)
+{
+    // TBD:
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
- * Processes AST subtree for if statement
+ * Semantic checks for AST subtree for if-statement
  * if-condition is any expression that evaluates to Boolean
  * Branches: Else-if (optional), Else (optional)
  * every branch has its own scope
  *
- * if-statement's return value is UNIT
  * if-statement is standalone statement in a function block, if-expression is part of an expression
  * if-statement different semantics from if-expression, see ifExpr()
  *
- * Due to nature of AST for if-statement must return AST_NODE that is after if-statement
+ * if-statement returns UNIT
  */
 static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table)
 {
@@ -499,8 +506,7 @@ static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable
 }
 
 /*
- * Processes else-if, else branches of if-statement
- *
+ * Semantic checks for AST subtree of if-statement's else-if, else branches
  * Helper function for ifStatement(), should never be called on its own
  */
 static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable *sym_table)
@@ -542,10 +548,10 @@ static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
- * Processes AST subtree for while loop
+ * Semantic checks for AST subtree for while loop
  * while-condition is any expression that evaluates to Boolean
  * execution body has its own scope
- * while-statement's return value is Unit
+ * while-statement returns Unit
  */
 static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, SymTable *sym_table)
 {
