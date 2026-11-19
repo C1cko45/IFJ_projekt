@@ -442,9 +442,55 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     return function_entry->entry_data.function.return_type;
 }
 
+/*
+ * Semantic checks for return statement
+ *
+ * Returns NIL to indicate empty return statement
+ * Else returns value of expression or function call
+ */
 static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, SymTable *sym_table)
 {
-    // TBD:
+    DataType func_ret_type = function_entry->entry_data.function.return_type;
+    // if function signature has explicit return type Unit, function returns Unit no matter what
+    // Doesn't check for type compatibility in that case
+    if (func_ret_type == UNIT)
+        return UNIT;
+
+    // empty return allowed only in functions that have explicit return type Unit, which in this case it doesn't
+    if (ret_node->left_ch == NULL)
+    {
+        fprintf(stderr, "returnStatement() -- return inside function with no explicit return type UNIT\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    DataType retval_type;
+    // return-statement function call
+    // check type compatibility with function signature
+    if (ret_node->left_ch->type == NODE_CALL)
+    {
+        retval_type = functionCall(ret_node->left_ch, sym_table);
+        if (retval_type != func_ret_type)
+        {
+            fprintf(stderr, "returnStatement() -- return value type doesn't match function signature\n");
+            // TODO: cleanup()
+            exit(ERROR_TYPE);
+        }
+
+        return retval_type;
+    }
+
+    // return-statement with expression (or wrong nodes -- handled in expr() function)
+    // check type compatibility with function signature
+    retval_type = evaluateExpr(ret_node->left_ch, sym_table);
+    if (retval_type != func_ret_type)
+    {
+        fprintf(stderr, "returnStatement() -- return value type doesn't match function signature\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    return retval_type;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -668,7 +714,7 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
                 case TOKEN_TYPE_NOT:
                     // TODO: return exprStatement(program_node->left_ch, sym_table);
                 case KEYWORD_RETURN:
-                    // TODO: return returnStatement(program_node->left_ch, sym_table);
+                    return returnStatement(program_node->left_ch, function_entry, sym_table);
                 default:;
             }
         default:
