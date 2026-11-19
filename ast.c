@@ -46,3 +46,22 @@ void ast_add_parent(AST_NODE *parent, AST_NODE *child, int side){
     }
 
 }
+
+void ast_free_node(AST_NODE *node) {
+    // nieje co uvolnit.
+    if (node == NULL) {
+        return;
+    }
+    // uvolnime potomkov.
+    free(node->left_ch);
+    free(node->right_ch);
+
+    ast_free_node(node->left_ch);
+    ast_free_node(node->right_ch);
+
+    if (node->type == NODE_TOKEN_ONLY) {
+        token_free(&node->token);
+    }
+
+    free(node);
+}
