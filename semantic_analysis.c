@@ -346,13 +346,13 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
      * Else return type annotation not necessary, inferred from last statement/expression in function body
      */
     AST_NODE *program_node = function_node->right_ch;
+    DataType *func_ret_type = &function_entry->entry_data.function.return_type;
     while (program_node != NULL)
     {
         if (program_node->right_ch == NULL) // if last statement in function body
         {
             // Evaluate return value and compare its type with function return type
             DataType retval_type = programStatement(program_node, function_entry, sym_table);
-            DataType *func_ret_type = &function_entry->entry_data.function.return_type;
 
             // If function signature doesn't have explicit return type (and function has no return statements)
             // -> Function return type inferred from its last statement
@@ -361,7 +361,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
                 *func_ret_type = retval_type;
 
             // If function def has explicit return type UNIT -> returns UNIT no matter what (return values discarded)
-            if (*func_ret_type == UNIT)
+            if (*func_ret_type != UNIT)
             {
                 if (retval_type != *func_ret_type)
                 {
@@ -749,14 +749,60 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*
+ * Semantic checks for variable definition
+ *
+ */
 static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
 {
-    // Check variable doesn't already exist
-    // check variable has type annotation
-    //
-    //
-    // HTEntry var_entry = {.state = BUSY, .entry_type = VAR, .entry_data.variable_data_type = VAR};
-    // createIdentifier(&var_entry, sym_table);
+    HTEntryType var_modifier;
+    HTEntry var_entry;
+    if (def_node->type == NODE_VAL_DEF)
+        var_modifier = VAL;
+
+    if (def_node->type == NODE_VAR_DEF)
+        var_modifier = VAR;
+
+    if (isIdentifier(def_node->left_ch->token.attr.str_val, var_modifier, sym_table))
+    {
+        fprintf(stderr, "variableDef() -- variable already defined\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    DataType rvalue_ret_type;
+    AST_NODE *rvalue_node = def_node->right_ch;
+    // if right side is function call
+    if (rvalue_node->type == NODE_CALL)
+        rvalue_ret_type = functionCall(def_node->right_ch, sym_table);
+
+    rvalue_ret_type = evaluateExpr(rvalue_node->right_ch, sym_table);
+    // Evaluating expression or function call couldn't infer type
+    if (rvalue_ret_type == NIL)
+    {
+        fprintf(stderr, "variableDef() -- couldn't infer type from right side of assignment\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    var_entry.entry_type = var_modifier;
+    var_entry.state = BUSY;
+    var_entry.identifier = def_node->left_ch->token.attr.str_val;
+
+    // Variable definition has type annotation -> check type compatibility
+    if (def_node->left_ch->left_ch != NULL)
+    {
+        DataType var_type = resolveDataType(def_node->left_ch->left_ch);
+        if (var_type != rvalue_ret_type)
+        {
+            fprintf(stderr, "variableDef() -- couldn't infer type from right side of assignment\n");
+            // TODO: cleanup()
+            exit(ERROR_TYPE);
+        }
+    }
+
+    // Variable definition doesn't have type annotation -> infer variable type
+    var_entry.entry_data.variable_data_type = rvalue_ret_type;
 
     return UNIT;
 }
