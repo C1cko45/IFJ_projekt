@@ -304,7 +304,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
     // Argument error-handling
     if (function_node == NULL || sym_table == NULL)
     {
-        fprintf(stderr, "functionDef() -- at least one argument is invalid.\n");
+        fprintf(stderr, "functionDef() -- at least one argument is invalid\n");
         // TODO: cleanup()
         exit(ERROR_INTERNAL);
     }
@@ -345,13 +345,14 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
             DataType *func_ret_type = &function_entry->entry_data.function.return_type;
 
             // If function signature doesn't have explicit return type (and function has no return statements)
-            // Function return type inferred from its last statement
+            // -> Function return type inferred from its last statement
+            // Checks for explicit return type when function contains return statements -> see returnStatement()
             if (*func_ret_type == NIL)
                 *func_ret_type = retval_type;
 
             if (retval_type != *func_ret_type)
             {
-                fprintf(stderr, "functionDef() -- return value type doesn't match function signature.\n");
+                fprintf(stderr, "functionDef() -- return value type doesn't match function signature\n");
                 // TODO: cleanup()
                 exit(ERROR_TYPE);
             }
@@ -376,7 +377,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     // Argument error-handling
     if (sym_table == NULL || call_node == NULL)
     {
-        fprintf(stderr, "functionCall() -- at least one argument is invalid.\n");
+        fprintf(stderr, "functionCall() -- at least one argument is invalid\n");
         // TODO: cleanup()
         exit(ERROR_INTERNAL);
     }
@@ -385,7 +386,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     HTEntry *function_entry = getIdentifier(call_node->left_ch->token.attr.str_val, FUNCTION, sym_table);
     if (function_entry == NULL)
     {
-        fprintf(stderr, "functionCall() -- call to undefined function.\n");
+        fprintf(stderr, "functionCall() -- call to undefined function\n");
         // TODO: cleanup()
         exit(ERROR_UNDEF);
     }
@@ -394,22 +395,32 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     size_t arg_count = countParams(call_node->right_ch);
     if (arg_count != function_entry->entry_data.function.param_count)
     {
-        fprintf(stderr, "functionCall() -- call to undefined function.\n");
+        fprintf(stderr, "functionCall() -- argument count doesn't match function signature\n");
         // TODO: cleanup()
         exit(ERROR_PARAM);
     }
 
-    // Check argument types -- can only be literals and identifiers
+    // Check argument types -- can only be literals and identifiers (Should be guaranteed by syntactic analysis)
     DataType arg_type;
-    for (size_t param_index = 0; arg_count > 0; ++param_index, --arg_count)
+    for (size_t index = 0; arg_count > 0; ++index, --arg_count)
     {
-        // TBD: Must re-design symtable's HTEntryData to include another struct field DataType *Parameters
-        // Will contain ordered parameter types
-        // Then implement in semantic_analysis a function that will walk the argument AST subtree and the HTEntry array
         arg_type = resolveDataType(call_node->right_ch);
+        if (arg_type == NIL)
+        {
+            fprintf(stderr, "functionCall() -- contains argument of indeterminate type\n");
+            // TODO: cleanup()
+            exit(ERROR_PARAM);
+        }
+
+        if (arg_type != function_entry->entry_data.function.parameters[index])
+        {
+            fprintf(stderr, "functionCall() -- contains argument of incompatible type\n");
+            // TODO: cleanup()
+            exit(ERROR_PARAM);
+        }
     }
 
-    // Annotate AST node with sym_table info for codegen
+    // If all is correct, annotate AST node with sym_table info for codegen
     annotateAST(function_entry, call_node->left_ch);
 
     return function_entry->entry_data.function.return_type;
