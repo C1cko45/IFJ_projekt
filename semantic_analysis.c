@@ -361,7 +361,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
                 *func_ret_type = retval_type;
 
             // If function def has explicit return type UNIT -> returns UNIT no matter what (return values discarded)
-            if (*func_ret_type != UNIT)
+            if (*func_ret_type == UNIT)
             {
                 if (retval_type != *func_ret_type)
                 {
@@ -1079,7 +1079,7 @@ static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node)
 static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table)
 {
     // TBD:
-    return NIL;
+    return BOOLEAN;
 }
 
 /*
