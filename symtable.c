@@ -41,7 +41,7 @@ static void insertEntry(HTEntry *entry, HTable *table);
 /*
  * Returns SymTable with initialized (but empty) global scope
  */
-SymTable *createSymTable()
+SymTable *createSymTable(void)
 {
     SymTable *sym_table = calloc(1, sizeof(SymTable));
     if (sym_table == NULL)
