@@ -15,10 +15,10 @@
 // Data Type
 typedef enum
 {
-    NIL, // -> initial value, sym_table's arbitrary type indicating it's uninitialized
+    NIL, // -> initial value, arbitrary sym_table type to indicate uninitialized data type
     ANY, // Placeholder for function return type annotations; this cannot be assigned to a variable
 
-    UNIT, // Indicates lack of value
+    UNIT, // Indicates lack of value, values should default to this type
 
     // Primitive types
     INT,
@@ -65,6 +65,7 @@ typedef union HTEntryData
     struct
     {
         size_t param_count;
+        DataType *parameters;
         DataType return_type;
     } function;
 } HTEntryData;
