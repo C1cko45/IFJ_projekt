@@ -33,7 +33,6 @@ typedef struct AST_NODE
 
     struct AST_NODE *left_ch;
     struct AST_NODE *right_ch;
-
 } AST_NODE;
 
 AST_NODE *ast_create_node(Token token);
