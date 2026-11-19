@@ -774,8 +774,9 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
     // if right side is function call
     if (rvalue_node->type == NODE_CALL)
         rvalue_ret_type = functionCall(def_node->right_ch, sym_table);
+    else
+        rvalue_ret_type = evaluateExpr(rvalue_node->right_ch, sym_table);
 
-    rvalue_ret_type = evaluateExpr(rvalue_node->right_ch, sym_table);
     // Evaluating expression or function call couldn't infer type
     if (rvalue_ret_type == NIL)
     {
