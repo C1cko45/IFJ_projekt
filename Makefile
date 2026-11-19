@@ -2,7 +2,7 @@ CC = gcc
 
 CFLAGS = -std=c11 -Wall -Wextra -pedantic
 
-MAIN_SRC = test_main.c
+MAIN_SRC = main.c
 
 SCANNER_SRCS = scanner.c dstring.c stack.c token.c
 
