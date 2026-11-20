@@ -24,7 +24,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static size_t countParams(AST_NODE *param_node);
-static DataType resolveDataType(AST_NODE *target_node);
+static DataType getDataType(AST_NODE *target_node);
 static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table);
 static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table);
 static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node);
@@ -40,6 +40,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
 static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, SymTable *sym_table);
 
 static DataType variableDef(AST_NODE *def_node, SymTable *sym_table);
+static DataType assignStatement(AST_NODE *assign_node, SymTable *sym_table);
 
 static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
 static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable *sym_table);
@@ -235,7 +236,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
             AST_NODE *function_node = root->left_ch->left_ch;
             function_entry.identifier = function_node->left_ch->token.attr.str_val;
             function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = resolveDataType(function_node->left_ch->left_ch);
+            function_entry.entry_data.function.return_type = getDataType(function_node->left_ch->left_ch);
             if (function_entry.entry_data.function.return_type != UNIT)
             {
                 fprintf(stderr, "insertAllFunctions() -- @main function has wrong return type\n");
@@ -265,14 +266,13 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
             AST_NODE *function_node = root->left_ch;
             function_entry.identifier = function_node->left_ch->token.attr.str_val;
             function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = resolveDataType(function_node->left_ch->left_ch);
+            function_entry.entry_data.function.return_type = getDataType(function_node->left_ch->left_ch);
             function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
 
             size_t param_count = function_entry.entry_data.function.param_count;
             if (param_count != 0)
             {
                 // allocate array parameters[countParams]
-                // while-loop right childs until NULL, resolveDataType?
                 function_entry.entry_data.function.parameters = calloc(param_count, sizeof(DataType));
                 if (function_entry.entry_data.function.parameters == NULL)
                 {
@@ -281,10 +281,11 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
                     exit(ERROR_INTERNAL);
                 }
 
+                // while-loop every parameter until NULL, getDataType
                 AST_NODE *param_node = function_node->left_ch->right_ch;
                 for (size_t index = 0; param_count > 0; ++index, --param_count)
                 {
-                    function_entry.entry_data.function.parameters[index] = resolveDataType(param_node->left_ch);
+                    function_entry.entry_data.function.parameters[index] = getDataType(param_node->left_ch);
                     if (function_entry.entry_data.function.parameters[index] == NIL)
                     {
                         fprintf(stderr, "insertAllFunctions() -- function parameter doesn't have type annotation\n");
@@ -769,7 +770,8 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
     if (def_node->type == NODE_VAR_DEF)
         var_modifier = VAR;
 
-    if (isIdentifier(def_node->left_ch->token.attr.str_val, var_modifier, sym_table))
+    // Must use isEntry() to search the current scope only -- to allow variable shadowing in subblocks
+    if (isEntry(def_node->left_ch->token.attr.str_val, var_modifier, &sym_table->scopes[sym_table->current]))
     {
         fprintf(stderr, "variableDef() -- variable already defined\n");
         // TODO: cleanup()
@@ -800,10 +802,10 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
     // Variable definition has type annotation -> check type compatibility
     if (def_node->left_ch->left_ch != NULL)
     {
-        DataType var_type = resolveDataType(def_node->left_ch->left_ch);
+        DataType var_type = getDataType(def_node->left_ch->left_ch);
         if (var_type != rvalue_ret_type)
         {
-            fprintf(stderr, "variableDef() -- couldn't infer type from right side of assignment\n");
+            fprintf(stderr, "variableDef() -- Trying to assign value of incompatible type\n");
             // TODO: cleanup()
             exit(ERROR_TYPE);
         }
@@ -814,6 +816,60 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
 
     createIdentifier(&var_entry, sym_table);
 
+    return UNIT;
+}
+
+static DataType assignStatement(AST_NODE *assign_node, SymTable *sym_table)
+{
+    if (assign_node == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "variableDef() -- at least one argument is invalid\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    // use getIdentifier() to search even outer scope for the variable
+    HTEntry *var_entry = getIdentifier(assign_node->left_ch->token.attr.str_val, VAR, sym_table);
+    // Assigning to undefined variable
+    if (var_entry == NULL)
+    {
+        fprintf(stderr, "variableDef() -- Trying to assign to an undefined variable\n");
+        // TODO: cleanup()
+        exit(ERROR_UNDEF);
+    }
+    // Assigning to immutable variable
+    if (var_entry->entry_type == VAL)
+    {
+        fprintf(stderr, "variableDef() -- Trying to assign to immutable variable\n");
+        // TODO: cleanup()
+        exit(ERROR_IMMUTABLE);
+    }
+    // Assigning value to variable would change its data type
+    DataType rvalue_ret_type;
+    AST_NODE *rvalue_node = assign_node->right_ch;
+    // if right side is function call
+    if (rvalue_node->type == NODE_CALL)
+        rvalue_ret_type = functionCall(rvalue_node, sym_table);
+    else
+        rvalue_ret_type = evaluateExpr(rvalue_node, sym_table);
+
+    // Evaluating right side of assignment couldn't infer type
+    if (rvalue_ret_type == NIL)
+    {
+        fprintf(stderr, "assignStatement() -- couldn't infer type from right side of assignment\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    DataType var_type = var_entry->entry_data.variable_data_type;
+    if (var_type != rvalue_ret_type)
+    {
+        fprintf(stderr, "assignStatement() -- Trying to assign value of incompatible type\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    annotateAST(var_entry, assign_node->left_ch);
     return UNIT;
 }
 
@@ -846,20 +902,15 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
     {
         case NODE_CALL:
             return functionCall(program_node->left_ch, sym_table); // returns function's return type (per IFJ26 rules)
-            break;
         case NODE_VAR_DEF:
         case NODE_VAL_DEF:
             return variableDef(program_node->left_ch, sym_table); // returns UNIT
-            break;
         case NODE_WHILE:
             return whileStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
-            break;
         case NODE_FOR:
             return forStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
-            break;
         case NODE_IF:
             return ifStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
-            break;
         case NODE_VALMEM:
         case NODE_LIST:
             // TODO: return exprStatement(program_node->left_ch, sym_table);
@@ -868,9 +919,8 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
             switch (program_node->left_ch->token.type)
             {
                 case TOKEN_TYPE_ASSIGN:
-                    // return assignStatement(program_node->left_ch, sym_table) // returns UNIT
-                    break;
-                case TOKEN_TYPE_PLUS:
+                return assignStatement(program_node->left_ch, sym_table) // returns UNIT
+                    case TOKEN_TYPE_PLUS:
                 case TOKEN_TYPE_MINUS:
                 case TOKEN_TYPE_MUL:
                 case TOKEN_TYPE_DIV:
@@ -889,9 +939,7 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
                     break;
                 case KEYWORD_RETURN:
                     return returnStatement(program_node->left_ch, function_entry, sym_table);
-                    break;
-                default:
-                    break;
+                    default : break;
             }
         default:
             break;
@@ -1000,7 +1048,7 @@ static size_t countParams(AST_NODE *param_node)
  * Please check the argument before calling this function thoroughly
  * Mainly for getting function def's return type, variable definition's type annotation
  */
-static DataType resolveDataType(AST_NODE *type_node)
+static DataType getDataType(AST_NODE *type_node)
 {
     // passed argument node might be type literal or variable
     switch (type_node->token.type)
@@ -1034,7 +1082,7 @@ static DataType resolveDataType(AST_NODE *type_node)
             }
         default:
             // TODO:
-            fprintf(stderr, "resolveDataType() -- returning NIL?\n");
+            fprintf(stderr, "getDataType() -- returning NIL?\n");
             return NIL;
     }
 }
@@ -1052,7 +1100,7 @@ static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table)
         param_entry.state = BUSY;
         param_entry.identifier = param_node->token.attr.str_val;
         param_entry.entry_type = VAL;
-        param_entry.entry_data.variable_data_type = resolveDataType(param_node->left_ch);
+        param_entry.entry_data.variable_data_type = getDataType(param_node->left_ch);
         if (param_entry.entry_data.variable_data_type == NIL)
         {
             fprintf(stderr, "pushParamsIntoScope() -- function parameter doesn't have a supported type annotation.\n");
