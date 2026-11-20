@@ -833,7 +833,7 @@ static DataType assignStatement(AST_NODE *assign_node, SymTable *sym_table)
     // Assigning to undefined variable
     if (var_entry == NULL)
     {
-        fprintf(stderr, "variableDef() -- Trying to assign to an undefined variable\n");
+        fprintf(stderr, "variableDef() -- Trying to assign to undefined variable\n");
         // TODO: cleanup()
         exit(ERROR_UNDEF);
     }
@@ -919,8 +919,8 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
             switch (program_node->left_ch->token.type)
             {
                 case TOKEN_TYPE_ASSIGN:
-                return assignStatement(program_node->left_ch, sym_table) // returns UNIT
-                    case TOKEN_TYPE_PLUS:
+                    return assignStatement(program_node->left_ch, sym_table); // returns UNIT
+                case TOKEN_TYPE_PLUS:
                 case TOKEN_TYPE_MINUS:
                 case TOKEN_TYPE_MUL:
                 case TOKEN_TYPE_DIV:
@@ -939,7 +939,8 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
                     break;
                 case KEYWORD_RETURN:
                     return returnStatement(program_node->left_ch, function_entry, sym_table);
-                    default : break;
+                default:
+                    break;
             }
         default:
             break;
