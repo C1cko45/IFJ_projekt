@@ -3,6 +3,7 @@
  * Author: Pham Vu Duy Anh, xphamv00
  */
 
+#include <complex>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -30,6 +31,7 @@ static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table);
 static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node, HTEntryType entry_type);
 static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
 static DataType evalTerm(AST_NODE *term_node, SymTable *sym_table);
+static DataType checkRangeFunc(AST_NODE *func_node, SymTable *sym_table);
 
 static void insertBuiltins(SymTable *sym_table);
 static void checkMain(AST_NODE *root, SymTable *sym_table);
@@ -142,7 +144,7 @@ static void insertBuiltins(SymTable *sym_table)
     // So I just decided to insert range(start,end,step), will have to handle this builtin function separately
     // knowing that range().paramCount == 3 in SymTable, but, in reality, can be either 2 or 3
     builtin_function.identifier = "range";
-    builtin_function.entry_data.function.return_type = LIST_ANY;
+    builtin_function.entry_data.function.return_type = LIST_INT;
     createIdentifier(&builtin_function, sym_table);
 }
 
@@ -414,8 +416,15 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
         exit(ERROR_UNDEF);
     }
 
-    // Check argument count matches function def's parameter count
+    // Get function call's argument count
     size_t arg_count = countParams(call_node->right_ch);
+
+    // Handle case if function call is List's builtin range(from, to)
+    // Must check separately because sym_table also has range(from, to, step) and, except this, IFJ26 has no overloading
+    if (strcmp(call_node->left_ch->token.attr.str_val, "range") == 0 && arg_count == 2)
+        return checkRangeFunc(call_node, sym_table);
+
+    // Check argument count matches function def's parameter count
     if (arg_count != function_entry->entry_data.function.param_count)
     {
         fprintf(stderr, "functionCall() -- argument count doesn't match function signature\n");
@@ -435,10 +444,14 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
             exit(ERROR_PARAM);
         }
 
-        // if parameter has type annotation Any, it aceppts any argument type
-        if (function_entry->entry_data.function.parameters[index] == ANY ||
-            function_entry->entry_data.function.parameters[index] == LIST_ANY)
+        // if function parameter has type Any, it aceppts any argument type
+        if (function_entry->entry_data.function.parameters[index] == ANY)
             continue;
+        // if function parameter has type List[Any], it aceppts any argument type List[T]
+        if (function_entry->entry_data.function.parameters[index] == LIST_ANY)
+            if (arg_type == LIST_INT || arg_type == LIST_DOUBLE || arg_type == LIST_STRING ||
+                arg_type == LIST_BOOLEAN || arg_type == LIST_UNIT)
+                continue;
 
         if (arg_type != function_entry->entry_data.function.parameters[index])
         {
@@ -664,16 +677,6 @@ static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, Sy
  */
 static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTable *sym_table)
 {
-    // First pushScope() and then push the generator's new control variable into it (as immutable)
-    // (The generator's control variable on the left is a new control variable that is pushed)
-    // (the right side can be an int literal/int variable/list[Int] literal/list[Int] variable)
-    // Must check what type of generator (3 types):
-    //      from to to
-    //      from to to by step --> step must not be 0 (statically can check only if step is int interal)
-    //      from until until
-    // Generator can contain only int literals/variables (no implicit conversion)
-    // Then run expr() checks on guards (if-expressions)
-
     // Argument error-handling
     if (for_node == NULL || function_entry == NULL || sym_table == NULL)
     {
@@ -681,6 +684,18 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
         // TODO: cleanup()
         exit(ERROR_INTERNAL);
     }
+
+    /*
+     * First pushScope() and then push the generator's new control variable into it (as immutable)
+     * (The generator's control variable on the left is a new control variable that is pushed)
+     * (the right side can be an int literal/int variable/list[Int] literal/list[Int] variable)
+     * Must check what type of generator (3 types):
+     *      from to to
+     *      from to to by step --> step must not be 0 (statically can check only if step is int interal)
+     *      from until until
+     * Generator can contain only int literals/variables (no implicit conversion)
+     * Then run expr() checks on guards (if-expressions)
+     */
 
     // TODO: Probably checks for List[Int] literals and variables won't work right now
     // Check generator for type compatibility -- only int literals/int variables/list[Int] literals/list[Int] variables
@@ -702,7 +717,7 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
         // TODO: cleanup()
         exit(ERROR_INTERNAL);
     }
-    // Step exists
+    // Generator step exists
     if (limit_node->right_ch != NULL)
     {
         if (limit_node->right_ch->token.type != KEYWORD_INT &&
@@ -721,7 +736,7 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
         }
     }
 
-    // Evaluate every guard (if-expression)
+    // Evaluate every guard (if-expression condition)
     AST_NODE *cond_node = for_node->left_ch->right_ch;
     while (cond_node != NULL)
     {
@@ -1275,4 +1290,59 @@ static DataType evalTerm(AST_NODE *term_node, SymTable *sym_table)
             fprintf(stderr, "evalTerm() -- returning NIL?\n");
             return NIL;
     }
+}
+
+/*
+ * Helper function for functionCall() to handle special case List's builtin range(start, end)
+ * It's an exception of function overloading (range(start, end, step)), otherwise it's not supposed
+ *
+ * Function assumes func_node really is range(step, end)
+ * Returns range(start, end)'s signature return type List[Int]
+ */
+static DataType checkRangeFunc(AST_NODE *call_node, SymTable *sym_table)
+{
+    // Argument error-handling
+    if (call_node == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "checkRangeFunc() -- at least one argument is invalid\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    // Get the range(start, end, step) function - They're basically the same except the step parameter
+    HTEntry *function_entry = getIdentifier(call_node->token.attr.str_val, FUNCTION, sym_table);
+
+    // Check argument types -- can only be literals and identifiers (Should be guaranteed by syntactic analysis)
+    size_t arg_count = 2;
+    DataType arg_type;
+    for (size_t index = 0; arg_count > 0; ++index, --arg_count)
+    {
+        arg_type = evalTerm(call_node->right_ch, sym_table);
+        // Check argument is defined variable/literal of determinate and supported type
+        if (arg_type == NIL)
+        {
+            fprintf(stderr, "checkRangeFunc() -- function argument of indeterminate type\n");
+            // TODO: cleanup()
+            exit(ERROR_PARAM);
+        }
+
+        // if function parameter has type Any, it aceppts any argument type
+        if (function_entry->entry_data.function.parameters[index] == ANY)
+            continue;
+        // if function parameter has type List[Any], it aceppts any argument type List[T]
+        if (function_entry->entry_data.function.parameters[index] == LIST_ANY)
+            if (arg_type == LIST_INT || arg_type == LIST_DOUBLE || arg_type == LIST_STRING ||
+                arg_type == LIST_BOOLEAN || arg_type == LIST_UNIT)
+                continue;
+
+        if (arg_type != function_entry->entry_data.function.parameters[index])
+        {
+            fprintf(stderr, "checkRangeFunc() -- function argument of incompatible type\n");
+            // TODO: cleanup()
+            exit(ERROR_PARAM);
+        }
+    }
+
+    // if no problems, return range(start, end)'s signature return type List[Int]
+    return LIST_INT;
 }
