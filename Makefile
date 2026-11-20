@@ -1,21 +1,21 @@
 CC = gcc
+
+CFLAGS = -std=c99 -Wall -Wextra -Wpedantic -Werror
+
 CLANG = clang
 
-CFLAGS = -std=c99 -Wall -Wextra -Wpedantic -Werror -g
-
-CLANGFLAGS = -std=c99 -Wall -Wextra -Wpedantic -O0 -g
-CLANG_STATIC_ANALYSIS = -std=c99 -Wall -Wextra -Wpedantic -Xanalyzer --analyze -analyzer-output=text
+CLANGFLAGS = -std=c99 -Wall -Wextra -Wpedantic -O1 -g
 CLANG_RUNTIME_ANALYSIS = -std=c99 -Wall -Wextra -Wpedantic -g -O0 -fsanitize=address,undefined \
 						 -fno-omit-frame-pointer
 
-MAIN_SRC = test_main.c
+MAIN_SRC = main.c
 
 SCANNER_SRCS = scanner.c dstring.c stack.c token.c
 PARSER_SRCS = ast.c parser.c psa.c 
 SEMANTIC_SRCS = semantic_analysis.c symtable.c
 GENERATOR_SRCS = gen_def.c gen_nondef.c codegen.c
 
-SRCS = $(MAIN_SRC) $(SCANNER_SRCS) $(PARSER_SRCS)
+SRCS = $(MAIN_SRC) $(SCANNER_SRCS) $(PARSER_SRCS) $(SEMANTIC_SRCS)
 
 OBJS = $(SRCS:.c=.o)
 
@@ -28,8 +28,8 @@ all: build
 build: $(EXEC)
 
 # use Clang's static analysis tool with aggressive warnings
-static: $(SRCS)
-	$(CLANG) $(CLANG_STATIC_ANALYSIS) $(SRCS)
+debug: $(SRCS)
+	$(CLANG) $(CLANGFLAGS) $(SRCS) -o $(EXEC)
 
 # use Clang's runtime analysis tool with aggressive warnings
 runtime: $(SRCS)
@@ -39,7 +39,7 @@ $(EXEC): $(SRCS)
 	$(CC) $(CFLAGS) $(SRCS) -o $@
 
 %.o: %.c
-	$(CLANG) $(CLANGFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(EXEC)

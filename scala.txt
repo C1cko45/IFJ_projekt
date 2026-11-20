@@ -2,13 +2,14 @@ import ifj26.*
 
 @main
 def runFoo(): Unit =
-    # TODO: tohle parser erroruje
-    ["abc", "abc"].tail
-    # TODO: tohle parser erroruje
-    val empty: List[Int] = List()
+    // TODO: tohle parser erroruje
+    //["abc", "abc"].tail
+    // TODO: tohle parser erroruje
+    //val empty: List[Int] = List()
 
-    for i <- 1 to x by 1 do
-        print(i)
+    while 5 > 5 do
+        5
+
 
 def main(): Int =
     return x + 5
