@@ -3,7 +3,6 @@
  * Author: Pham Vu Duy Anh, xphamv00
  */
 
-#include <complex>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
