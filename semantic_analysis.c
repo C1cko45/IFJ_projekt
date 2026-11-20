@@ -29,6 +29,7 @@ static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table);
 static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table);
 static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node);
 static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
+static DataType evalTerm(AST_NODE *term_node, SymTable *sym_table);
 
 static void insertBuiltins(SymTable *sym_table);
 static void checkMain(AST_NODE *root, SymTable *sym_table);
@@ -234,7 +235,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
             AST_NODE *function_node = root->left_ch->left_ch;
             function_entry.identifier = function_node->left_ch->token.attr.str_val;
             function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = resolveDataType(function_node->left_ch);
+            function_entry.entry_data.function.return_type = resolveDataType(function_node->left_ch->left_ch);
             if (function_entry.entry_data.function.return_type != UNIT)
             {
                 fprintf(stderr, "insertAllFunctions() -- @main function has wrong return type\n");
@@ -264,7 +265,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
             AST_NODE *function_node = root->left_ch;
             function_entry.identifier = function_node->left_ch->token.attr.str_val;
             function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = resolveDataType(function_node->left_ch);
+            function_entry.entry_data.function.return_type = resolveDataType(function_node->left_ch->left_ch);
             function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
 
             size_t param_count = function_entry.entry_data.function.param_count;
@@ -283,7 +284,13 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
                 AST_NODE *param_node = function_node->left_ch->right_ch;
                 for (size_t index = 0; param_count > 0; ++index, --param_count)
                 {
-                    function_entry.entry_data.function.parameters[index] = resolveDataType(param_node);
+                    function_entry.entry_data.function.parameters[index] = resolveDataType(param_node->left_ch);
+                    if (function_entry.entry_data.function.parameters[index] == NIL)
+                    {
+                        fprintf(stderr, "insertAllFunctions() -- function parameter doesn't have type annotation\n");
+                        // TODO: cleanup()
+                        exit(2); // ERROR_SYNTACTIC
+                    }
                     param_node = param_node->right_ch;
                 }
             }
@@ -419,10 +426,10 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     DataType arg_type;
     for (size_t index = 0; arg_count > 0; ++index, --arg_count)
     {
-        arg_type = resolveDataType(call_node->right_ch);
+        arg_type = evalTerm(call_node->right_ch, sym_table);
         if (arg_type == NIL)
         {
-            fprintf(stderr, "functionCall() -- contains argument of indeterminate type\n");
+            fprintf(stderr, "functionCall() -- function argument of indeterminate type\n");
             // TODO: cleanup()
             exit(ERROR_PARAM);
         }
@@ -434,7 +441,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
 
         if (arg_type != function_entry->entry_data.function.parameters[index])
         {
-            fprintf(stderr, "functionCall() -- contains argument of incompatible type\n");
+            fprintf(stderr, "functionCall() -- function argument of incompatible type\n");
             // TODO: cleanup()
             exit(ERROR_PARAM);
         }
@@ -773,9 +780,9 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
     AST_NODE *rvalue_node = def_node->right_ch;
     // if right side is function call
     if (rvalue_node->type == NODE_CALL)
-        rvalue_ret_type = functionCall(def_node->right_ch, sym_table);
+        rvalue_ret_type = functionCall(rvalue_node, sym_table);
     else
-        rvalue_ret_type = evaluateExpr(rvalue_node->right_ch, sym_table);
+        rvalue_ret_type = evaluateExpr(rvalue_node, sym_table);
 
     // Evaluating expression or function call couldn't infer type
     if (rvalue_ret_type == NIL)
@@ -821,7 +828,7 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
  */
 static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry, SymTable *sym_table)
 {
-    if (program_node == NULL || sym_table == NULL)
+    if (program_node == NULL || function_entry == NULL || sym_table == NULL)
     {
         fprintf(stderr, "programStatement() -- at least one function argument is invalid\n");
         // TODO: cleanup()
@@ -989,96 +996,47 @@ static size_t countParams(AST_NODE *param_node)
 /*
  * Returns target_node's type annotation (located at target_node->left_ch)
  *
- * Function assumes correct argument passed (target_node->left_ch == NULL -> AST node doesn't have explicit data type)
+ * Function assumes correct argument passed (pass exactly the AST node you want analyzed) -> no argument check
  * Please check the argument before calling this function thoroughly
- * Use mainly for getting function def's return type, variable definition's type annotation
+ * Mainly for getting function def's return type, variable definition's type annotation
  */
-static DataType resolveDataType(AST_NODE *target_node)
+static DataType resolveDataType(AST_NODE *type_node)
 {
-    if (target_node == NULL)
+    // passed argument node might be type literal or variable
+    switch (type_node->token.type)
     {
-        fprintf(stderr, "resolveDataType() -- passed AST node argument is NULL.\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        case KEYWORD_STRING:
+            return STRING;
+        case KEYWORD_DOUBLE:
+            return DOUBLE;
+        case KEYWORD_INT:
+            return INT;
+        case KEYWORD_BOOLEAN:
+            return BOOLEAN;
+        case KEYWORD_UNIT:
+            return UNIT;
+        case KEYWORD_LIST:
+            switch (type_node->left_ch->token.type)
+            {
+                case KEYWORD_STRING:
+                    return LIST_STRING;
+                case KEYWORD_DOUBLE:
+                    return LIST_DOUBLE;
+                case KEYWORD_INT:
+                    return LIST_INT;
+                case KEYWORD_BOOLEAN:
+                    return LIST_BOOLEAN;
+                case KEYWORD_UNIT:
+                    return LIST_UNIT;
+                // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
+                //     return LIST_ANY;
+                default:;
+            }
+        default:
+            // TODO:
+            fprintf(stderr, "resolveDataType() -- returning NIL?\n");
+            return NIL;
     }
-
-    // AST node might have type annotation
-    AST_NODE *type_node = target_node->left_ch;
-    if (type_node != NULL)
-    {
-        switch (type_node->token.type)
-        {
-            case KEYWORD_STRING:
-                return STRING;
-            case KEYWORD_DOUBLE:
-                return DOUBLE;
-            case KEYWORD_INT:
-                return INT;
-            case KEYWORD_BOOLEAN:
-                return BOOLEAN;
-            case KEYWORD_UNIT:
-                return UNIT;
-            case KEYWORD_LIST:
-                switch (type_node->left_ch->token.type)
-                {
-                    case KEYWORD_STRING:
-                        return LIST_STRING;
-                    case KEYWORD_DOUBLE:
-                        return LIST_DOUBLE;
-                    case KEYWORD_INT:
-                        return LIST_INT;
-                    case KEYWORD_BOOLEAN:
-                        return LIST_BOOLEAN;
-                    case KEYWORD_UNIT:
-                        return LIST_UNIT;
-                    // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
-                    //     return LIST_ANY;
-                    default:;
-                }
-            default:;
-        }
-    }
-
-    // passed argument node might be type literal
-    type_node = target_node;
-    if (type_node == NULL)
-    {
-        switch (type_node->token.type)
-        {
-            case KEYWORD_STRING:
-                return STRING;
-            case KEYWORD_DOUBLE:
-                return DOUBLE;
-            case KEYWORD_INT:
-                return INT;
-            case KEYWORD_BOOLEAN:
-                return BOOLEAN;
-            case KEYWORD_UNIT:
-                return UNIT;
-            case KEYWORD_LIST:
-                switch (type_node->left_ch->token.type)
-                {
-                    case KEYWORD_STRING:
-                        return LIST_STRING;
-                    case KEYWORD_DOUBLE:
-                        return LIST_DOUBLE;
-                    case KEYWORD_INT:
-                        return LIST_INT;
-                    case KEYWORD_BOOLEAN:
-                        return LIST_BOOLEAN;
-                    case KEYWORD_UNIT:
-                        return LIST_UNIT;
-                    // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
-                    //     return LIST_ANY;
-                    default:;
-                }
-            default:;
-        }
-    }
-
-    fprintf(stderr, "resolveDataType() -- AST node either doesn't have type annotation or isn't a type literal.\n");
-    // TODO: cleanup()
-    exit(ERROR_INTERNAL);
 }
 
 /*
@@ -1094,7 +1052,7 @@ static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table)
         param_entry.state = BUSY;
         param_entry.identifier = param_node->token.attr.str_val;
         param_entry.entry_type = VAL;
-        param_entry.entry_data.variable_data_type = resolveDataType(param_node);
+        param_entry.entry_data.variable_data_type = resolveDataType(param_node->left_ch);
         if (param_entry.entry_data.variable_data_type == NIL)
         {
             fprintf(stderr, "pushParamsIntoScope() -- function parameter doesn't have a supported type annotation.\n");
@@ -1153,4 +1111,69 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
     popScope(sym_table);
 
     return NIL;
+}
+
+/*
+ * Return data type of term (literal/variable)
+ *
+ * Mainly for resolving terms in expressions (their types)
+ */
+static DataType evalTerm(AST_NODE *term_node, SymTable *sym_table)
+{
+    if (sym_table == NULL || term_node == NULL)
+    {
+        fprintf(stderr, "evalTerm() -- at least one argument is invalid.\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    // Term is variable
+    if (term_node->token.type == TOKEN_TYPE_IDENTIFIER)
+    {
+        HTEntry *var_entry = getIdentifier(term_node->token.attr.str_val, VAR, sym_table);
+        if (var_entry == NULL)
+        {
+            fprintf(stderr, "evalTerm() -- undefined variable\n");
+            // TODO: cleanup()
+            exit(ERROR_UNDEF);
+        }
+
+        return var_entry->entry_data.variable_data_type;
+    }
+
+    // Term not variable, might be literal
+    switch (term_node->token.type)
+    {
+        case KEYWORD_STRING:
+            return STRING;
+        case KEYWORD_DOUBLE:
+            return DOUBLE;
+        case KEYWORD_INT:
+            return INT;
+        case KEYWORD_BOOLEAN:
+            return BOOLEAN;
+        case KEYWORD_UNIT:
+            return UNIT;
+        case KEYWORD_LIST:
+            switch (term_node->left_ch->token.type)
+            {
+                case KEYWORD_STRING:
+                    return LIST_STRING;
+                case KEYWORD_DOUBLE:
+                    return LIST_DOUBLE;
+                case KEYWORD_INT:
+                    return LIST_INT;
+                case KEYWORD_BOOLEAN:
+                    return LIST_BOOLEAN;
+                case KEYWORD_UNIT:
+                    return LIST_UNIT;
+                // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
+                //     return LIST_ANY;
+                default:;
+            }
+        default:
+            // TODO:
+            fprintf(stderr, "evalTerm() -- returning NIL?\n");
+            return NIL;
+    }
 }
