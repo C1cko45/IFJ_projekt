@@ -27,7 +27,7 @@ static size_t countParams(AST_NODE *param_node);
 static DataType getDataType(AST_NODE *target_node);
 static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table);
 static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table);
-static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node);
+static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node, HTEntryType entry_type);
 static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
 static DataType evalTerm(AST_NODE *term_node, SymTable *sym_table);
 
@@ -449,7 +449,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     }
 
     // If all is correct, annotate AST node with sym_table info for codegen
-    annotateAST(function_entry, call_node->left_ch);
+    annotateAST(function_entry, call_node->left_ch, FUNCTION);
 
     DataType func_ret_type = function_entry->entry_data.function.return_type;
     // If function signature has explicit return type UNIT -> returns UNIT (any other return value discarded)
@@ -684,7 +684,7 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
 
     // TODO: Probably checks for List[Int] literals and variables won't work right now
     // Check generator for type compatibility -- only int literals/int variables/list[Int] literals/list[Int] variables
-    // Also if variables -> must resole in sym_table and then annotateAST
+    // Also if variables -> must resolve in sym_table and then annotateAST
     if (for_node->left_ch == NULL || for_node->left_ch->left_ch == NULL)
     {
         fprintf(stderr, "forStatement() -- for-loop contains no generator\n");
@@ -760,9 +760,16 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
 /*
  * Semantic checks for variable definition
  *
+ * Checks for variable re-definition in the current scope
+ * Evaluates right side return value type -> if can't infer ERROR_TYPE
+ * If variable definition has type annotation, checks for type compatibility between left side and right side
+ * If variable definition has no type annotation, infer from right side
+ *
+ * Creates entry in sym_table
  */
 static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
 {
+    // Find out if variable definition is immutable/mutable
     HTEntryType var_modifier;
     if (def_node->type == NODE_VAL_DEF)
         var_modifier = VAL;
@@ -778,6 +785,7 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
         exit(ERROR_TYPE);
     }
 
+    // Get right side expression/function call return value type
     DataType rvalue_ret_type;
     AST_NODE *rvalue_node = def_node->right_ch;
     // if right side is function call
@@ -786,7 +794,7 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
     else
         rvalue_ret_type = evaluateExpr(rvalue_node, sym_table);
 
-    // Evaluating expression or function call couldn't infer type
+    // Evaluating right side expression/function call couldn't infer type
     if (rvalue_ret_type == NIL)
     {
         fprintf(stderr, "variableDef() -- couldn't infer type from right side of assignment\n");
@@ -794,6 +802,7 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
         exit(ERROR_TYPE);
     }
 
+    // Initialize the HTEntry to insert into sym_table
     HTEntry var_entry;
     var_entry.entry_type = var_modifier;
     var_entry.state = BUSY;
@@ -811,14 +820,24 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
         }
     }
 
-    // Variable definition doesn't have type annotation -> infer variable type
+    // Variable definition doesn't have type annotation -> infer variable type from right side of assignment
     var_entry.entry_data.variable_data_type = rvalue_ret_type;
-
+    // Insert HTEntry into sym_table
     createIdentifier(&var_entry, sym_table);
 
     return UNIT;
 }
 
+/*
+ * Semantic checks for assignment statement
+ * Left side -> check variable exists, is immutable
+ * Right side -> check that it's valid expression or function call, get it's return value type
+ * Check type compatibility right side vs left side
+ *
+ * Annotates AST_NODE of the left side variable with sym_table entry info (for codegen)
+ *
+ * assignment statement returns UNIT
+ */
 static DataType assignStatement(AST_NODE *assign_node, SymTable *sym_table)
 {
     if (assign_node == NULL || sym_table == NULL)
@@ -869,7 +888,7 @@ static DataType assignStatement(AST_NODE *assign_node, SymTable *sym_table)
         exit(ERROR_TYPE);
     }
 
-    annotateAST(var_entry, assign_node->left_ch);
+    annotateAST(var_entry, assign_node->left_ch, VAR);
     return UNIT;
 }
 
@@ -1118,29 +1137,60 @@ static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table)
 /*
  * Allocates memory for HTEntry in AST_NODE and passes function_entry info to it
  */
-static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node)
+static void annotateAST(HTEntry *sym_table_entry, AST_NODE *identifier_node, HTEntryType entry_type)
 {
-    HTEntry *target_entry = calloc(1, sizeof(HTEntry));
-    if (target_entry == NULL)
+    // Argument error-handling
+    if (sym_table_entry == NULL || identifier_node == NULL || entry_type == NONE)
+    {
+        fprintf(stderr, "annotateAST() -- at least one argument is invalid.\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    // Allocate new HTEntry
+    HTEntry *ast_entry = calloc(1, sizeof(HTEntry));
+    if (ast_entry == NULL)
     {
         fprintf(stderr, "annotateAST() -- calloc() failed.\n");
         // TODO: cleanup()
         exit(ERROR_INTERNAL);
     }
-    size_t str_len = strlen(function_entry->identifier);
-    target_entry->identifier = calloc(str_len + 1, sizeof(char));
-    if (target_entry->identifier == NULL)
+    size_t str_len = strlen(sym_table_entry->identifier);
+    ast_entry->identifier = calloc(str_len + 1, sizeof(char));
+    if (ast_entry->identifier == NULL)
     {
         fprintf(stderr, "annotateAST() -- calloc() failed.\n");
         // TODO: cleanup()
         exit(ERROR_INTERNAL);
     }
+    strncpy(ast_entry->identifier, sym_table_entry->identifier, str_len);
+    ast_entry->entry_type = sym_table_entry->entry_type;
 
-    strncpy(target_entry->identifier, function_entry->identifier, str_len);
-    target_entry->entry_type = function_entry->entry_type;
-    target_entry->entry_data = function_entry->entry_data;
+    HTEntryData *ast_data = &ast_entry->entry_data;
+    HTEntryData *sym_table_data = &sym_table_entry->entry_data;
+    if (entry_type == VAR || entry_type == VAL)
+        ast_data->variable_data_type = sym_table_data->variable_data_type;
+    else // entry_type == FUNCTION
+    {
+        // Initialize the AST HTEntry data
+        ast_data->function.return_type = sym_table_data->function.return_type;
+        ast_data->function.param_count = sym_table_data->function.param_count;
+        // Must handle dynamically allocated parameters[param_count] array
+        ast_data->function.parameters = calloc(ast_data->function.param_count, sizeof(DataType));
+        if (ast_data->function.parameters == NULL)
+        {
+            fprintf(stderr, "annotateAST() -- calloc() failed.\n");
+            // TODO: cleanup()
+            exit(ERROR_INTERNAL);
+        }
 
-    identifier_node->identifier_entry = target_entry;
+        // Copy over the parameters (data types)
+        for (size_t index = 0; index < ast_data->function.param_count; ++index)
+            ast_data->function.parameters[index] = sym_table_data->function.parameters[index];
+    }
+
+    // Annotate AST node
+    identifier_node->identifier_entry = ast_entry;
 }
 
 static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table)
