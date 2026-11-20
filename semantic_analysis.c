@@ -5,6 +5,9 @@
 
 // TODO: FIX insertBuiltins(), currently doesn't insert builtin function's parameters into data.function.parameters[]
 // Must allocate memory parameters[param_count] and fill the table
+// TODO: Dispatchers and other evalTerm and whatnot functions that resolve data types of nodes expect literals to be
+// KEYWORD_TYPE, whereas they are TOKEN_TYPE_TYPE (because a literal is not a keyword...)
+// !!! NOT IN getDataType() -- that function is used for getting type annotations (KEYWORDS)
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -27,13 +30,14 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static size_t countParams(AST_NODE *param_node);
-static DataType getDataType(AST_NODE *target_node);
+static DataType getParamType(AST_NODE *target_node);
 static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table);
 static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table);
 static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node, HTEntryType entry_type);
 static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
-static DataType evalTerm(AST_NODE *term_node, SymTable *sym_table);
+static DataType getTermType(AST_NODE *term_node, SymTable *sym_table);
 static DataType checkRangeFunc(AST_NODE *func_node, SymTable *sym_table);
+static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table);
 
 static void insertBuiltins(SymTable *sym_table);
 static void checkMain(AST_NODE *root, SymTable *sym_table);
@@ -240,7 +244,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
             AST_NODE *function_node = root->left_ch->left_ch;
             function_entry.identifier = function_node->left_ch->token.attr.str_val;
             function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = getDataType(function_node->left_ch->left_ch);
+            function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
             if (function_entry.entry_data.function.return_type != UNIT)
             {
                 fprintf(stderr, "insertAllFunctions() -- @main function has wrong return type\n");
@@ -270,7 +274,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
             AST_NODE *function_node = root->left_ch;
             function_entry.identifier = function_node->left_ch->token.attr.str_val;
             function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = getDataType(function_node->left_ch->left_ch);
+            function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
             function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
 
             size_t param_count = function_entry.entry_data.function.param_count;
@@ -289,7 +293,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
                 AST_NODE *param_node = function_node->left_ch->right_ch;
                 for (size_t index = 0; param_count > 0; ++index, --param_count)
                 {
-                    function_entry.entry_data.function.parameters[index] = getDataType(param_node->left_ch);
+                    function_entry.entry_data.function.parameters[index] = getParamType(param_node->left_ch);
                     if (function_entry.entry_data.function.parameters[index] == NIL)
                     {
                         fprintf(stderr, "insertAllFunctions() -- function parameter doesn't have type annotation\n");
@@ -438,7 +442,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     DataType arg_type;
     for (size_t index = 0; arg_count > 0; ++index, --arg_count)
     {
-        arg_type = evalTerm(call_node->right_ch, sym_table);
+        arg_type = getTermType(call_node->right_ch, sym_table);
         if (arg_type == NIL)
         {
             fprintf(stderr, "functionCall() -- function argument of indeterminate type\n");
@@ -699,44 +703,16 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
      * Then run expr() checks on guards (if-expressions)
      */
 
-    // TODO: Probably checks for List[Int] literals and variables won't work right now
-    // Check generator for type compatibility -- only int literals/int variables/list[Int] literals/list[Int] variables
     // Also if variables -> must resolve in sym_table and then annotateAST
     if (for_node->left_ch == NULL || for_node->left_ch->left_ch == NULL)
     {
         fprintf(stderr, "forStatement() -- for-loop contains no generator\n");
         // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        exit(ERROR_OTHER);
     }
-    AST_NODE *limit_node = for_node->left_ch->left_ch;
-    AST_NODE *var_one = limit_node->left_ch->left_ch;
-    AST_NODE *var_two = limit_node->left_ch->right_ch;
-    // TODO: Missing checks for List[Int] literals/variables
-    if ((var_one->token.type != KEYWORD_INT && var_one->token.type != TOKEN_TYPE_IDENTIFIER) ||
-        (var_two->token.type != KEYWORD_INT && var_two->token.type != TOKEN_TYPE_IDENTIFIER))
-    {
-        fprintf(stderr, "forStatement() -- for-loop contains containts non-integer literal/variable\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
-    }
-    // Generator step exists
-    if (limit_node->right_ch != NULL)
-    {
-        if (limit_node->right_ch->token.type != KEYWORD_INT &&
-            limit_node->right_ch->token.type != TOKEN_TYPE_IDENTIFIER)
-        {
-            fprintf(stderr, "forStatement() -- for-loop contains containts non-integer literal/variable\n");
-            // TODO: cleanup()
-            exit(ERROR_INTERNAL);
-        }
 
-        if (limit_node->right_ch->token.type == KEYWORD_INT && limit_node->right_ch->token.attr.int_val == 0)
-        {
-            fprintf(stderr, "forStatement() -- for-loop contains containts non-integer literal/variable\n");
-            // TODO: cleanup()
-            exit(ERROR_OTHER);
-        }
-    }
+    // Check for-loop generator contains only ints
+    checkGeneratorInts(for_node, sym_table);
 
     // Evaluate every guard (if-expression condition)
     AST_NODE *cond_node = for_node->left_ch->right_ch;
@@ -828,7 +804,7 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
     // Variable definition has type annotation -> check type compatibility
     if (def_node->left_ch->left_ch != NULL)
     {
-        DataType var_type = getDataType(def_node->left_ch->left_ch);
+        DataType var_type = getParamType(def_node->left_ch->left_ch);
         if (var_type != rvalue_ret_type)
         {
             fprintf(stderr, "variableDef() -- Trying to assign value of incompatible type\n");
@@ -1086,7 +1062,7 @@ static size_t countParams(AST_NODE *param_node)
  * Please check the argument before calling this function thoroughly
  * Mainly for getting function def's return type, variable definition's type annotation
  */
-static DataType getDataType(AST_NODE *type_node)
+static DataType getParamType(AST_NODE *type_node)
 {
     // passed argument node might be type literal or variable
     switch (type_node->token.type)
@@ -1120,7 +1096,7 @@ static DataType getDataType(AST_NODE *type_node)
             }
         default:
             // TODO:
-            fprintf(stderr, "getDataType() -- returning NIL?\n");
+            fprintf(stderr, "getParamType() -- returning NIL?\n");
             return NIL;
     }
 }
@@ -1138,7 +1114,7 @@ static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table)
         param_entry.state = BUSY;
         param_entry.identifier = param_node->token.attr.str_val;
         param_entry.entry_type = VAL;
-        param_entry.entry_data.variable_data_type = getDataType(param_node->left_ch);
+        param_entry.entry_data.variable_data_type = getParamType(param_node->left_ch);
         if (param_entry.entry_data.variable_data_type == NIL)
         {
             fprintf(stderr, "pushParamsIntoScope() -- function parameter doesn't have a supported type annotation.\n");
@@ -1235,11 +1211,11 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
  *
  * Mainly for resolving terms in expressions (their types)
  */
-static DataType evalTerm(AST_NODE *term_node, SymTable *sym_table)
+static DataType getTermType(AST_NODE *term_node, SymTable *sym_table)
 {
     if (sym_table == NULL || term_node == NULL)
     {
-        fprintf(stderr, "evalTerm() -- at least one argument is invalid.\n");
+        fprintf(stderr, "getTermType() -- at least one argument is invalid.\n");
         // TODO: cleanup()
         exit(ERROR_INTERNAL);
     }
@@ -1250,7 +1226,7 @@ static DataType evalTerm(AST_NODE *term_node, SymTable *sym_table)
         HTEntry *var_entry = getIdentifier(term_node->token.attr.str_val, VAR, sym_table);
         if (var_entry == NULL)
         {
-            fprintf(stderr, "evalTerm() -- undefined variable\n");
+            fprintf(stderr, "getTermType() -- undefined variable\n");
             // TODO: cleanup()
             exit(ERROR_UNDEF);
         }
@@ -1261,17 +1237,18 @@ static DataType evalTerm(AST_NODE *term_node, SymTable *sym_table)
     // Term not variable, might be literal
     switch (term_node->token.type)
     {
-        case KEYWORD_STRING:
+        case TOKEN_TYPE_STRING:
             return STRING;
-        case KEYWORD_DOUBLE:
+        case TOKEN_TYPE_DOUBLE:
             return DOUBLE;
-        case KEYWORD_INT:
+        case TOKEN_TYPE_INT:
             return INT;
-        case KEYWORD_BOOLEAN:
+        case TOKEN_TYPE_BOOL:
             return BOOLEAN;
-        case KEYWORD_UNIT:
+        case TOKEN_TYPE_UNIT:
             return UNIT;
         case KEYWORD_LIST:
+            // TODO: NEeds to be remade, probably not KEYWORD....
             switch (term_node->left_ch->token.type)
             {
                 case KEYWORD_STRING:
@@ -1290,7 +1267,7 @@ static DataType evalTerm(AST_NODE *term_node, SymTable *sym_table)
             }
         default:
             // TODO:
-            fprintf(stderr, "evalTerm() -- returning NIL?\n");
+            fprintf(stderr, "getTermType() -- returning NIL?\n");
             return NIL;
     }
 }
@@ -1320,7 +1297,7 @@ static DataType checkRangeFunc(AST_NODE *call_node, SymTable *sym_table)
     DataType arg_type;
     for (size_t index = 0; arg_count > 0; ++index, --arg_count)
     {
-        arg_type = evalTerm(call_node->right_ch, sym_table);
+        arg_type = getTermType(call_node->right_ch, sym_table);
         // Check argument is defined variable/literal of determinate and supported type
         if (arg_type == NIL)
         {
@@ -1348,4 +1325,75 @@ static DataType checkRangeFunc(AST_NODE *call_node, SymTable *sym_table)
 
     // if no problems, return range(start, end)'s signature return type List[Int]
     return LIST_INT;
+}
+
+/*
+ * Checks that for-loop generator contains only ints
+ *
+ * Helper function for forStatement()
+ */
+static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table)
+{
+    // TODO: Maybe remake to check just one and then call 3 times from forStatement() to save LoC
+    // TODO: Probably checks for List[Int] literals and variables won't work right now
+    // Check generator for type compatibility -- only int literals/int variables/list[Int] literals/list[Int] variables
+
+    AST_NODE *from_node = for_node->left_ch->left_ch->left_ch->left_ch;
+    AST_NODE *to_node = for_node->left_ch->left_ch->left_ch->right_ch;
+
+    if (from_node->token.type == TOKEN_TYPE_IDENTIFIER) // If term is a variable
+    {
+        DataType term_type = getTermType(from_node, sym_table);
+        if (term_type != INT)
+        {
+            fprintf(stderr, "checkGeneratorInts() -- for-loop generator contains non-integer value\n");
+            // TODO: cleanup()
+            exit(ERROR_TYPE);
+        }
+    }
+    else if (from_node->token.type != TOKEN_TYPE_INT) // term is not an int literal nor variable
+    {
+        fprintf(stderr, "checkGeneratorInts() -- for-loop generator contains non-integer value\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    if (to_node->token.type == TOKEN_TYPE_IDENTIFIER) // If term is a variable
+    {
+        DataType term_type = getTermType(to_node, sym_table);
+        if (term_type != INT)
+        {
+            fprintf(stderr, "checkGeneratorInts() -- for-loop generator contains non-integer value\n");
+            // TODO: cleanup()
+            exit(ERROR_TYPE);
+        }
+    }
+    else if (to_node->token.type != TOKEN_TYPE_INT) // term is not an int literal nor variable
+    {
+        fprintf(stderr, "checkGeneratorInts() -- for-loop generator contains non-integer value\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    AST_NODE *step_node = for_node->left_ch->left_ch->right_ch;
+    // if generator step exists
+    if (step_node != NULL)
+    {
+        if (step_node->token.type == TOKEN_TYPE_IDENTIFIER) // If term is a variable
+        {
+            DataType term_type = getTermType(step_node, sym_table);
+            if (term_type != INT)
+            {
+                fprintf(stderr, "checkGeneratorInts() -- for-loop contains non-integer literal/variable\n");
+                // TODO: cleanup()
+                exit(ERROR_TYPE);
+            }
+        }
+        else if (step_node->token.type != TOKEN_TYPE_INT) // term is not an int literal nor variable
+        {
+            fprintf(stderr, "checkGeneratorInts() -- for-loop contains non-integer literal/variable\n");
+            // TODO: cleanup()
+            exit(ERROR_TYPE);
+        }
+    }
 }
