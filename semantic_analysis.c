@@ -3,6 +3,9 @@
  * Author: Pham Vu Duy Anh, xphamv00
  */
 
+// TODO: FIX insertBuiltins(), currently doesn't insert builtin function's parameters into data.function.parameters[]
+// Must allocate memory parameters[param_count] and fill the table
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -902,6 +905,7 @@ static DataType assignStatement(AST_NODE *assign_node, SymTable *sym_table)
         exit(ERROR_TYPE);
     }
 
+    // If no problems, annotate AST node with left side identifier for codegen
     annotateAST(var_entry, assign_node->left_ch, VAR);
     return UNIT;
 }

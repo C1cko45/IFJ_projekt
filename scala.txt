@@ -2,8 +2,11 @@ import ifj26.*
 
 @main
 def runFoo(): Unit =
-    var x: Int = 32
-    x = 5
+    # TODO: tohle parser erroruje
+    ["abc", "abc"].tail
+    # TODO: tohle parser erroruje
+    val empty: List[Int] = List()
+
     for i <- 1 to x by 1 do
         print(i)
 
