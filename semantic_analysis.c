@@ -3,11 +3,20 @@
  * Author: Pham Vu Duy Anh, xphamv00
  */
 
-// TODO: FIX insertBuiltins(), currently doesn't insert builtin function's parameters into data.function.parameters[]
-// Must allocate memory parameters[param_count] and fill the table
+// TODO: REPLACE insertBuiltins() -- old design choice
+// -> make function checkCallBuiltin()
+// -- called from functionCall() when can't find function_entry (is not user-defined function) -> might be builtin
+// -- check func_call_id_node matches any builtins -> check arg_count matches -> check args type match params type
+//->  TODO: MAKE checkVALMEMBuiltins() -- will be called when encounter VALMEM/LIST expression
+//->  TODO: FIX insertAllFunctions(), currently doesn't insert function's parameters into
+// entry_data.function.parameters[]
+
 // TODO: Dispatchers and other evalTerm and whatnot functions that resolve data types of nodes expect literals to be
 // KEYWORD_TYPE, whereas they are TOKEN_TYPE_TYPE (because a literal is not a keyword...)
 // !!! NOT IN getDataType() -- that function is used for getting type annotations (KEYWORDS)
+// TODO: Reimplement assignStatement() -- It must support implicit conversion Int->Double, right now it doesn't
+
+// TODO: cleanup module for cleanup()
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -32,16 +41,21 @@
 static size_t countParams(AST_NODE *param_node);
 static DataType getParamType(AST_NODE *target_node);
 static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table);
-static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table);
-static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node, HTEntryType entry_type);
-static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
+
 static DataType getTermType(AST_NODE *term_node, SymTable *sym_table);
+static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node, HTEntryType entry_type);
+
+static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table);
+static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
+
 static DataType checkRangeFunc(AST_NODE *func_node, SymTable *sym_table);
 static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table);
 
 static void insertBuiltins(SymTable *sym_table);
 static void checkMain(AST_NODE *root, SymTable *sym_table);
 static void insertAllFunctions(AST_NODE *root, SymTable *sym_table);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static void functionDef(AST_NODE *function_node, SymTable *sym_table);
 static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
@@ -60,265 +74,6 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
 static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/*
- * Pushes builtin functions into SymTable's global scope
- * Should be called after initializing a SymTable instance for the global scope and function def body local scopes
- *
- * Assumes initialized SymTable with initialized global scope
- */
-static void insertBuiltins(SymTable *sym_table)
-{
-    // TODO: MUST FIX parameters[] in every builtin (right now List builtins fail in parser anyway...)
-    // Because right now builtin functions have undefined parameters
-    if (sym_table == NULL)
-    {
-        fprintf(stderr, "insertBuiltins() -- passed sym_table argument is NULL\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
-    }
-    HTEntry builtin_function = {.state = BUSY,
-                                .identifier = "print",
-                                .entry_type = FUNCTION,
-                                .entry_data.function.param_count = 0,
-                                .entry_data.function.return_type = UNIT};
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "head";
-    builtin_function.entry_data.function.return_type = ANY;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "tail";
-    builtin_function.entry_data.function.return_type = LIST_ANY;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "toList";
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "readLine";
-    builtin_function.entry_data.function.return_type = STRING;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "readInt";
-    builtin_function.entry_data.function.return_type = INT;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "readDouble";
-    builtin_function.entry_data.function.return_type = DOUBLE;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "readBoolean";
-    builtin_function.entry_data.function.return_type = BOOLEAN;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "toStr";
-    builtin_function.entry_data.function.param_count = 1;
-    builtin_function.entry_data.function.return_type = STRING;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "chr";
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "drop";
-    builtin_function.entry_data.function.return_type = LIST_ANY;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "take";
-    builtin_function.entry_data.function.return_type = LIST_ANY;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "toInt";
-    builtin_function.entry_data.function.return_type = INT;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "strLength";
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "ord";
-    builtin_function.entry_data.function.param_count = 2;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "subStr";
-    builtin_function.entry_data.function.param_count = 3;
-    builtin_function.entry_data.function.return_type = STRING;
-    createIdentifier(&builtin_function, sym_table);
-
-    // Dubious one, language spec supports builtin range(start, end) AND builtin range(start,end,step)
-    // -> Which normally leads to re-definition error in SymTable
-    // Language spec itself explicitly doesn't support function overloading, like at all
-    // So I just decided to insert range(start,end,step), will have to handle this builtin function separately
-    // knowing that range().paramCount == 3 in SymTable, but, in reality, can be either 2 or 3
-    builtin_function.identifier = "range";
-    builtin_function.entry_data.function.return_type = LIST_INT;
-    createIdentifier(&builtin_function, sym_table);
-}
-
-/*
- * Traverse top-level scope of AST to find @main-tagged function
- * Also checks and guarantees top-level scope contains only function definitions
- *
- * Crashes the compilation if at least one requirement for @main-tagged function and top-level scope is not met
- * Function assumes correct argument passing (if root == NULL -> end of IFJ26 program)
- */
-static void checkMain(AST_NODE *root, SymTable *sym_table)
-{
-    if (sym_table == NULL)
-    {
-        fprintf(stderr, "checkMain() -- passed sym_table argument is NULL\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
-    }
-    bool main_found = false;
-    while (root != NULL)
-    {
-        if (root->type != NODE_PROGRAM)
-        {
-            fprintf(stderr, "checkMain() -- top-level scope contains a non-statement\n");
-            // TODO: cleanup()
-            exit(ERROR_OTHER);
-        }
-        if (root->left_ch->type != NODE_MAIN && root->left_ch->type != NODE_FUNC_DEF)
-        {
-            fprintf(stderr, "checkMain() -- top-level scope contains an unsupported statement\n");
-            // TODO: cleanup()
-            exit(ERROR_OTHER);
-        }
-
-        if (root->left_ch->type == NODE_MAIN)
-        {
-            if (main_found)
-            {
-                fprintf(stderr, "checkMain() -- Program contains more than one @main-tagged functions\n");
-                // TODO: cleanup()
-                exit(ERROR_REDEF);
-            }
-
-            main_found = true;
-
-            if (root->left_ch->left_ch->left_ch->left_ch->token.type != KEYWORD_UNIT)
-            {
-                fprintf(stderr, "checkMain() -- @main-tagged function has wrong return type\n");
-                // TODO: cleanup()
-                exit(ERROR_TYPE);
-            }
-
-            if (root->left_ch->left_ch->left_ch->right_ch != NULL)
-            {
-                fprintf(stderr, "checkMain() -- non-parametric @main-tagged function contains parameters\n");
-                // TODO: cleanup()
-                exit(ERROR_PARAM);
-            }
-        }
-
-        root = root->right_ch;
-    }
-
-    if (!main_found)
-    {
-        fprintf(stderr, "checkMain() -- no @main-tagged function in program\n");
-        // TODO: cleanup()
-        exit(ERROR_UNDEF);
-    }
-}
-
-/*
- * Fill sym_table's global scope with all function names in top-level scope
- *
- * Should be called before semantic analysis (to support function calls before their respective definition)
- */
-static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
-{
-    if (root == NULL || sym_table == NULL)
-    {
-        fprintf(stderr, "insertAllFunctions() -- at least one passed argument is NULL\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
-    }
-
-    HTEntry function_entry = {0}; // Initialize HTEntry
-    while (root != NULL)
-    {
-        if (root->left_ch->type == NODE_MAIN)
-        {
-            AST_NODE *function_node = root->left_ch->left_ch;
-            function_entry.identifier = function_node->left_ch->token.attr.str_val;
-            function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
-            if (function_entry.entry_data.function.return_type != UNIT)
-            {
-                fprintf(stderr, "insertAllFunctions() -- @main function has wrong return type\n");
-                // TODO: cleanup()
-                exit(ERROR_TYPE);
-            }
-            function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
-            if (function_entry.entry_data.function.param_count != 0)
-            {
-                fprintf(stderr, "insertAllFunctions() -- @main function contains parameters\n");
-                // TODO: cleanup()
-                exit(ERROR_PARAM);
-            }
-            function_entry.entry_data.function.parameters = NULL;
-
-            if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
-            {
-                fprintf(stderr, "insertAllFunctions() -- @main function was already defined\n");
-                // TODO: cleanup()
-                exit(ERROR_REDEF);
-            }
-            createIdentifier(&function_entry, sym_table);
-        }
-
-        if (root->left_ch->type == NODE_FUNC_DEF)
-        {
-            AST_NODE *function_node = root->left_ch;
-            function_entry.identifier = function_node->left_ch->token.attr.str_val;
-            function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
-            function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
-
-            size_t param_count = function_entry.entry_data.function.param_count;
-            if (param_count != 0)
-            {
-                // allocate array parameters[countParams]
-                function_entry.entry_data.function.parameters = calloc(param_count, sizeof(DataType));
-                if (function_entry.entry_data.function.parameters == NULL)
-                {
-                    fprintf(stderr, "insertAllFunctions() -- calloc() failed\n");
-                    // TODO: cleanup()
-                    exit(ERROR_INTERNAL);
-                }
-
-                // while-loop every parameter until NULL, getDataType
-                AST_NODE *param_node = function_node->left_ch->right_ch;
-                for (size_t index = 0; param_count > 0; ++index, --param_count)
-                {
-                    function_entry.entry_data.function.parameters[index] = getParamType(param_node->left_ch);
-                    if (function_entry.entry_data.function.parameters[index] == NIL)
-                    {
-                        fprintf(stderr, "insertAllFunctions() -- function parameter doesn't have type annotation\n");
-                        // TODO: cleanup()
-                        exit(2); // ERROR_SYNTACTIC
-                    }
-                    param_node = param_node->right_ch;
-                }
-            }
-            else
-                function_entry.entry_data.function.parameters = NULL;
-
-            if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
-            {
-                fprintf(stderr, "insertAllFunctions() -- Function was previously defined\n");
-                // TODO: cleanup()
-                exit(ERROR_REDEF);
-            }
-            createIdentifier(&function_entry, sym_table);
-        }
-
-        root = root->right_ch;
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
@@ -1395,5 +1150,262 @@ static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table)
             // TODO: cleanup()
             exit(ERROR_TYPE);
         }
+    }
+}
+
+/*
+ * Pushes builtin functions into SymTable's global scope
+ * Should be called after initializing a SymTable instance for the global scope and function def body local scopes
+ *
+ * Assumes initialized SymTable with initialized global scope
+ */
+static void insertBuiltins(SymTable *sym_table)
+{
+    // TODO: MUST FIX parameters[] in every builtin (right now List builtins fail in parser anyway...)
+    // Because right now builtin functions have undefined parameters
+    if (sym_table == NULL)
+    {
+        fprintf(stderr, "insertBuiltins() -- passed sym_table argument is NULL\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+    HTEntry builtin_function = {.state = BUSY,
+                                .identifier = "print",
+                                .entry_type = FUNCTION,
+                                .entry_data.function.param_count = 0,
+                                .entry_data.function.return_type = UNIT};
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "head";
+    builtin_function.entry_data.function.return_type = ANY;
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "tail";
+    builtin_function.entry_data.function.return_type = LIST_ANY;
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "toList";
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "readLine";
+    builtin_function.entry_data.function.return_type = STRING;
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "readInt";
+    builtin_function.entry_data.function.return_type = INT;
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "readDouble";
+    builtin_function.entry_data.function.return_type = DOUBLE;
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "readBoolean";
+    builtin_function.entry_data.function.return_type = BOOLEAN;
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "toStr";
+    builtin_function.entry_data.function.param_count = 1;
+    builtin_function.entry_data.function.return_type = STRING;
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "chr";
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "drop";
+    builtin_function.entry_data.function.return_type = LIST_ANY;
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "take";
+    builtin_function.entry_data.function.return_type = LIST_ANY;
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "toInt";
+    builtin_function.entry_data.function.return_type = INT;
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "strLength";
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "ord";
+    builtin_function.entry_data.function.param_count = 2;
+    createIdentifier(&builtin_function, sym_table);
+
+    builtin_function.identifier = "subStr";
+    builtin_function.entry_data.function.param_count = 3;
+    builtin_function.entry_data.function.return_type = STRING;
+    createIdentifier(&builtin_function, sym_table);
+
+    // Dubious one, language spec supports builtin range(start, end) AND builtin range(start,end,step)
+    // -> Which normally leads to re-definition error in SymTable
+    // Language spec itself explicitly doesn't support function overloading, like at all
+    // So I just decided to insert range(start,end,step), will have to handle this builtin function separately
+    // knowing that range().paramCount == 3 in SymTable, but, in reality, can be either 2 or 3
+    builtin_function.identifier = "range";
+    builtin_function.entry_data.function.return_type = LIST_INT;
+    createIdentifier(&builtin_function, sym_table);
+}
+
+/*
+ * Traverse top-level scope of AST to find @main-tagged function
+ * Also checks and guarantees top-level scope contains only function definitions
+ *
+ * Crashes the compilation if at least one requirement for @main-tagged function and top-level scope is not met
+ * Function assumes correct argument passing (if root == NULL -> end of IFJ26 program)
+ */
+static void checkMain(AST_NODE *root, SymTable *sym_table)
+{
+    if (sym_table == NULL)
+    {
+        fprintf(stderr, "checkMain() -- passed sym_table argument is NULL\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+    bool main_found = false;
+    while (root != NULL)
+    {
+        if (root->type != NODE_PROGRAM)
+        {
+            fprintf(stderr, "checkMain() -- top-level scope contains a non-statement\n");
+            // TODO: cleanup()
+            exit(ERROR_OTHER);
+        }
+        if (root->left_ch->type != NODE_MAIN && root->left_ch->type != NODE_FUNC_DEF)
+        {
+            fprintf(stderr, "checkMain() -- top-level scope contains an unsupported statement\n");
+            // TODO: cleanup()
+            exit(ERROR_OTHER);
+        }
+
+        if (root->left_ch->type == NODE_MAIN)
+        {
+            if (main_found)
+            {
+                fprintf(stderr, "checkMain() -- Program contains more than one @main-tagged functions\n");
+                // TODO: cleanup()
+                exit(ERROR_REDEF);
+            }
+
+            main_found = true;
+
+            if (root->left_ch->left_ch->left_ch->left_ch->token.type != KEYWORD_UNIT)
+            {
+                fprintf(stderr, "checkMain() -- @main-tagged function has wrong return type\n");
+                // TODO: cleanup()
+                exit(ERROR_TYPE);
+            }
+
+            if (root->left_ch->left_ch->left_ch->right_ch != NULL)
+            {
+                fprintf(stderr, "checkMain() -- non-parametric @main-tagged function contains parameters\n");
+                // TODO: cleanup()
+                exit(ERROR_PARAM);
+            }
+        }
+
+        root = root->right_ch;
+    }
+
+    if (!main_found)
+    {
+        fprintf(stderr, "checkMain() -- no @main-tagged function in program\n");
+        // TODO: cleanup()
+        exit(ERROR_UNDEF);
+    }
+}
+
+/*
+ * Fill sym_table's global scope with all function names in top-level scope
+ *
+ * Should be called before semantic analysis (to support function calls before their respective definition)
+ */
+static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
+{
+    if (root == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "insertAllFunctions() -- at least one passed argument is NULL\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    HTEntry function_entry = {0}; // Initialize HTEntry
+    while (root != NULL)
+    {
+        if (root->left_ch->type == NODE_MAIN)
+        {
+            AST_NODE *function_node = root->left_ch->left_ch;
+            function_entry.identifier = function_node->left_ch->token.attr.str_val;
+            function_entry.entry_type = FUNCTION;
+            function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
+            if (function_entry.entry_data.function.return_type != UNIT)
+            {
+                fprintf(stderr, "insertAllFunctions() -- @main function has wrong return type\n");
+                // TODO: cleanup()
+                exit(ERROR_TYPE);
+            }
+            function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
+            if (function_entry.entry_data.function.param_count != 0)
+            {
+                fprintf(stderr, "insertAllFunctions() -- @main function contains parameters\n");
+                // TODO: cleanup()
+                exit(ERROR_PARAM);
+            }
+            function_entry.entry_data.function.parameters = NULL;
+
+            if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
+            {
+                fprintf(stderr, "insertAllFunctions() -- @main function was already defined\n");
+                // TODO: cleanup()
+                exit(ERROR_REDEF);
+            }
+            createIdentifier(&function_entry, sym_table);
+        }
+
+        if (root->left_ch->type == NODE_FUNC_DEF)
+        {
+            AST_NODE *function_node = root->left_ch;
+            function_entry.identifier = function_node->left_ch->token.attr.str_val;
+            function_entry.entry_type = FUNCTION;
+            function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
+            function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
+
+            size_t param_count = function_entry.entry_data.function.param_count;
+            if (param_count != 0)
+            {
+                // allocate array parameters[countParams]
+                function_entry.entry_data.function.parameters = calloc(param_count, sizeof(DataType));
+                if (function_entry.entry_data.function.parameters == NULL)
+                {
+                    fprintf(stderr, "insertAllFunctions() -- calloc() failed\n");
+                    // TODO: cleanup()
+                    exit(ERROR_INTERNAL);
+                }
+
+                // while-loop every parameter until NULL, getDataType
+                AST_NODE *param_node = function_node->left_ch->right_ch;
+                for (size_t index = 0; param_count > 0; ++index, --param_count)
+                {
+                    function_entry.entry_data.function.parameters[index] = getParamType(param_node->left_ch);
+                    if (function_entry.entry_data.function.parameters[index] == NIL)
+                    {
+                        fprintf(stderr, "insertAllFunctions() -- function parameter doesn't have type annotation\n");
+                        // TODO: cleanup()
+                        exit(2); // ERROR_SYNTACTIC
+                    }
+                    param_node = param_node->right_ch;
+                }
+            }
+            else
+                function_entry.entry_data.function.parameters = NULL;
+
+            if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
+            {
+                fprintf(stderr, "insertAllFunctions() -- Function was previously defined\n");
+                // TODO: cleanup()
+                exit(ERROR_REDEF);
+            }
+            createIdentifier(&function_entry, sym_table);
+        }
+
+        root = root->right_ch;
     }
 }
