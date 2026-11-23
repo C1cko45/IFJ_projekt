@@ -4,7 +4,7 @@ CFLAGS = -std=c99 -Wall -Wextra -Wpedantic -Werror
 
 CLANG = clang
 
-CLANGFLAGS = -std=c99 -Wall -Wextra -Wpedantic -O1 -g
+CLANGFLAGS = -std=c99 -Wall -Wextra -Wpedantic -O1 -g -fuse-ld=mold
 CLANG_RUNTIME_ANALYSIS = -std=c99 -Wall -Wextra -Wpedantic -g -O0 -fsanitize=address,undefined \
 						 -fno-omit-frame-pointer
 

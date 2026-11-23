@@ -8,7 +8,7 @@ def runFoo(): Unit =
     //val empty: List[Int] = List()
 
     while 5 > 5 do
-        5
+        var x: Int = 5
 
 
 def main(): Int =
