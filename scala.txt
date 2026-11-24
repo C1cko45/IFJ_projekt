@@ -7,8 +7,7 @@ def runFoo(): Unit =
     // TODO: tohle parser erroruje
     //val empty: List[Int] = List()
 
-    while 5 > 5 do
-        var x: Int = 5
+    "123".head
 
 
 def main(): Int =

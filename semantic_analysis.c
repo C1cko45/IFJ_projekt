@@ -3,13 +3,8 @@
  * Author: Pham Vu Duy Anh, xphamv00
  */
 
-// TODO: REPLACE insertBuiltins() -- old design choice
-// -> make function checkCallBuiltin()
-// -- called from functionCall() when can't find function_entry (is not user-defined function) -> might be builtin
-// -- check func_call_id_node matches any builtins -> check arg_count matches -> check args type match params type
-//->  TODO: MAKE checkVALMEMBuiltins() -- will be called when encounter VALMEM/LIST expression
-//->  TODO: FIX insertAllFunctions(), currently doesn't insert function's parameters into
-// entry_data.function.parameters[]
+//->  TODO: MAKE checkVALMEMBuiltins() -- will be called when encounter VALMEM/LIST expression function calls
+// Those must be handled separately, because the non-parametric ones actually accept argument in different AST_NODE
 
 // TODO: Dispatchers and other evalTerm and whatnot functions that resolve data types of nodes expect literals to be
 // KEYWORD_TYPE, whereas they are TOKEN_TYPE_TYPE (because a literal is not a keyword...)
@@ -41,9 +36,10 @@
 static size_t countParams(AST_NODE *param_node);
 static DataType getParamType(AST_NODE *target_node);
 static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table);
+static void allocateParams(size_t param_count, DataType *param_ptr);
 
 static DataType getTermType(AST_NODE *term_node, SymTable *sym_table);
-static void annotateAST(HTEntry *function_entry, AST_NODE *identifier_node, HTEntryType entry_type);
+static void annotateAST(AST_NODE *identifier_node, HTEntry *function_entry, HTEntryType entry_type);
 
 static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table);
 static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
@@ -52,6 +48,7 @@ static DataType checkRangeFunc(AST_NODE *func_node, SymTable *sym_table);
 static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table);
 
 static void insertBuiltins(SymTable *sym_table);
+static void insertBuiltin(size_t builtin_count, SymTable *sym_table);
 static void checkMain(AST_NODE *root, SymTable *sym_table);
 static void insertAllFunctions(AST_NODE *root, SymTable *sym_table);
 
@@ -157,6 +154,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
  * Check that function argument count and argument types match function signature
  * Annotate ASTNode with info for codegen
  * Returns function's return value type
+ * TODO: IMPLEMENT POSSIBLE PARAM TYPE INT -> DOUBLE CONVERSION
  */
 static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
 {
@@ -223,7 +221,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     }
 
     // If all is correct, annotate AST node with sym_table info for codegen
-    annotateAST(function_entry, call_node->left_ch, FUNCTION);
+    annotateAST(call_node->left_ch, function_entry, FUNCTION);
 
     DataType func_ret_type = function_entry->entry_data.function.return_type;
     // If function signature has explicit return type UNIT -> returns UNIT (any other return value discarded)
@@ -637,8 +635,29 @@ static DataType assignStatement(AST_NODE *assign_node, SymTable *sym_table)
     }
 
     // If no problems, annotate AST node with left side identifier for codegen
-    annotateAST(var_entry, assign_node->left_ch, VAR);
+    annotateAST(assign_node->left_ch, var_entry, VAR);
     return UNIT;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table)
+{
+    // TBD:
+    return BOOLEAN;
+}
+
+/*
+ * if-expression has fixed form: if-branch and else-branch
+ * both branches must have same return value type -> otherwise ERROR_TYPE?
+ */
+static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table)
+{
+    // TBD:
+    pushScope(sym_table);
+    popScope(sym_table);
+
+    return NIL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -769,7 +788,10 @@ void semanticAnalysis(AST_NODE *root)
 {
     // Create and initialize sym_table with global scope
     SymTable *sym_table = createSymTable();
-    insertBuiltins(sym_table);
+
+    // Insert all builtin functions
+    for (size_t builtin_count = 17; builtin_count >= 0; --builtin_count)
+        insertBuiltin(builtin_count, sym_table);
 
     // Traverses top-level scope for @main tagged function, also checks proper top-level structure (only func def's)
     checkMain(root, sym_table);
@@ -884,9 +906,64 @@ static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table)
 }
 
 /*
+ * Helper function for functionCall() to handle special case List's builtin range(start, end)
+ * It's an exception of function overloading (range(start, end, step)), otherwise it's not supposed
+ *
+ * Function assumes func_node really is range(step, end)
+ * Returns range(start, end)'s signature return type List[Int]
+ */
+static DataType checkRangeFunc(AST_NODE *call_node, SymTable *sym_table)
+{
+    // Argument error-handling
+    if (call_node == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "checkRangeFunc() -- at least one argument is invalid\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    // Get the range(start, end, step) function - They're basically the same except the step parameter
+    HTEntry *function_entry = getIdentifier(call_node->token.attr.str_val, FUNCTION, sym_table);
+
+    // Check argument types -- can only be literals and identifiers (Should be guaranteed by syntactic analysis)
+    size_t arg_count = 2;
+    DataType arg_type;
+    for (size_t index = 0; arg_count > 0; ++index, --arg_count)
+    {
+        arg_type = getTermType(call_node->right_ch, sym_table);
+        // Check argument is defined variable/literal of determinate and supported type
+        if (arg_type == NIL)
+        {
+            fprintf(stderr, "checkRangeFunc() -- function argument of indeterminate type\n");
+            // TODO: cleanup()
+            exit(ERROR_PARAM);
+        }
+
+        // if function parameter has type Any, it aceppts any argument type
+        if (function_entry->entry_data.function.parameters[index] == ANY)
+            continue;
+        // if function parameter has type List[Any], it aceppts any argument type List[T]
+        if (function_entry->entry_data.function.parameters[index] == LIST_ANY)
+            if (arg_type == LIST_INT || arg_type == LIST_DOUBLE || arg_type == LIST_STRING ||
+                arg_type == LIST_BOOLEAN || arg_type == LIST_UNIT)
+                continue;
+
+        if (arg_type != function_entry->entry_data.function.parameters[index])
+        {
+            fprintf(stderr, "checkRangeFunc() -- function argument of incompatible type\n");
+            // TODO: cleanup()
+            exit(ERROR_PARAM);
+        }
+    }
+
+    // if no problems, return range(start, end)'s signature return type List[Int]
+    return LIST_INT;
+}
+
+/*
  * Allocates memory for HTEntry in AST_NODE and passes function_entry info to it
  */
-static void annotateAST(HTEntry *sym_table_entry, AST_NODE *identifier_node, HTEntryType entry_type)
+static void annotateAST(AST_NODE *identifier_node, HTEntry *sym_table_entry, HTEntryType entry_type)
 {
     // Argument error-handling
     if (sym_table_entry == NULL || identifier_node == NULL || entry_type == NONE)
@@ -942,144 +1019,400 @@ static void annotateAST(HTEntry *sym_table_entry, AST_NODE *identifier_node, HTE
     identifier_node->identifier_entry = ast_entry;
 }
 
-static DataType evaluateExpr(AST_NODE *expr_node, SymTable *sym_table)
-{
-    // TBD:
-    return BOOLEAN;
-}
-
 /*
- * if-expression has fixed form: if-branch and else-branch
- * both branches must have same return value type -> otherwise ERROR_TYPE?
+ * Pushes builtin functions into SymTable's global scope, based on builtin_count argument
+ * Should be called only after creating a new sym_table
  */
-static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table)
-{
-    // TBD:
-    pushScope(sym_table);
-    popScope(sym_table);
-
-    return NIL;
-}
-
-/*
- * Return data type of term (literal/variable)
- *
- * Mainly for resolving terms in expressions (their types)
- */
-static DataType getTermType(AST_NODE *term_node, SymTable *sym_table)
-{
-    if (sym_table == NULL || term_node == NULL)
-    {
-        fprintf(stderr, "getTermType() -- at least one argument is invalid.\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
-    }
-
-    // Term is variable
-    if (term_node->token.type == TOKEN_TYPE_IDENTIFIER)
-    {
-        HTEntry *var_entry = getIdentifier(term_node->token.attr.str_val, VAR, sym_table);
-        if (var_entry == NULL)
-        {
-            fprintf(stderr, "getTermType() -- undefined variable\n");
-            // TODO: cleanup()
-            exit(ERROR_UNDEF);
-        }
-
-        return var_entry->entry_data.variable_data_type;
-    }
-
-    // Term not variable, might be literal
-    switch (term_node->token.type)
-    {
-        case TOKEN_TYPE_STRING:
-            return STRING;
-        case TOKEN_TYPE_DOUBLE:
-            return DOUBLE;
-        case TOKEN_TYPE_INT:
-            return INT;
-        case TOKEN_TYPE_BOOL:
-            return BOOLEAN;
-        case TOKEN_TYPE_UNIT:
-            return UNIT;
-        case KEYWORD_LIST:
-            // TODO: NEeds to be remade, probably not KEYWORD....
-            switch (term_node->left_ch->token.type)
-            {
-                case KEYWORD_STRING:
-                    return LIST_STRING;
-                case KEYWORD_DOUBLE:
-                    return LIST_DOUBLE;
-                case KEYWORD_INT:
-                    return LIST_INT;
-                case KEYWORD_BOOLEAN:
-                    return LIST_BOOLEAN;
-                case KEYWORD_UNIT:
-                    return LIST_UNIT;
-                // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
-                //     return LIST_ANY;
-                default:;
-            }
-        default:
-            // TODO:
-            fprintf(stderr, "getTermType() -- returning NIL?\n");
-            return NIL;
-    }
-}
-
-/*
- * Helper function for functionCall() to handle special case List's builtin range(start, end)
- * It's an exception of function overloading (range(start, end, step)), otherwise it's not supposed
- *
- * Function assumes func_node really is range(step, end)
- * Returns range(start, end)'s signature return type List[Int]
- */
-static DataType checkRangeFunc(AST_NODE *call_node, SymTable *sym_table)
+static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 {
     // Argument error-handling
-    if (call_node == NULL || sym_table == NULL)
+    if (sym_table == NULL)
     {
-        fprintf(stderr, "checkRangeFunc() -- at least one argument is invalid\n");
+        fprintf(stderr, "insertBuiltin() -- argument is NULL\n");
         // TODO: cleanup()
         exit(ERROR_INTERNAL);
     }
 
-    // Get the range(start, end, step) function - They're basically the same except the step parameter
-    HTEntry *function_entry = getIdentifier(call_node->token.attr.str_val, FUNCTION, sym_table);
+    HTEntry builtin_function = {
+        .state = BUSY,
+        .entry_type = FUNCTION,
+    };
 
-    // Check argument types -- can only be literals and identifiers (Should be guaranteed by syntactic analysis)
-    size_t arg_count = 2;
-    DataType arg_type;
-    for (size_t index = 0; arg_count > 0; ++index, --arg_count)
+    switch (builtin_count)
     {
-        arg_type = getTermType(call_node->right_ch, sym_table);
-        // Check argument is defined variable/literal of determinate and supported type
-        if (arg_type == NIL)
-        {
-            fprintf(stderr, "checkRangeFunc() -- function argument of indeterminate type\n");
+        /* Ordered from 0-parameter, to most */
+        // IFJ26 BASE
+        // 0-parameter functions
+        case 17:
+            // readLine(): String
+            builtin_function.identifier = "readLine";
+            builtin_function.entry_data.function.param_count = 0;
+            builtin_function.entry_data.function.return_type = STRING;
+            builtin_function.entry_data.function.parameters = NULL;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        case 16:
+            // readInt(): Int
+            builtin_function.identifier = "readInt";
+            builtin_function.entry_data.function.param_count = 0;
+            builtin_function.entry_data.function.return_type = INT;
+            builtin_function.entry_data.function.parameters = NULL;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        case 15:
+            // readDouble(): Double
+            builtin_function.identifier = "readDouble";
+            builtin_function.entry_data.function.param_count = 0;
+            builtin_function.entry_data.function.return_type = DOUBLE;
+            builtin_function.entry_data.function.parameters = NULL;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        // 1-parameter functions
+        case 14:
+            // print(value: Any): Unit
+            builtin_function.identifier = "print";
+            builtin_function.entry_data.function.param_count = 1;
+            builtin_function.entry_data.function.return_type = UNIT;
+            allocateParams(1, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters[0] = ANY;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        case 13:
+            // toStr(value: Any): String -- LZE I ARGUMENT value: List[T]
+            builtin_function.identifier = "toStr";
+            builtin_function.entry_data.function.param_count = 1;
+            builtin_function.entry_data.function.return_type = STRING;
+            allocateParams(1, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters[0] = ANY;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        case 12:
+            // toInt(value: Double): Int
+            builtin_function.identifier = "toInt";
+            builtin_function.entry_data.function.param_count = 1;
+            builtin_function.entry_data.function.return_type = INT;
+            allocateParams(1, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters[0] = DOUBLE;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        case 11:
+            // strLength(value: String): Int
+            builtin_function.identifier = "strLength";
+            builtin_function.entry_data.function.param_count = 1;
+            builtin_function.entry_data.function.return_type = INT;
+            allocateParams(1, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters[0] = STRING;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        case 10:
+            // chr(code: Int): String
+            builtin_function.identifier = "chr";
+            builtin_function.entry_data.function.param_count = 1;
+            builtin_function.entry_data.function.return_type = STRING;
+            allocateParams(1, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters[0] = INT;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        // 2-parameter functions
+        case 9:
+            // ord(value: String, index: Int): Int
+            builtin_function.identifier = "ord";
+            builtin_function.entry_data.function.param_count = 2;
+            builtin_function.entry_data.function.return_type = INT;
+            allocateParams(2, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters[0] = STRING;
+            builtin_function.entry_data.function.parameters[1] = INT;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        // 3-parameter functions
+        case 8:
+            // subStr(value: String, start: Int, end: Int): String
+            builtin_function.identifier = "subStr";
+            builtin_function.entry_data.function.param_count = 3;
+            builtin_function.entry_data.function.return_type = STRING;
+            allocateParams(3, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters[0] = STRING;
+            builtin_function.entry_data.function.parameters[1] = INT;
+            builtin_function.entry_data.function.parameters[2] = INT;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        // BOOLTHEN extension
+        case 7:
+            // readBoolean(): Boolean
+            builtin_function.identifier = "readBoolean";
+            builtin_function.entry_data.function.param_count = 0;
+            builtin_function.entry_data.function.return_type = BOOLEAN;
+            allocateParams(0, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters = NULL;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        // LISTS extension
+        // 0-parameter functions
+        case 6:
+            // head(): T ~> ANY
+            builtin_function.identifier = "head";
+            builtin_function.entry_data.function.param_count = 0;
+            builtin_function.entry_data.function.return_type = ANY;
+            allocateParams(0, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters = NULL;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        case 5:
+            // tail(): List[T] ~> LIST_ANY
+            builtin_function.identifier = "tail";
+            builtin_function.entry_data.function.param_count = 0;
+            builtin_function.entry_data.function.return_type = LIST_ANY;
+            allocateParams(0, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters = NULL;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        case 4:
+            // toString(): String
+            builtin_function.identifier = "toString";
+            builtin_function.entry_data.function.param_count = 0;
+            builtin_function.entry_data.function.return_type = STRING;
+            allocateParams(0, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters = NULL;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        // 1-parameter functions
+        case 3:
+            // drop(n): List[T]
+            builtin_function.identifier = "drop";
+            builtin_function.entry_data.function.param_count = 1;
+            builtin_function.entry_data.function.return_type = LIST_ANY;
+            allocateParams(1, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters[0] = DOUBLE; // Posibble also INT -> DOUBLE
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        case 2:
+            // take(n): List[T]
+            builtin_function.identifier = "take";
+            builtin_function.entry_data.function.param_count = 1;
+            builtin_function.entry_data.function.return_type = LIST_ANY;
+            allocateParams(1, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters[0] = DOUBLE; // Posibble also INT -> DOUBLE
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        // 2-parameter functions
+        case 1:
+            // slice(from, until): List[T]
+            builtin_function.identifier = "slice";
+            builtin_function.entry_data.function.param_count = 2;
+            builtin_function.entry_data.function.return_type = LIST_ANY;
+            allocateParams(2, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters[0] = DOUBLE; // Posibble also INT -> DOUBLE
+            builtin_function.entry_data.function.parameters[1] = DOUBLE; // Posibble also INT -> DOUBLE
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        // 3-parameter functions
+        case 0:
+            // range(start, end, step): List[Int]
+
+            // Dubious one, language spec supports builtin range(start, end) AND builtin range(start,end,step)
+            // -> Which normally leads to re-definition error in SymTable
+            // Language spec itself explicitly doesn't support function overloading, like at all
+            // So I just decided to insert range(start,end,step)
+            // functionCall() resolves range(start, end) with checkRangeFunc() helper function
+            // knowing that range().paramCount == 3 in SymTable, but, in reality, can be either 2 or 3
+            builtin_function.identifier = "range";
+            builtin_function.entry_data.function.param_count = 3;
+            builtin_function.entry_data.function.return_type = LIST_INT;
+            allocateParams(3, builtin_function.entry_data.function.parameters);
+            builtin_function.entry_data.function.parameters[0] = DOUBLE; // Posibble also INT -> DOUBLE
+            builtin_function.entry_data.function.parameters[1] = DOUBLE; // Posibble also INT -> DOUBLE
+            builtin_function.entry_data.function.parameters[2] = DOUBLE; // Posibble also INT -> DOUBLE
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        default:
+            fprintf(stderr, "insertBuiltin() -- argument builtin_count has wrong value\n");
             // TODO: cleanup()
-            exit(ERROR_PARAM);
+            exit(ERROR_INTERNAL);
+    }
+    createIdentifier(&builtin_function, sym_table);
+}
+
+/*
+ * Traverse top-level scope of AST to find @main-tagged function
+ * Also checks and guarantees top-level scope contains only function definitions
+ *
+ * Crashes the compilation if at least one requirement for @main-tagged function and top-level scope is not met
+ * Function assumes correct argument passing (if root == NULL -> end of IFJ26 program)
+ */
+static void checkMain(AST_NODE *root, SymTable *sym_table)
+{
+    if (sym_table == NULL)
+    {
+        fprintf(stderr, "checkMain() -- passed sym_table argument is NULL\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+    bool main_found = false;
+    while (root != NULL)
+    {
+        // Check that top-level scope contains only statements
+        if (root->type != NODE_PROGRAM)
+        {
+            fprintf(stderr, "checkMain() -- top-level scope contains a non-statement\n");
+            // TODO: cleanup()
+            exit(ERROR_OTHER);
+        }
+        // Check that top-level scope contains only function definitions
+        if (root->left_ch->type != NODE_MAIN && root->left_ch->type != NODE_FUNC_DEF)
+        {
+            fprintf(stderr, "checkMain() -- top-level scope contains an unsupported statement\n");
+            // TODO: cleanup()
+            exit(ERROR_OTHER);
         }
 
-        // if function parameter has type Any, it aceppts any argument type
-        if (function_entry->entry_data.function.parameters[index] == ANY)
-            continue;
-        // if function parameter has type List[Any], it aceppts any argument type List[T]
-        if (function_entry->entry_data.function.parameters[index] == LIST_ANY)
-            if (arg_type == LIST_INT || arg_type == LIST_DOUBLE || arg_type == LIST_STRING ||
-                arg_type == LIST_BOOLEAN || arg_type == LIST_UNIT)
-                continue;
-
-        if (arg_type != function_entry->entry_data.function.parameters[index])
+        if (root->left_ch->type == NODE_MAIN)
         {
-            fprintf(stderr, "checkRangeFunc() -- function argument of incompatible type\n");
-            // TODO: cleanup()
-            exit(ERROR_PARAM);
+            if (main_found) // if already found @main-tagged function before
+            {
+                fprintf(stderr, "checkMain() -- Program contains more than one @main-tagged functions\n");
+                // TODO: cleanup()
+                exit(ERROR_REDEF);
+            }
+
+            main_found = true;
+
+            // Check that @main return type is Unit
+            if (root->left_ch->left_ch->left_ch->left_ch->token.type != KEYWORD_UNIT)
+            {
+                fprintf(stderr, "checkMain() -- @main-tagged function has wrong return type\n");
+                // TODO: cleanup()
+                exit(ERROR_TYPE);
+            }
+
+            // Check that @main contains no parameters
+            if (root->left_ch->left_ch->left_ch->right_ch != NULL)
+            {
+                fprintf(stderr, "checkMain() -- non-parametric @main-tagged function contains parameters\n");
+                // TODO: cleanup()
+                exit(ERROR_PARAM);
+            }
         }
+
+        root = root->right_ch;
     }
 
-    // if no problems, return range(start, end)'s signature return type List[Int]
-    return LIST_INT;
+    if (!main_found)
+    {
+        fprintf(stderr, "checkMain() -- no @main-tagged function in program\n");
+        // TODO: cleanup()
+        exit(ERROR_UNDEF);
+    }
+}
+
+/*
+ * Helper function for insertBuiltin()
+ * Allocates memory for param_ptr[param_count]
+ *
+ * Returns error param_ptr is not NULL
+ */
+static void allocateParams(size_t param_count, DataType *param_ptr)
+{
+    // Argument error-handling
+    if (param_ptr != NULL)
+    {
+        fprintf(stderr, "allocateParams() -- param_ptr is not NULL\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    param_ptr = calloc(param_count, sizeof(DataType));
+    if (param_ptr == NULL)
+    {
+        fprintf(stderr, "allocateParams() -- calloc() failed\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+}
+
+/*
+ * Fill sym_table's global scope with all function names in top-level scope
+ *
+ * Should be called right before semantic analysis (to support function calls before their respective definition)
+ * Call only after checkMain() function, which guarantees correct AST structure of top-level scope
+ * and correct @main function
+ */
+static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
+{
+    if (root == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "insertAllFunctions() -- at least one passed argument is NULL\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    HTEntry function_entry = {0}; // Initialize HTEntry
+    AST_NODE *function_node = NULL;
+    while (root != NULL)
+    {
+        if (root->left_ch->type == NODE_MAIN)
+            function_node = root->left_ch->left_ch;
+        else
+            function_node = root->left_ch;
+
+        function_entry.identifier = function_node->left_ch->token.attr.str_val;
+        function_entry.entry_type = FUNCTION;
+        function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
+        function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
+
+        size_t param_count = function_entry.entry_data.function.param_count;
+        if (param_count != 0)
+        {
+            // allocate memory for parameters[countParams]
+            allocateParams(param_count, function_entry.entry_data.function.parameters);
+
+            // while-loop every parameter until NULL, getDataType
+            AST_NODE *param_node = function_node->left_ch->right_ch;
+            for (size_t index = 0; param_count > 0; ++index, --param_count)
+            {
+                function_entry.entry_data.function.parameters[index] = getParamType(param_node->left_ch);
+                if (function_entry.entry_data.function.parameters[index] == NIL)
+                {
+                    fprintf(stderr, "insertAllFunctions() -- function parameter doesn't have type annotation\n");
+                    // TODO: cleanup()
+                    exit(2); // ERROR_SYNTACTIC
+                }
+                param_node = param_node->right_ch;
+            }
+        }
+        else
+            function_entry.entry_data.function.parameters = NULL;
+
+        if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
+        {
+            fprintf(stderr, "insertAllFunctions() -- Function was previously defined\n");
+            // TODO: cleanup()
+            exit(ERROR_REDEF);
+        }
+        createIdentifier(&function_entry, sym_table);
+    }
+
+    root = root->right_ch;
 }
 
 /*
@@ -1154,258 +1487,67 @@ static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table)
 }
 
 /*
- * Pushes builtin functions into SymTable's global scope
- * Should be called after initializing a SymTable instance for the global scope and function def body local scopes
+ * Return data type of term (literal/variable)
  *
- * Assumes initialized SymTable with initialized global scope
+ * Mainly for resolving terms in expressions (their types)
  */
-static void insertBuiltins(SymTable *sym_table)
+static DataType getTermType(AST_NODE *term_node, SymTable *sym_table)
 {
-    // TODO: MUST FIX parameters[] in every builtin (right now List builtins fail in parser anyway...)
-    // Because right now builtin functions have undefined parameters
-    if (sym_table == NULL)
+    if (sym_table == NULL || term_node == NULL)
     {
-        fprintf(stderr, "insertBuiltins() -- passed sym_table argument is NULL\n");
+        fprintf(stderr, "getTermType() -- at least one argument is invalid.\n");
         // TODO: cleanup()
         exit(ERROR_INTERNAL);
     }
-    HTEntry builtin_function = {.state = BUSY,
-                                .identifier = "print",
-                                .entry_type = FUNCTION,
-                                .entry_data.function.param_count = 0,
-                                .entry_data.function.return_type = UNIT};
-    createIdentifier(&builtin_function, sym_table);
 
-    builtin_function.identifier = "head";
-    builtin_function.entry_data.function.return_type = ANY;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "tail";
-    builtin_function.entry_data.function.return_type = LIST_ANY;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "toList";
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "readLine";
-    builtin_function.entry_data.function.return_type = STRING;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "readInt";
-    builtin_function.entry_data.function.return_type = INT;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "readDouble";
-    builtin_function.entry_data.function.return_type = DOUBLE;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "readBoolean";
-    builtin_function.entry_data.function.return_type = BOOLEAN;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "toStr";
-    builtin_function.entry_data.function.param_count = 1;
-    builtin_function.entry_data.function.return_type = STRING;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "chr";
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "drop";
-    builtin_function.entry_data.function.return_type = LIST_ANY;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "take";
-    builtin_function.entry_data.function.return_type = LIST_ANY;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "toInt";
-    builtin_function.entry_data.function.return_type = INT;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "strLength";
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "ord";
-    builtin_function.entry_data.function.param_count = 2;
-    createIdentifier(&builtin_function, sym_table);
-
-    builtin_function.identifier = "subStr";
-    builtin_function.entry_data.function.param_count = 3;
-    builtin_function.entry_data.function.return_type = STRING;
-    createIdentifier(&builtin_function, sym_table);
-
-    // Dubious one, language spec supports builtin range(start, end) AND builtin range(start,end,step)
-    // -> Which normally leads to re-definition error in SymTable
-    // Language spec itself explicitly doesn't support function overloading, like at all
-    // So I just decided to insert range(start,end,step), will have to handle this builtin function separately
-    // knowing that range().paramCount == 3 in SymTable, but, in reality, can be either 2 or 3
-    builtin_function.identifier = "range";
-    builtin_function.entry_data.function.return_type = LIST_INT;
-    createIdentifier(&builtin_function, sym_table);
-}
-
-/*
- * Traverse top-level scope of AST to find @main-tagged function
- * Also checks and guarantees top-level scope contains only function definitions
- *
- * Crashes the compilation if at least one requirement for @main-tagged function and top-level scope is not met
- * Function assumes correct argument passing (if root == NULL -> end of IFJ26 program)
- */
-static void checkMain(AST_NODE *root, SymTable *sym_table)
-{
-    if (sym_table == NULL)
+    // Term is variable
+    if (term_node->token.type == TOKEN_TYPE_IDENTIFIER)
     {
-        fprintf(stderr, "checkMain() -- passed sym_table argument is NULL\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
-    }
-    bool main_found = false;
-    while (root != NULL)
-    {
-        if (root->type != NODE_PROGRAM)
+        HTEntry *var_entry = getIdentifier(term_node->token.attr.str_val, VAR, sym_table);
+        if (var_entry == NULL)
         {
-            fprintf(stderr, "checkMain() -- top-level scope contains a non-statement\n");
+            fprintf(stderr, "getTermType() -- undefined variable\n");
             // TODO: cleanup()
-            exit(ERROR_OTHER);
-        }
-        if (root->left_ch->type != NODE_MAIN && root->left_ch->type != NODE_FUNC_DEF)
-        {
-            fprintf(stderr, "checkMain() -- top-level scope contains an unsupported statement\n");
-            // TODO: cleanup()
-            exit(ERROR_OTHER);
+            exit(ERROR_UNDEF);
         }
 
-        if (root->left_ch->type == NODE_MAIN)
-        {
-            if (main_found)
-            {
-                fprintf(stderr, "checkMain() -- Program contains more than one @main-tagged functions\n");
-                // TODO: cleanup()
-                exit(ERROR_REDEF);
-            }
-
-            main_found = true;
-
-            if (root->left_ch->left_ch->left_ch->left_ch->token.type != KEYWORD_UNIT)
-            {
-                fprintf(stderr, "checkMain() -- @main-tagged function has wrong return type\n");
-                // TODO: cleanup()
-                exit(ERROR_TYPE);
-            }
-
-            if (root->left_ch->left_ch->left_ch->right_ch != NULL)
-            {
-                fprintf(stderr, "checkMain() -- non-parametric @main-tagged function contains parameters\n");
-                // TODO: cleanup()
-                exit(ERROR_PARAM);
-            }
-        }
-
-        root = root->right_ch;
+        return var_entry->entry_data.variable_data_type;
     }
 
-    if (!main_found)
+    // Term not variable, might be literal
+    switch (term_node->token.type)
     {
-        fprintf(stderr, "checkMain() -- no @main-tagged function in program\n");
-        // TODO: cleanup()
-        exit(ERROR_UNDEF);
-    }
-}
-
-/*
- * Fill sym_table's global scope with all function names in top-level scope
- *
- * Should be called before semantic analysis (to support function calls before their respective definition)
- */
-static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
-{
-    if (root == NULL || sym_table == NULL)
-    {
-        fprintf(stderr, "insertAllFunctions() -- at least one passed argument is NULL\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
-    }
-
-    HTEntry function_entry = {0}; // Initialize HTEntry
-    while (root != NULL)
-    {
-        if (root->left_ch->type == NODE_MAIN)
-        {
-            AST_NODE *function_node = root->left_ch->left_ch;
-            function_entry.identifier = function_node->left_ch->token.attr.str_val;
-            function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
-            if (function_entry.entry_data.function.return_type != UNIT)
+        case TOKEN_TYPE_STRING:
+            return STRING;
+        case TOKEN_TYPE_DOUBLE:
+            return DOUBLE;
+        case TOKEN_TYPE_INT:
+            return INT;
+        case TOKEN_TYPE_BOOL:
+            return BOOLEAN;
+        case TOKEN_TYPE_UNIT:
+            return UNIT;
+        case KEYWORD_LIST:
+            // TODO: NEeds to be remade, probably not KEYWORD....
+            switch (term_node->left_ch->token.type)
             {
-                fprintf(stderr, "insertAllFunctions() -- @main function has wrong return type\n");
-                // TODO: cleanup()
-                exit(ERROR_TYPE);
+                case KEYWORD_STRING:
+                    return LIST_STRING;
+                case KEYWORD_DOUBLE:
+                    return LIST_DOUBLE;
+                case KEYWORD_INT:
+                    return LIST_INT;
+                case KEYWORD_BOOLEAN:
+                    return LIST_BOOLEAN;
+                case KEYWORD_UNIT:
+                    return LIST_UNIT;
+                // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
+                //     return LIST_ANY;
+                default:;
             }
-            function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
-            if (function_entry.entry_data.function.param_count != 0)
-            {
-                fprintf(stderr, "insertAllFunctions() -- @main function contains parameters\n");
-                // TODO: cleanup()
-                exit(ERROR_PARAM);
-            }
-            function_entry.entry_data.function.parameters = NULL;
-
-            if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
-            {
-                fprintf(stderr, "insertAllFunctions() -- @main function was already defined\n");
-                // TODO: cleanup()
-                exit(ERROR_REDEF);
-            }
-            createIdentifier(&function_entry, sym_table);
-        }
-
-        if (root->left_ch->type == NODE_FUNC_DEF)
-        {
-            AST_NODE *function_node = root->left_ch;
-            function_entry.identifier = function_node->left_ch->token.attr.str_val;
-            function_entry.entry_type = FUNCTION;
-            function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
-            function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
-
-            size_t param_count = function_entry.entry_data.function.param_count;
-            if (param_count != 0)
-            {
-                // allocate array parameters[countParams]
-                function_entry.entry_data.function.parameters = calloc(param_count, sizeof(DataType));
-                if (function_entry.entry_data.function.parameters == NULL)
-                {
-                    fprintf(stderr, "insertAllFunctions() -- calloc() failed\n");
-                    // TODO: cleanup()
-                    exit(ERROR_INTERNAL);
-                }
-
-                // while-loop every parameter until NULL, getDataType
-                AST_NODE *param_node = function_node->left_ch->right_ch;
-                for (size_t index = 0; param_count > 0; ++index, --param_count)
-                {
-                    function_entry.entry_data.function.parameters[index] = getParamType(param_node->left_ch);
-                    if (function_entry.entry_data.function.parameters[index] == NIL)
-                    {
-                        fprintf(stderr, "insertAllFunctions() -- function parameter doesn't have type annotation\n");
-                        // TODO: cleanup()
-                        exit(2); // ERROR_SYNTACTIC
-                    }
-                    param_node = param_node->right_ch;
-                }
-            }
-            else
-                function_entry.entry_data.function.parameters = NULL;
-
-            if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
-            {
-                fprintf(stderr, "insertAllFunctions() -- Function was previously defined\n");
-                // TODO: cleanup()
-                exit(ERROR_REDEF);
-            }
-            createIdentifier(&function_entry, sym_table);
-        }
-
-        root = root->right_ch;
+        default:
+            // TODO:
+            fprintf(stderr, "getTermType() -- returning NIL?\n");
+            return NIL;
     }
 }
