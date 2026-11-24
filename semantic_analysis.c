@@ -142,8 +142,9 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
                 }
             }
         }
+        else
+            programStatement(program_node, function_entry, sym_table);
 
-        programStatement(program_node, function_entry, sym_table);
         program_node = program_node->right_ch;
     }
 
