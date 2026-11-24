@@ -47,7 +47,6 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
 static DataType checkRangeFunc(AST_NODE *func_node, SymTable *sym_table);
 static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table);
 
-static void insertBuiltins(SymTable *sym_table);
 static void insertBuiltin(size_t builtin_count, SymTable *sym_table);
 static void checkMain(AST_NODE *root, SymTable *sym_table);
 static void insertAllFunctions(AST_NODE *root, SymTable *sym_table);
