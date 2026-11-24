@@ -7,8 +7,21 @@ def runFoo(): Unit =
     // TODO: tohle parser erroruje
     //val empty: List[Int] = List()
 
-    "123".head
+    // TODO: tohle parser erroruje
+    //val absolute = if x < 0 then 0 - x else x
 
+    // TODO: This should work or no?
+    //(3, 4) > (3, 4)
+
+    // This correctly caught as type error in semanal
+    // 5 + True || False
+
+    // I think this caused an infinite loop
+    // 5 + (-(3 + 3))
+
+    // TODO: This expression is registered as arithmetic, even though it's error
+    true + true
+    5
 
 def main(): Int =
-    return x + 5
+    return 5
