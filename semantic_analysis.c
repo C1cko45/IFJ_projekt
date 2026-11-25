@@ -37,7 +37,6 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table);
 static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table);
 
 static DataType checkRangeFunc(AST_NODE *func_node, SymTable *sym_table);
-static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table);
 
 static void insertBuiltin(size_t builtin_count, SymTable *sym_table);
 static void checkMain(AST_NODE *root, SymTable *sym_table);
@@ -452,8 +451,16 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
         compilerError(ERROR_OTHER);
     }
 
-    // Check for-loop generator contains only ints
-    checkGeneratorInts(for_node, sym_table);
+    // Check that for-loop's generator contains only expressions of type Int
+    DataType from_type = exprStatement(for_node->left_ch->left_ch->left_ch->left_ch, sym_table);
+    DataType to_type = exprStatement(for_node->left_ch->left_ch->left_ch->right_ch, sym_table);
+    DataType step_type = exprStatement(for_node->left_ch->left_ch->right_ch, sym_table);
+
+    if (from_type != INT || to_type != INT || step_type != INT)
+    {
+        fprintf(stderr, "forStatement() -- for-loop generator bounds/step contains non-integer expression\n");
+        compilerError(ERROR_TYPE);
+    }
 
     // Evaluate every guard (if-expression condition)
     AST_NODE *cond_node = for_node->left_ch->right_ch;
@@ -1897,70 +1904,6 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
         createIdentifier(&function_entry, sym_table);
 
         root = root->right_ch;
-    }
-}
-
-/*
- * Checks that for-loop generator contains only ints
- *
- * Helper function for forStatement()
- */
-static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table)
-{
-    // TODO: Probably checks for List[Int] literals and variables won't work right now
-    // Check generator for type compatibility -- only int literals/int variables/list[Int] literals/list[Int] variables
-
-    AST_NODE *from_node = for_node->left_ch->left_ch->left_ch->left_ch;
-    AST_NODE *to_node = for_node->left_ch->left_ch->left_ch->right_ch;
-
-    if (from_node->token.type == TOKEN_TYPE_IDENTIFIER) // If term is a variable
-    {
-        DataType term_type = getTermType(from_node, sym_table);
-        if (term_type != INT)
-        {
-            fprintf(stderr, "checkGeneratorInts() -- for-loop generator contains non-integer value\n");
-            compilerError(ERROR_TYPE);
-        }
-    }
-    else if (from_node->token.type != TOKEN_TYPE_INT) // term is not an int literal nor variable
-    {
-        fprintf(stderr, "checkGeneratorInts() -- for-loop generator contains non-integer value\n");
-        compilerError(ERROR_TYPE);
-    }
-
-    if (to_node->token.type == TOKEN_TYPE_IDENTIFIER) // If term is a variable
-    {
-        DataType term_type = getTermType(to_node, sym_table);
-        if (term_type != INT)
-        {
-            fprintf(stderr, "checkGeneratorInts() -- for-loop generator contains non-integer value\n");
-            compilerError(ERROR_TYPE);
-        }
-    }
-    else if (to_node->token.type != TOKEN_TYPE_INT) // term is not an int literal nor variable
-    {
-        fprintf(stderr, "checkGeneratorInts() -- for-loop generator contains non-integer value\n");
-        compilerError(ERROR_TYPE);
-    }
-
-    AST_NODE *step_node = for_node->left_ch->left_ch->right_ch;
-    // if generator step exists
-    if (step_node != NULL)
-    {
-        if (step_node->token.type == TOKEN_TYPE_IDENTIFIER) // If term is a variable
-        {
-            DataType term_type = getTermType(step_node, sym_table);
-            if (term_type != INT)
-            {
-                fprintf(stderr, "checkGeneratorInts() -- for-loop contains non-integer literal/variable\n");
-                compilerError(ERROR_TYPE);
-            }
-        }
-        else if (step_node->token.type != TOKEN_TYPE_INT) // term is not an int literal nor variable
-        {
-            fprintf(stderr, "checkGeneratorInts() -- for-loop contains non-integer literal/variable\n");
-            compilerError(ERROR_TYPE);
-        }
     }
 }
 
