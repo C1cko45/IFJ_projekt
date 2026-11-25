@@ -5,6 +5,9 @@
 
 //->  TODO: MAKE checkVALMEMBuiltins() -- will be called when encounter VALMEM/LIST expression function calls
 // Those must be handled separately, because the non-parametric ones actually accept argument in different AST_NODE
+// Probably check on VALMEM's function_name node that it exists in sym_table builtins
+// Then have to manually check in VALMEM's term (on which the function is called) is valid type for the function
+// And then have to handle returning the right data type (should just be in sym_table really)
 
 // TODO: cleanup module for cleanup()
 
