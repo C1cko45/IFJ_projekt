@@ -96,6 +96,9 @@ void destroySymTable(SymTable *sym_table)
     sym_table->scopes = NULL;
     sym_table->capacity = 0;
     sym_table->current = 0;
+
+    free(sym_table);
+    sym_table = NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -270,32 +273,6 @@ void createIdentifier(HTEntry *entry, SymTable *sym_table)
     }
 
     insertEntry(entry, &sym_table->scopes[sym_table->current]);
-}
-/*
- * Finds specified local immutable variable and updates its data type
- *
- * Should be called when assigning value to a mutable variable that previously held value of different data type
- * Function assumes existence of specified variable identifier visible in current scope and that it is mutable
- *
- * Returns TRUE if found such a variable and changed data type, otherwise FALSE
- */
-bool changeVarType(const char *identifier, DataType target_type, SymTable *sym_table)
-{
-    if (identifier == NULL || sym_table == NULL || target_type == ANY)
-    {
-        fprintf(stderr, "changeVarType() -- at least one argument is invalid.\n");
-        compilerError(ERROR_INTERNAL);
-    }
-
-    HTEntry *target_entry = getIdentifier(identifier, VAR, sym_table);
-
-    if (target_entry != NULL)
-    {
-        target_entry->entry_data.variable_data_type = target_type;
-        return true;
-    }
-
-    return false;
 }
 
 /*
@@ -507,12 +484,9 @@ static void resizeScope(HTable *scope)
 
     // Memory cleanup of old HTable
     // This particular way avoids size_t underflow, that would cause infinite loop otherwise
-    while (old_capacity > 0)
-    {
-        if (old_entries[old_capacity - 1].state != EMPTY)
-            free(old_entries[old_capacity - 1].identifier);
-        --old_capacity;
-    }
+    for (size_t index = 0; index < old_capacity; ++index)
+        if (old_entries[index].state != EMPTY)
+            free(old_entries[index].identifier);
 
     free(old_entries);
 }

@@ -1326,6 +1326,7 @@ void semanticAnalysis(AST_NODE *root)
 
     // Free any allocated memory in sym_table
     destroySymTable(sym_table);
+    sym_table = NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1751,7 +1752,6 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             fprintf(stderr, "insertBuiltin() -- argument builtin_count has wrong value\n");
             compilerError(ERROR_INTERNAL);
     }
-    createIdentifier(&builtin_function, sym_table);
 }
 
 /*

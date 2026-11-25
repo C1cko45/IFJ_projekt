@@ -122,7 +122,6 @@ bool isEntry(const char *key, HTEntryType entry_type, HTable *table);
 HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table);
 
 void createIdentifier(HTEntry *entry, SymTable *sym_table);
-bool changeVarType(const char *identifier, DataType target_type, SymTable *sym_table);
 bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table);
 HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_table);
 
