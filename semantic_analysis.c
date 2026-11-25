@@ -753,6 +753,7 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
         default:
             fprintf(stderr, "arithmExpr() -- Expression contains operator/operand of invalid type\n");
             compilerError(ERROR_TYPE);
+            exit(ERROR_TYPE);
     }
 
     // Upon leaving the nesting, check type compatibility of operands
@@ -842,6 +843,7 @@ static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table)
         default:
             fprintf(stderr, "boolExpr() -- Boolean expression contains operator/operand of invalid type\n");
             compilerError(ERROR_TYPE);
+            exit(ERROR_TYPE);
     }
 
     // Upon leaving the nesting, check type compatibility of operands
@@ -929,6 +931,7 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
         default:
             fprintf(stderr, "relatExpr() -- Relational expression contains operator/operand of invalid type\n");
             compilerError(ERROR_TYPE);
+            exit(ERROR_TYPE);
     }
 
     // Upon leaving the nesting, check type compatibility of operands
@@ -1017,6 +1020,7 @@ static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table)
         default:
             fprintf(stderr, "relatExpr() -- Relational expression contains operator/operand of invalid type\n");
             compilerError(ERROR_TYPE);
+            exit(ERROR_TYPE);
     }
 
     // Upon leaving the nesting, check type compatibility of operands
