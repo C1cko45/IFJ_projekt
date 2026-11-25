@@ -13,16 +13,25 @@ def runFoo(): Unit =
     // TODO: This should work or no?
     //(3, 4) > (3, 4)
 
-    // This correctly caught as type error in semanal
-    // 5 + True || False
+    //var conversion: Double = main(6) 
+
+    // Can't work, correct now, this is Double->Int, but supported only Int->Double
+    var conversion: Int = 5.0
+    
+    var Bool = false
+
+    // TODO: This should work, but parser doesn't support, BOOLTHEN extension
+    // val Boolean = Bool || true
 
     // I think this caused an infinite loop
     // 5 + (-(3 + 3))
 
     // TODO: this complains relational expression contains invalid operands?
     // true == true
-    val x = 5
-    x = 5
+    // var x = 5
+    // x = 5
 
-def main(): Int =
+def main(value: Int): Int =
+    var x: Boolean = true
+    // TODO: if returns int and return type annotation is Double, it throws error, it shouldn't
     return 5
