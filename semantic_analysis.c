@@ -58,7 +58,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
 static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, SymTable *sym_table);
 
 static DataType variableDef(AST_NODE *def_node, HTEntry *function_entry, SymTable *sym_table);
-static DataType assignStatement(AST_NODE *assign_node, SymTable *sym_table);
+static DataType assignStatement(AST_NODE *assign_node, HTEntry *function_entry, SymTable *sym_table);
 
 static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table);
 
@@ -595,7 +595,7 @@ static DataType variableDef(AST_NODE *def_node, HTEntry *function_entry, SymTabl
  *
  * assignment statement returns UNIT
  */
-static DataType assignStatement(AST_NODE *assign_node, SymTable *sym_table)
+static DataType assignStatement(AST_NODE *assign_node, HTEntry *function_entry, SymTable *sym_table)
 {
     // Argument error-handling
     if (assign_node == NULL || sym_table == NULL)
@@ -627,6 +627,8 @@ static DataType assignStatement(AST_NODE *assign_node, SymTable *sym_table)
     // if right side is function call
     if (rvalue_node->type == NODE_CALL)
         rvalue_ret_type = functionCall(rvalue_node, sym_table);
+    else if (rvalue_node->type == NODE_IF)
+        rvalue_ret_type = ifExpr(rvalue_node, function_entry, sym_table);
     else
         rvalue_ret_type = exprStatement(rvalue_node, sym_table);
 
@@ -1126,7 +1128,7 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
             switch (program_node->left_ch->token.type)
             {
                 case TOKEN_TYPE_ASSIGN:
-                    return assignStatement(program_node->left_ch, sym_table); // returns UNIT
+                    return assignStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
 
                 // Term expression
                 case TOKEN_TYPE_INT:
