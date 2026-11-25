@@ -6,11 +6,6 @@
 //->  TODO: MAKE checkVALMEMBuiltins() -- will be called when encounter VALMEM/LIST expression function calls
 // Those must be handled separately, because the non-parametric ones actually accept argument in different AST_NODE
 
-// TODO: Dispatchers and other evalTerm and whatnot functions that resolve data types of nodes expect literals to be
-// KEYWORD_TYPE, whereas they are TOKEN_TYPE_TYPE (because a literal is not a keyword...)
-// !!! NOT IN getParamType() -- that function is used for getting type annotations (KEYWORDS)
-// TODO: Reimplement assignStatement() -- It must support implicit conversion Int->Double, right now it doesn't
-
 // TODO: cleanup module for cleanup()
 
 #include <stdbool.h>
@@ -983,11 +978,93 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
  */
 static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table)
 {
+    // Argument error-handling
+    if (if_node == NULL || function_entry == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "ifStatement() -- at least one argument is invalid\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    AST_NODE *cond_node = if_node->left_ch;
+    if (cond_node == NULL)
+    {
+        fprintf(stderr, "ifStatement() -- AST condition node is invalid\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    // Evaluate the condition first
+    if (exprStatement(cond_node->left_ch, sym_table) != BOOLEAN)
+    {
+        fprintf(stderr, "ifStatement() -- condition expression is not boolean\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    // Process if-branch's block
     pushScope(sym_table);
+
+    AST_NODE *ifprogram_node = cond_node->right_ch;
+    DataType if_ret_type = NIL;
+    while (ifprogram_node != NULL)
+    {
+        if_ret_type = programStatement(ifprogram_node, function_entry, sym_table);
+        ifprogram_node = ifprogram_node->right_ch;
+    }
 
     popScope(sym_table);
 
-    return NIL;
+    // Check that if-branch's block returns valid data type
+    if (if_ret_type == NIL)
+    {
+        fprintf(stderr, "ifExpr() -- if-branch block does not return valid type\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    // Make sure the else-branch actually exists, guarantee by syntactic analysis
+    if (if_node->right_ch == NULL)
+    {
+        fprintf(stderr, "ifExpr() -- if-expression in assignment doesn't contain else-branch\n");
+        // TODO: cleanup()
+        exit(ERROR_INTERNAL);
+    }
+
+    // Process mandatory else-branch
+    pushScope(sym_table);
+
+    AST_NODE *else_program_node = if_node->right_ch;
+    DataType else_ret_type = NIL;
+    while (else_program_node != NULL)
+    {
+        else_ret_type = programStatement(else_program_node, function_entry, sym_table);
+        else_program_node = else_program_node->right_ch;
+    }
+
+    popScope(sym_table);
+
+    // Check that else-branch's block returns valid data type
+    if (else_ret_type == NIL)
+    {
+        fprintf(stderr, "ifExpr() -- else-branch block does not return valid type\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    // In case of one branch returning INT, the other returning DOUBLE -> implicit conversion INT->DOUBLE
+    if ((if_ret_type == INT && else_ret_type == DOUBLE) || (if_ret_type == DOUBLE && else_ret_type == INT))
+        return DOUBLE;
+
+    // Otherwise, if both branches' return value types don't match
+    if (if_ret_type != else_ret_type)
+    {
+        fprintf(stderr, "ifExpr() -- if-branch and else-branch return value types incompatible\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    return if_ret_type;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

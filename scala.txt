@@ -16,7 +16,7 @@ def runFoo(): Unit =
     //var conversion: Double = main(6) 
 
     // Can't work, correct now, this is Double->Int, but supported only Int->Double
-    var conversion: Int = 5.0
+    // var conversion: Int = 5.0
     
     var Bool = false
 
