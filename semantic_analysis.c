@@ -194,6 +194,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     }
 
     // Check argument types -- can only be literals and identifiers (Should be guaranteed by syntactic analysis)
+    // Handles possible Int->Double implicit conversion
     DataType arg_type;
     for (size_t index = 0; arg_count > 0; ++index, --arg_count)
     {
@@ -208,11 +209,16 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
         // if function parameter has type Any, it aceppts any argument type
         if (function_entry->entry_data.function.parameters[index] == ANY)
             continue;
+
         // if function parameter has type List[Any], it aceppts any argument type List[T]
         if (function_entry->entry_data.function.parameters[index] == LIST_ANY)
             if (arg_type == LIST_INT || arg_type == LIST_DOUBLE || arg_type == LIST_STRING ||
                 arg_type == LIST_BOOLEAN || arg_type == LIST_UNIT)
                 continue;
+
+        // Handle case of implicit conversion Int->Double
+        if (arg_type == INT && function_entry->entry_data.function.parameters[index] == DOUBLE)
+            continue;
 
         if (arg_type != function_entry->entry_data.function.parameters[index])
         {
@@ -220,6 +226,8 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
             // TODO: cleanup()
             exit(ERROR_PARAM);
         }
+
+        call_node = call_node->right_ch;
     }
 
     // If all is correct, annotate AST node with sym_table info for codegen
@@ -250,7 +258,7 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
     // empty return allowed only in functions that have explicit return type Unit, which in this case it doesn't
     if (ret_node->left_ch == NULL)
     {
-        fprintf(stderr, "returnStatement() -- return inside function with no explicit return type UNIT\n");
+        fprintf(stderr, "returnStatement() -- return statement inside function with no explicit return type Unit\n");
         // TODO: cleanup()
         exit(ERROR_TYPE);
     }
@@ -263,7 +271,7 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
         retval_type = functionCall(ret_node->left_ch, sym_table);
         if (retval_type != func_ret_type)
         {
-            fprintf(stderr, "returnStatement() -- return value type doesn't match function signature\n");
+            fprintf(stderr, "returnStatement() -- return statement's value type doesn't match function signature\n");
             // TODO: cleanup()
             exit(ERROR_TYPE);
         }
@@ -768,14 +776,13 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
             return STRING;
 
         // Arithmetic operator
-        case TOKEN_TYPE_PLUS:
-        case TOKEN_TYPE_MUL:
-        case TOKEN_TYPE_DIV:
         case TOKEN_TYPE_MINUS:
             if (arithm_node->right_ch == NULL) // if '-' is unary operator, else processed below
                 // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
                 return arithmExpr(arithm_node->left_ch, sym_table);
-
+        case TOKEN_TYPE_PLUS:
+        case TOKEN_TYPE_MUL:
+        case TOKEN_TYPE_DIV:
             left_operand = arithmExpr(arithm_node->left_ch, sym_table);
             right_operand = arithmExpr(arithm_node->right_ch, sym_table);
             break;
@@ -945,6 +952,16 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
             return DOUBLE;
         case TOKEN_TYPE_STRING: // function called on operator node, so expr is just string literal
             return STRING;
+
+        // Arithmetic operator
+        case TOKEN_TYPE_MINUS:
+            if (relat_node->right_ch == NULL) // if '-' is unary operator, else processed below
+                // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
+                return arithmExpr(relat_node->left_ch, sym_table);
+        case TOKEN_TYPE_PLUS:
+        case TOKEN_TYPE_MUL:
+        case TOKEN_TYPE_DIV:
+            return arithmExpr(relat_node, sym_table);
 
         // Relational operator
         case TOKEN_TYPE_LT:
@@ -1935,6 +1952,7 @@ static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table)
  */
 static DataType getTermType(AST_NODE *term_node, SymTable *sym_table)
 {
+    // Argument error-handling
     if (sym_table == NULL || term_node == NULL)
     {
         fprintf(stderr, "getTermType() -- at least one argument is invalid.\n");

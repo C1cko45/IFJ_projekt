@@ -31,7 +31,23 @@ def runFoo(): Unit =
     // var x = 5
     // x = 5
 
+    //ruined(5.0, 5)
+
 def main(value: Int): Int =
     var x: Boolean = true
-    // TODO: if returns int and return type annotation is Double, it throws error, it shouldn't
-    return 5
+
+    subStr("string", 5, 5)
+
+    // TODO: Fix this, it throws out relational-op operand type error
+    5 + 2 > 2
+
+    5
+
+    // return 5.0
+
+def ruined(value: Int, conversion: Double): Double =
+    if 5 > 3 then
+        5.0
+
+    // TODO: This should return semantic error, because Double->Int not possible
+    return 5.0 + 5
