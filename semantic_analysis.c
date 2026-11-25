@@ -620,6 +620,11 @@ static DataType assignStatement(AST_NODE *assign_node, HTEntry *function_entry, 
 
     // Get variable's data type and check type compatibility between lvalue-rvalue
     DataType var_type = var_entry->entry_data.variable_data_type;
+
+    // Separately handle case of assigning Int to Double -> Leads to Int->Double implicit conversion
+    if (var_type == DOUBLE && rvalue_ret_type == INT)
+        rvalue_ret_type = DOUBLE;
+
     if (var_type != rvalue_ret_type)
     {
         fprintf(stderr, "assignStatement() -- Trying to assign value of incompatible type\n");
