@@ -321,7 +321,8 @@ static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable
     popScope(sym_table);
 
     // If else-if and/or else branches exist, process them
-    if (if_node->right_ch->type == NODE_IF || if_node->right_ch->type == NODE_ELSE)
+    // Check for NULL first, otherwise segfault
+    if (if_node->right_ch != NULL && (if_node->right_ch->type == NODE_IF || if_node->right_ch->type == NODE_ELSE))
         elseStatement(if_node->right_ch, function_entry, sym_table);
 
     return UNIT;
@@ -695,7 +696,7 @@ static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table)
             return compareExpr(expr_node, sym_table);
 
             // TODO: ADD VALMEM expressions
-            // TODO: ADD LISTS expressions -- Doesn't work in parser anyway, check scala.txt
+            // TODO: ADD LISTS expressions -- Doesn't work in parser anyway...
 
         default:
             fprintf(stderr, "exprStatement() -- Expression of unsupported type\n");
