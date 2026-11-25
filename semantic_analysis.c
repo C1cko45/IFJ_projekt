@@ -43,6 +43,7 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
 static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table);
 static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table);
 static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table);
+static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table);
 
 static DataType checkRangeFunc(AST_NODE *func_node, SymTable *sym_table);
 static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table);
@@ -709,9 +710,10 @@ static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table)
         case TOKEN_TYPE_LT:
         case TOKEN_TYPE_LTE:
         case TOKEN_TYPE_GTE:
+            return relatExpr(expr_node, sym_table);
         case TOKEN_TYPE_EQ:
         case TOKEN_TYPE_NEQ:
-            return relatExpr(expr_node, sym_table);
+            return compareExpr(expr_node, sym_table);
 
             // TODO: ADD VALMEM expressions
             // TODO: ADD LISTS expressions -- Doesn't work in parser anyway, check scala.txt
@@ -760,7 +762,7 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
             if (id_entry->entry_data.variable_data_type != INT && id_entry->entry_data.variable_data_type != DOUBLE &&
                 id_entry->entry_data.variable_data_type != STRING)
             {
-                fprintf(stderr, "arithmExpr() -- Arithmetic expression contains invalid operand type\n");
+                fprintf(stderr, "arithmExpr() -- Arithmetic expression contains operands of invalid type\n");
                 // TODO: cleanup()
                 exit(ERROR_TYPE);
             }
@@ -791,7 +793,7 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
             // TODO: ADD LISTS expressions -- Doesn't work in parser anyway, check scala.txt
 
         default:
-            fprintf(stderr, "arithmExpr() -- Expression contains invalid operator/operand\n");
+            fprintf(stderr, "arithmExpr() -- Expression contains operator/operand of invalid type\n");
             // TODO: cleanup()
             exit(ERROR_TYPE);
     }
@@ -855,7 +857,7 @@ static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table)
             // Boolean operators support only boolean types
             if (id_entry->entry_data.variable_data_type != BOOLEAN)
             {
-                fprintf(stderr, "boolExpr() -- Boolean expression contains invalid operand type\n");
+                fprintf(stderr, "boolExpr() -- Boolean expression contains operator/operand of invalid type\n");
                 // TODO: cleanup()
                 exit(ERROR_TYPE);
             }
@@ -870,9 +872,10 @@ static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table)
         case TOKEN_TYPE_LTE:
         case TOKEN_TYPE_GT:
         case TOKEN_TYPE_GTE:
+            return relatExpr(bool_node, sym_table);
         case TOKEN_TYPE_EQ:
         case TOKEN_TYPE_NEQ:
-            return relatExpr(bool_node, sym_table);
+            return compareExpr(bool_node, sym_table);
 
         // Boolean operator
         case TOKEN_TYPE_NOT:
@@ -885,7 +888,7 @@ static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table)
             break;
 
         default:
-            fprintf(stderr, "boolExpr() -- Boolean expression contains invalid operator/operand\n");
+            fprintf(stderr, "boolExpr() -- Boolean expression contains operator/operand of invalid type\n");
             // TODO: cleanup()
             exit(ERROR_TYPE);
     }
@@ -938,7 +941,7 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
             if (id_entry->entry_data.variable_data_type != INT && id_entry->entry_data.variable_data_type != DOUBLE &&
                 id_entry->entry_data.variable_data_type != STRING)
             {
-                fprintf(stderr, "relatExpr() -- Relational expression contains invalid operand type\n");
+                fprintf(stderr, "relatExpr() -- Relational expression contains operator/operand of invalid type\n");
                 // TODO: cleanup()
                 exit(ERROR_TYPE);
             }
@@ -968,14 +971,108 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
         case TOKEN_TYPE_LTE:
         case TOKEN_TYPE_GT:
         case TOKEN_TYPE_GTE:
-        case TOKEN_TYPE_EQ:
-        case TOKEN_TYPE_NEQ:
             left_operand = relatExpr(relat_node->left_ch, sym_table);
             right_operand = relatExpr(relat_node->right_ch, sym_table);
             break;
 
+        case TOKEN_TYPE_EQ:
+        case TOKEN_TYPE_NEQ:
+            return compareExpr(relat_node, sym_table);
+
         default:
-            fprintf(stderr, "relatExpr() -- Relational expression contains invalid operator/operand\n");
+            fprintf(stderr, "relatExpr() -- Relational expression contains operator/operand of invalid type\n");
+            // TODO: cleanup()
+            exit(ERROR_TYPE);
+    }
+
+    // Upon leaving the nesting, check type compatibility of operands
+
+    // Handle implicit conversion INT->DOUBLE
+    if ((left_operand == DOUBLE && right_operand == INT) || (left_operand == INT && right_operand == DOUBLE))
+        return BOOLEAN;
+
+    // Left operand and right operand have incompatible types, switch-statement guarantees that these are boolean
+    if (left_operand != right_operand)
+    {
+        fprintf(stderr, "relatExpr() -- Expression on operands of incompatible type\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    // Everything checks out, so return Boolean -- the only type it can return
+    return BOOLEAN;
+}
+
+/*
+ * Processes relational expression with operator '==' and '!='
+ * They support any operands of same data type
+ *
+ * Helper function for exprStatement(), from where it's called on the operator node
+ */
+static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table)
+{
+    // Argument error-handling
+    if (neq_node == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "compareExpr() -- at least one argument is invalid\n");
+        // TODO: cleanup()
+        exit(ERROR_TYPE);
+    }
+
+    DataType left_operand, right_operand;
+    HTEntry *id_entry = NULL;
+    switch (neq_node->token.type)
+    {
+        // Term
+        case TOKEN_TYPE_IDENTIFIER:
+            // Resolve identifier first; check for var defined
+            id_entry = getIdentifier(neq_node->token.attr.str_val, VAR, sym_table);
+            if (id_entry == NULL)
+            {
+                fprintf(stderr, "relatExpr() -- Variable is undefined\n");
+                // TODO: cleanup()
+                exit(ERROR_UNDEF);
+            }
+
+            // Else annotate the term in AST with sym_table info, then return var's data type
+            annotateAST(neq_node, id_entry, id_entry->entry_type);
+            return getTermType(neq_node, sym_table);
+
+        case TOKEN_TYPE_INT:
+            return INT;
+        case TOKEN_TYPE_DOUBLE:
+            return DOUBLE;
+        case TOKEN_TYPE_STRING: // function called on operator node, so expr is just string literal
+            return STRING;
+        case TOKEN_TYPE_BOOL:
+            return BOOLEAN;
+
+        // Arithmetic operator
+        case TOKEN_TYPE_MINUS:
+            if (neq_node->right_ch == NULL) // if '-' is unary operator, else processed below
+                // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
+                return arithmExpr(neq_node->left_ch, sym_table);
+        case TOKEN_TYPE_PLUS:
+        case TOKEN_TYPE_MUL:
+        case TOKEN_TYPE_DIV:
+            return arithmExpr(neq_node, sym_table);
+
+        // Relational operator
+        case TOKEN_TYPE_LT:
+        case TOKEN_TYPE_LTE:
+        case TOKEN_TYPE_GT:
+        case TOKEN_TYPE_GTE:
+            return relatExpr(neq_node->left_ch, sym_table);
+            return relatExpr(neq_node->right_ch, sym_table);
+
+        case TOKEN_TYPE_EQ:
+        case TOKEN_TYPE_NEQ:
+            left_operand = compareExpr(neq_node->left_ch, sym_table);
+            right_operand = compareExpr(neq_node->right_ch, sym_table);
+            break;
+
+        default:
+            fprintf(stderr, "relatExpr() -- Relational expression contains operator/operand of invalid type\n");
             // TODO: cleanup()
             exit(ERROR_TYPE);
     }
