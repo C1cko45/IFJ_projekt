@@ -528,7 +528,7 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
         var_modifier = VAR;
 
     // Must use isEntry() to search the current scope only -- to allow variable shadowing in subblocks
-    if (isEntry(def_node->left_ch->token.attr.str_val, var_modifier, &sym_table->scopes[sym_table->current]))
+    if (isEntry(def_node->left_ch->token.attr.str_val, VAR, &sym_table->scopes[sym_table->current]))
     {
         fprintf(stderr, "variableDef() -- variable already defined\n");
         // TODO: cleanup()
