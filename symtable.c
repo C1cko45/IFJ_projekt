@@ -89,6 +89,9 @@ void destroySymTable(SymTable *sym_table)
     while (sym_table->current > 0)
         popScope(sym_table);
 
+    // Destroy the global scope (size_t issues in while-loop)
+    popScope(sym_table);
+
     free(sym_table->scopes);
     sym_table->scopes = NULL;
     sym_table->capacity = 0;
@@ -139,8 +142,7 @@ void popScope(SymTable *sym_table)
 
     HTable *scope = &sym_table->scopes[sym_table->current];
     // free memory of all non-empty entries in scope (HTable)
-    // This particular way avoids size_t underflow, that would cause infinite loop otherwise
-    for (size_t index = 0; index > scope->capacity; ++index)
+    for (size_t index = 0; index < scope->capacity; ++index)
     {
         if (scope->entries[index].state != EMPTY)
         {
@@ -557,8 +559,20 @@ static void insertEntry(HTEntry *entry, HTable *table)
     // Avoids shallow copy -- non-pointer struct fields passed by value, pointer struct fields handled separately
     strncpy(target_entry->identifier, entry->identifier, str_len); // Rest of target_entry->identifier filled with '\0'
     target_entry->entry_type = entry->entry_type;
-    target_entry->entry_data = entry->entry_data;
     target_entry->state = BUSY;
+    if (entry->entry_type == VAR || entry->entry_type == VAL)
+        target_entry->entry_data.variable_data_type = entry->entry_data.variable_data_type;
+    else if (entry->entry_type == FUNCTION)
+    {
+        target_entry->entry_data.function.param_count = entry->entry_data.function.param_count;
+        target_entry->entry_data.function.return_type = entry->entry_data.function.return_type;
+        target_entry->entry_data.function.parameters = entry->entry_data.function.parameters;
+    }
+    else
+    {
+        fprintf(stderr, "insertEntry() -- Attempt to insert entry of type NONE\n");
+        compilerError(ERROR_INTERNAL);
+    }
 
     table->count++;
 }

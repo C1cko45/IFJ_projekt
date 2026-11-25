@@ -1292,7 +1292,8 @@ void semanticAnalysis(AST_NODE *root)
     if (root == NULL)
     {
         fprintf(stderr, "semanticAnalysis() -- AST_NODE root is NULL");
-        compilerError(ERROR_INTERNAL);
+        ast_free_node(root);
+        exit(ERROR_INTERNAL);
     }
 
     // Create and initialize sym_table with global scope
@@ -1399,7 +1400,7 @@ static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table)
     size_t param_count = countParams(param_node);
 
     HTEntry param_entry = {0};
-    while (param_count-- > 0)
+    while (param_count > 0)
     {
         param_entry.state = BUSY;
         param_entry.identifier = param_node->token.attr.str_val;
@@ -1413,6 +1414,7 @@ static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table)
 
         createIdentifier(&param_entry, sym_table);
 
+        param_count--;
         param_node = param_node->right_ch;
     }
 }
