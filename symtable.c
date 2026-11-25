@@ -91,9 +91,7 @@ void destroySymTable(SymTable *sym_table)
     }
 
     // Destroy all existing scopes
-    // This particular way avoids size_t underflow, that would cause infinite loop otherwise
-    sym_table->capacity = sym_table->current + 1;
-    while (sym_table->capacity > 0)
+    while (sym_table->current > 0)
         popScope(sym_table);
 
     free(sym_table->scopes);
@@ -150,12 +148,15 @@ void popScope(SymTable *sym_table)
     HTable *scope = &sym_table->scopes[sym_table->current];
     // free memory of all non-empty entries in scope (HTable)
     // This particular way avoids size_t underflow, that would cause infinite loop otherwise
-    while (scope->capacity > 0)
-        if (scope->entries[scope->capacity - 1].state != EMPTY)
+    for (size_t index = 0; index > scope->capacity; ++index)
+    {
+        if (scope->entries[index].state != EMPTY)
         {
-            free(scope->entries[scope->capacity - 1].identifier);
-            --scope->capacity;
+            free(scope->entries[index].identifier);
+            if (scope->entries[index].entry_type == FUNCTION)
+                free(scope->entries[index].entry_data.function.parameters);
         }
+    }
 
     free(scope->entries);
     scope->entries = NULL;
@@ -163,7 +164,8 @@ void popScope(SymTable *sym_table)
     scope->capacity = 0;
 
     // Update sym_table's stack pointer
-    sym_table->current--;
+    if (sym_table->current > 0)
+        sym_table->current--;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -194,10 +196,21 @@ bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
     {
         if (target_entry->state != DELETED) // if valid entry
         {
-            // if found specified entry
-            if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
-                return true;
-            target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            // If we're looking for function
+            if (entry_type == FUNCTION)
+            {
+                // if found specified entry
+                if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
+                    return target_entry;
+                target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            }
+            else
+            {
+                // if found specified entry
+                if (strcmp(key, target_entry->identifier) == 0)
+                    return target_entry;
+                target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            }
         }
     }
 
@@ -229,10 +242,21 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
     {
         if (target_entry->state != DELETED)
         {
-            // if found specified entry
-            if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
-                return target_entry;
-            target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            // If we're looking for function
+            if (entry_type == FUNCTION)
+            {
+                // if found specified entry
+                if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
+                    return target_entry;
+                target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            }
+            else
+            {
+                // if found specified entry
+                if (strcmp(key, target_entry->identifier) == 0)
+                    return target_entry;
+                target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            }
         }
     }
 
