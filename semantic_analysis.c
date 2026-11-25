@@ -199,7 +199,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     DataType arg_type;
     for (size_t index = 0; arg_count > 0; ++index, --arg_count)
     {
-        arg_type = getTermType(call_node->right_ch, sym_table);
+        arg_type = getTermType(call_node->right_ch->left_ch, sym_table);
         if (arg_type == NIL)
         {
             fprintf(stderr, "functionCall() -- function argument of indeterminate type\n");
@@ -1170,7 +1170,7 @@ void semanticAnalysis(AST_NODE *root)
 static size_t countParams(AST_NODE *param_node)
 {
     size_t param_count = 0;
-    while (param_node != NULL)
+    while (param_node != NULL && param_node->left_ch != NULL)
     {
         ++param_count;
         param_node = param_node->right_ch;
