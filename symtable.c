@@ -231,10 +231,21 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
     {
         if (target_entry->state != DELETED)
         {
-            // if found specified entry
-            if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
-                return target_entry;
-            target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            // If we're looking for function
+            if (entry_type == FUNCTION)
+            {
+                // if found specified entry
+                if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
+                    return target_entry;
+                target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            }
+            else
+            {
+                // if found specified entry
+                if (strcmp(key, target_entry->identifier) == 0)
+                    return target_entry;
+                target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            }
         }
     }
 

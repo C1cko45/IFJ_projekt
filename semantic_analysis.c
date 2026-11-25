@@ -600,7 +600,6 @@ static DataType assignStatement(AST_NODE *assign_node, SymTable *sym_table)
 
     // use getIdentifier() to search even outer scope for the variable
     HTEntry *var_entry = getIdentifier(assign_node->left_ch->token.attr.str_val, VAR, sym_table);
-    // Assigning to undefined variable
     if (var_entry == NULL)
     {
         fprintf(stderr, "variableDef() -- Trying to assign to undefined variable\n");
