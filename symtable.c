@@ -9,11 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cleanup.h"
 #include "symtable.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#define ERROR_INTERNAL 99 // internal program error; failed memory allocation, ...
 
 #define HTABLE_MAX_LOAD_FACTOR 7 // Load factor*10, to avoid floating-point conversion and arithmetic
 #define HTABLE_INIT_CAPACITY 29  // Min value to satisfy load factor for initial global scope - has 19 builtin functions
@@ -47,8 +46,7 @@ SymTable *createSymTable(void)
     if (sym_table == NULL)
     {
         fprintf(stderr, "createSymTable() -- calloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Create symTable's global scope
@@ -56,8 +54,7 @@ SymTable *createSymTable(void)
     if (sym_table->scopes == NULL)
     {
         fprintf(stderr, "createSymTable() -- calloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Initialize symTable
@@ -69,8 +66,7 @@ SymTable *createSymTable(void)
     if (sym_table->scopes[GLOBAL_SCOPE_INDEX].entries == NULL)
     {
         fprintf(stderr, "createSymTable() -- calloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
     sym_table->scopes[GLOBAL_SCOPE_INDEX].count = 0;
     sym_table->scopes[GLOBAL_SCOPE_INDEX].capacity = HTABLE_INIT_CAPACITY;
@@ -86,8 +82,7 @@ void destroySymTable(SymTable *sym_table)
     if (sym_table == NULL)
     {
         fprintf(stderr, "destroySymTable() -- passed argument sym_table is NULL.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Destroy all existing scopes
@@ -111,8 +106,7 @@ void pushScope(SymTable *sym_table)
     if (sym_table == NULL)
     {
         fprintf(stderr, "pushScope() -- passed argument sym_table is NULL.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // scopes_count + 1 > scopes_capacity -> grow SymTable
@@ -124,8 +118,7 @@ void pushScope(SymTable *sym_table)
     if (sym_table->scopes[sym_table->current + 1].entries == NULL)
     {
         fprintf(stderr, "pushScope() -- calloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
     sym_table->scopes[sym_table->current + 1].count = 0;
     sym_table->scopes[sym_table->current + 1].capacity = HTABLE_INIT_CAPACITY;
@@ -141,8 +134,7 @@ void popScope(SymTable *sym_table)
     if (sym_table == NULL)
     {
         fprintf(stderr, "popScope() -- passed argument sym_table is NULL.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     HTable *scope = &sym_table->scopes[sym_table->current];
@@ -182,8 +174,7 @@ bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
     if (key == NULL || table == NULL || entry_type == NONE)
     {
         fprintf(stderr, "isEntry() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     size_t index_hash = DJBHash(key);
@@ -228,8 +219,7 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
     if (key == NULL || table == NULL || entry_type == NONE)
     {
         fprintf(stderr, "getEntry() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     size_t index_hash = DJBHash(key);
@@ -274,8 +264,7 @@ void createIdentifier(HTEntry *entry, SymTable *sym_table)
     if (entry == NULL || sym_table == NULL)
     {
         fprintf(stderr, "createIdentifier() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     insertEntry(entry, &sym_table->scopes[sym_table->current]);
@@ -293,8 +282,7 @@ bool changeVarType(const char *identifier, DataType target_type, SymTable *sym_t
     if (identifier == NULL || sym_table == NULL || target_type == ANY)
     {
         fprintf(stderr, "changeVarType() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     HTEntry *target_entry = getIdentifier(identifier, VAR, sym_table);
@@ -321,8 +309,7 @@ bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_
     if (identifier == NULL || sym_table == NULL || entry_type == NONE)
     {
         fprintf(stderr, "isIdentifier() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     if (entry_type == FUNCTION)
@@ -354,8 +341,7 @@ HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable 
     if (identifier == NULL || sym_table == NULL || entry_type == NONE)
     {
         fprintf(stderr, "getIdentifier() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     if (entry_type == FUNCTION)
@@ -386,8 +372,7 @@ static uint32_t DJBHash(const char *key)
     if (key == NULL)
     {
         fprintf(stderr, "DJBHash() -- Passed argument is NULL.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     uint32_t hash = 5381;
@@ -404,8 +389,7 @@ static uint32_t BKDRHash(const char *key)
     if (key == NULL)
     {
         fprintf(stderr, "DJBHash() -- Passed argument is NULL.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     uint32_t hash = 0;
@@ -454,8 +438,7 @@ static size_t nextPrime(size_t number)
         if (number > SIZE_MAX - 2)
         {
             fprintf(stderr, "nextPrime() -- searching for next prime failed, exhausted size_t value range.\n");
-            // TODO: cleanup();
-            exit(ERROR_INTERNAL);
+            compilerError(ERROR_INTERNAL);
         }
         number += 2;
     }
@@ -474,8 +457,7 @@ static void resizeSymTable(SymTable *sym_table)
     if (sym_table == NULL)
     {
         fprintf(stderr, "resizeSymTable() -- argument sym_table is NULL.\n");
-        // TODO: cleanup();
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Assigning to tmp variable -> if realloc() failed, we would lose access to original unfreed memory
@@ -483,8 +465,7 @@ static void resizeSymTable(SymTable *sym_table)
     if (new_scopes == NULL)
     {
         fprintf(stderr, "resizeSymTable() -- realloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     sym_table->scopes = new_scopes;
@@ -503,8 +484,7 @@ static void resizeScope(HTable *scope)
     if (scope == NULL)
     {
         fprintf(stderr, "resizeScope() -- passed argument scope is NULL.\n");
-        // TODO: cleanup();
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     size_t old_capacity = scope->capacity;
@@ -515,8 +495,7 @@ static void resizeScope(HTable *scope)
     if (scope->entries == NULL)
     {
         fprintf(stderr, "resizeScope() -- calloc() failed.\n");
-        // TODO: cleanup();
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
     scope->capacity = new_capacity;
     scope->count = 0;
@@ -549,8 +528,7 @@ static void insertEntry(HTEntry *entry, HTable *table)
     if (entry == NULL || table == NULL)
     {
         fprintf(stderr, "insertEntry() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // If inserting exceeds load_factor (0.7) -> grow HTable, rehash
@@ -572,8 +550,7 @@ static void insertEntry(HTEntry *entry, HTable *table)
     if (target_entry->identifier == NULL)
     {
         fprintf(stderr, "insertEntry() -- calloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Insert specified entry into correct HTable index
