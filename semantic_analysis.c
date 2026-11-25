@@ -67,6 +67,10 @@ static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table);
 
 /*
  * Semantic checks for AST subtree for function definition
+ * Processes function body
+ * Checks that last statement in function body has correct return value type
+ * Checks that every return statement has correct return value type
+ *
  * Function assumes correct call sight --> function definition doesn't happen inside function body
  */
 static void functionDef(AST_NODE *function_node, SymTable *sym_table)
@@ -83,27 +87,15 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
 
     // update sym_table's function_entry to include info about each parameter's type
     HTEntry *function_entry = getIdentifier(function_node->left_ch->token.attr.str_val, FUNCTION, sym_table);
+    if (function_entry == NULL)
+    {
+        fprintf(stderr, "functionDef() -- function not already in sym_table, is wrong.\n");
+        compilerError(ERROR_INTERNAL);
+    }
 
     // Push every parameter into its function scope as immutable variable
     pushParamsIntoScope(function_node->left_ch->right_ch, sym_table);
 
-    /*
-     * Process function body
-     * check that last statement in function body has correct return value
-     * If Expr -> Evaluate its return value and compare against function return type
-     * if VAR def | assign | for-loop | while-loop | -> return value is '()'
-     * if Function call -> Evaluate its return value and compare against function return type
-     * if if-statement
-     * -- if if-statement is expression -> treat as case Expr
-     * -- if if-statement not expression ->
-     *          allowed as last stat when function return type explicitly Unit
-     *          or all branches end with return -> return '()'
-     *          or function return type not specified and all branches return '()' -> return '()'
-     * Other return statements elsewhere in function body evaluated as they are processed during AST traversal
-     *
-     * If function body contains return statement, function signature must have return type -> otherwise ERROR 6
-     * Else return type annotation not necessary, inferred from last statement/expression in function body
-     */
     AST_NODE *program_node = function_node->right_ch;
     DataType *func_ret_type = &function_entry->entry_data.function.return_type;
     while (program_node != NULL)
@@ -237,6 +229,13 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
     // Doesn't check for type compatibility in that case
     if (func_ret_type == UNIT)
         return UNIT;
+
+    // Return statement inside function with no explicit return type is ERROR_TYPE
+    if (func_ret_type == NIL)
+    {
+        fprintf(stderr, "returnStatement() -- return statement inside function with no explicit return type\n");
+        compilerError(ERROR_TYPE);
+    }
 
     // empty return allowed only in functions that have explicit return type Unit, which in this case it doesn't
     if (ret_node->left_ch == NULL)
@@ -1351,12 +1350,17 @@ static size_t countParams(AST_NODE *param_node)
 /*
  * Returns target_node's type annotation (located at target_node->left_ch)
  *
- * Function assumes correct argument passed (pass exactly the AST node you want analyzed) -> no argument check
- * Please check the argument before calling this function thoroughly
  * Mainly for getting function def's return type, variable definition's type annotation
  */
 static DataType getParamType(AST_NODE *type_node)
 {
+    // Argument error-handling
+    if (type_node == NULL)
+    {
+        fprintf(stderr, "getParamType() -- passed argument is NULL\n");
+        compilerError(ERROR_INTERNAL);
+    }
+
     // passed argument node might be type literal or variable
     switch (type_node->token.type)
     {
@@ -1848,7 +1852,7 @@ static void allocateParams(size_t param_count, DataType **param_ptr)
 }
 
 /*
- * Fill sym_table's global scope with all function names in top-level scope
+ * Fill sym_table's global scope with all function entries in top-level scope
  *
  * Should be called right before semantic analysis (to support function calls before their respective definition)
  * Call only after checkMain() function, which guarantees correct AST structure of top-level scope
@@ -1874,12 +1878,15 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
         function_entry.identifier = function_node->left_ch->token.attr.str_val;
         if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
         {
-            fprintf(stderr, "insertAllFunctions() -- Function was previously defined\n");
+            fprintf(stderr, "insertAllFunctions() -- Function was already defined\n");
             compilerError(ERROR_REDEF);
         }
 
         function_entry.entry_type = FUNCTION;
-        function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
+        if (function_node->left_ch->left_ch != NULL)
+            function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
+        else
+            function_entry.entry_data.function.return_type = NIL;
         function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
 
         size_t param_count = function_entry.entry_data.function.param_count;
