@@ -9,24 +9,15 @@
 // Then have to manually check in VALMEM's term (on which the function is called) is valid type for the function
 // And then have to handle returning the right data type (should just be in sym_table really)
 
-// TODO: cleanup module for cleanup()
-
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "ast.h"
+#include "cleanup.h"
 #include "semantic_analysis.h"
 #include "symtable.h"
 #include "token.h"
-
-#define ERROR_UNDEF 3     // use of undef function/var/type; missing @main-tagged function
-#define ERROR_REDEF 4     // illegal re-def function/var/type
-#define ERROR_PARAM 5     // incorrect count/type of arguments in function call; illegal @main-tagged function params
-#define ERROR_TYPE 6      // type incompat | incorrect type infer in expr, assign, init, return type, control flow
-#define ERROR_IMMUTABLE 7 // assign attempt to immutable variable/function parameter
-#define ERROR_OTHER 10    // other semantic errors; (illegal return, non-exhaustive match, range with 0-step, ...)
-#define ERROR_INTERNAL 99 // internal program error; failed memory allocation, ...
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -43,9 +34,9 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
 static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table);
 static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table);
 static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table);
+static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table);
 
 static DataType checkRangeFunc(AST_NODE *func_node, SymTable *sym_table);
-static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table);
 
 static void insertBuiltin(size_t builtin_count, SymTable *sym_table);
 static void checkMain(AST_NODE *root, SymTable *sym_table);
@@ -84,8 +75,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
     if (function_node == NULL || sym_table == NULL)
     {
         fprintf(stderr, "functionDef() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Create new local scope for function body
@@ -135,8 +125,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
                 if (retval_type != *func_ret_type)
                 {
                     fprintf(stderr, "functionDef() -- return value type doesn't match function signature\n");
-                    // TODO: cleanup()
-                    exit(ERROR_TYPE);
+                    compilerError(ERROR_TYPE);
                 }
             }
         }
@@ -156,7 +145,6 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
  * Check that function argument count and argument types match function signature
  * Annotate ASTNode with info for codegen
  * Returns function's return value type
- * TODO: IMPLEMENT POSSIBLE PARAM TYPE INT -> DOUBLE CONVERSION
  */
 static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
 {
@@ -164,8 +152,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     if (sym_table == NULL || call_node == NULL)
     {
         fprintf(stderr, "functionCall() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Check for call to undefined function
@@ -173,8 +160,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     if (function_entry == NULL)
     {
         fprintf(stderr, "functionCall() -- call to undefined function\n");
-        // TODO: cleanup()
-        exit(ERROR_UNDEF);
+        compilerError(ERROR_UNDEF);
     }
 
     // Get function call's argument count
@@ -189,11 +175,11 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     if (arg_count != function_entry->entry_data.function.param_count)
     {
         fprintf(stderr, "functionCall() -- argument count doesn't match function signature\n");
-        // TODO: cleanup()
-        exit(ERROR_PARAM);
+        compilerError(ERROR_PARAM);
     }
 
     // Check argument types -- can only be literals and identifiers (Should be guaranteed by syntactic analysis)
+    // Handles possible Int->Double implicit conversion
     DataType arg_type;
     for (size_t index = 0; arg_count > 0; ++index, --arg_count)
     {
@@ -201,25 +187,30 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
         if (arg_type == NIL)
         {
             fprintf(stderr, "functionCall() -- function argument of indeterminate type\n");
-            // TODO: cleanup()
-            exit(ERROR_PARAM);
+            compilerError(ERROR_PARAM);
         }
 
         // if function parameter has type Any, it aceppts any argument type
         if (function_entry->entry_data.function.parameters[index] == ANY)
             continue;
+
         // if function parameter has type List[Any], it aceppts any argument type List[T]
         if (function_entry->entry_data.function.parameters[index] == LIST_ANY)
             if (arg_type == LIST_INT || arg_type == LIST_DOUBLE || arg_type == LIST_STRING ||
                 arg_type == LIST_BOOLEAN || arg_type == LIST_UNIT)
                 continue;
 
+        // Handle case of implicit conversion Int->Double
+        if (arg_type == INT && function_entry->entry_data.function.parameters[index] == DOUBLE)
+            continue;
+
         if (arg_type != function_entry->entry_data.function.parameters[index])
         {
             fprintf(stderr, "functionCall() -- function argument of incompatible type\n");
-            // TODO: cleanup()
-            exit(ERROR_PARAM);
+            compilerError(ERROR_PARAM);
         }
+
+        call_node = call_node->right_ch;
     }
 
     // If all is correct, annotate AST node with sym_table info for codegen
@@ -250,9 +241,8 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
     // empty return allowed only in functions that have explicit return type Unit, which in this case it doesn't
     if (ret_node->left_ch == NULL)
     {
-        fprintf(stderr, "returnStatement() -- return inside function with no explicit return type UNIT\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        fprintf(stderr, "returnStatement() -- return statement inside function with no explicit return type Unit\n");
+        compilerError(ERROR_TYPE);
     }
 
     DataType retval_type;
@@ -263,9 +253,8 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
         retval_type = functionCall(ret_node->left_ch, sym_table);
         if (retval_type != func_ret_type)
         {
-            fprintf(stderr, "returnStatement() -- return value type doesn't match function signature\n");
-            // TODO: cleanup()
-            exit(ERROR_TYPE);
+            fprintf(stderr, "returnStatement() -- return statement's value type doesn't match function signature\n");
+            compilerError(ERROR_TYPE);
         }
 
         return retval_type;
@@ -277,8 +266,7 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
     if (retval_type != func_ret_type)
     {
         fprintf(stderr, "returnStatement() -- return value type doesn't match function signature\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     return retval_type;
@@ -303,24 +291,21 @@ static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable
     if (if_node == NULL || function_entry == NULL || sym_table == NULL)
     {
         fprintf(stderr, "ifStatement() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     AST_NODE *cond_node = if_node->left_ch;
     if (cond_node == NULL)
     {
         fprintf(stderr, "ifStatement() -- AST condition node is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Evaluate the condition first
     if (exprStatement(cond_node->left_ch, sym_table) != BOOLEAN)
     {
         fprintf(stderr, "ifStatement() -- condition expression is not boolean\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     // Process if-branch's block
@@ -335,8 +320,9 @@ static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable
 
     popScope(sym_table);
 
-    // Process optional else-if and else branches
-    if (if_node->right_ch != NULL)
+    // If else-if and/or else branches exist, process them
+    // Check for NULL first, otherwise segfault
+    if (if_node->right_ch != NULL && (if_node->right_ch->type == NODE_IF || if_node->right_ch->type == NODE_ELSE))
         elseStatement(if_node->right_ch, function_entry, sym_table);
 
     return UNIT;
@@ -345,41 +331,46 @@ static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable
 /*
  * Semantic checks for AST subtree of if-statement's else-if, else branches
  * Helper function for ifStatement(), should never be called on its own
+ *
+ * Either else_node->left_ch == NODE_PROGRAM (else branch)
+ * or it's else_node->left_ch = NODE_PODMIENKA (else-if branch)
  */
 static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable *sym_table)
 {
-    // TBD: Either else_node->left_ch == NODE_PROGRAM (else branch)
-    // or it's else_node->left_ch = NODE_IF (else-if branch)
+
     // Argument error-handling
     if (else_node == NULL || function_entry == NULL || sym_table == NULL)
     {
         fprintf(stderr, "elseStatement() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // else_node is else-if branch
-    if (else_node->left_ch->type == NODE_IF)
+    if (else_node->type == NODE_IF)
     {
         // process the else-if branch block
-        ifStatement(else_node->left_ch, function_entry, sym_table);
+        ifStatement(else_node, function_entry, sym_table);
         // process another else-if/else branch exists
         if (else_node->right_ch != NULL)
             elseStatement(else_node->left_ch, function_entry, sym_table);
     }
-
-    // else_node is else branch
-    // process else branch block
-    pushScope(sym_table);
-
-    AST_NODE *program_node = else_node->left_ch;
-    while (program_node != NULL)
+    else if (else_node->type == NODE_ELSE)
     {
-        programStatement(program_node, function_entry, sym_table);
-        program_node = program_node->right_ch;
+        // else_node is else branch
+        // process else branch block
+        pushScope(sym_table);
+
+        AST_NODE *program_node = else_node->left_ch;
+        while (program_node != NULL)
+        {
+            programStatement(program_node, function_entry, sym_table);
+            program_node = program_node->right_ch;
+        }
+
+        popScope(sym_table);
     }
 
-    popScope(sym_table);
+    // If no else-if or else branch
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -396,24 +387,21 @@ static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, Sy
     if (while_node == NULL || function_entry == NULL || sym_table == NULL)
     {
         fprintf(stderr, "whileStatement() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     AST_NODE *cond_expr = while_node->left_ch;
     if (cond_expr == NULL)
     {
         fprintf(stderr, "whileStatement() -- while-condition doesn't exist\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     // Evaluate the condition first
     if (exprStatement(cond_expr, sym_table) != BOOLEAN)
     {
         fprintf(stderr, "whileStatement() -- condition expression is not boolean\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     // Process while's block
@@ -442,8 +430,7 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
     if (for_node == NULL || function_entry == NULL || sym_table == NULL)
     {
         fprintf(stderr, "forStatement() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     /*
@@ -462,12 +449,19 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
     if (for_node->left_ch == NULL || for_node->left_ch->left_ch == NULL)
     {
         fprintf(stderr, "forStatement() -- for-loop contains no generator\n");
-        // TODO: cleanup()
-        exit(ERROR_OTHER);
+        compilerError(ERROR_OTHER);
     }
 
-    // Check for-loop generator contains only ints
-    checkGeneratorInts(for_node, sym_table);
+    // Check that for-loop's generator contains only expressions of type Int
+    DataType from_type = exprStatement(for_node->left_ch->left_ch->left_ch->left_ch, sym_table);
+    DataType to_type = exprStatement(for_node->left_ch->left_ch->left_ch->right_ch, sym_table);
+    DataType step_type = exprStatement(for_node->left_ch->left_ch->right_ch, sym_table);
+
+    if (from_type != INT || to_type != INT || step_type != INT)
+    {
+        fprintf(stderr, "forStatement() -- for-loop generator bounds/step contains non-integer expression\n");
+        compilerError(ERROR_TYPE);
+    }
 
     // Evaluate every guard (if-expression condition)
     AST_NODE *cond_node = for_node->left_ch->right_ch;
@@ -476,8 +470,7 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
         if (exprStatement(cond_node->left_ch, sym_table) != BOOLEAN)
         {
             fprintf(stderr, "forStatement() -- condition expression is not boolean\n");
-            // TODO: cleanup()
-            exit(ERROR_TYPE);
+            compilerError(ERROR_TYPE);
         }
         cond_node = cond_node->right_ch;
     }
@@ -529,8 +522,7 @@ static DataType variableDef(AST_NODE *def_node, HTEntry *function_entry, SymTabl
     if (isEntry(def_node->left_ch->token.attr.str_val, VAR, &sym_table->scopes[sym_table->current]))
     {
         fprintf(stderr, "variableDef() -- variable already defined\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     // Get right side expression/function call return value type
@@ -549,8 +541,7 @@ static DataType variableDef(AST_NODE *def_node, HTEntry *function_entry, SymTabl
     if (rvalue_ret_type == NIL)
     {
         fprintf(stderr, "variableDef() -- couldn't infer type from right side of assignment\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     // Get var def's type annotation -> if has, check type compatibility
@@ -564,8 +555,7 @@ static DataType variableDef(AST_NODE *def_node, HTEntry *function_entry, SymTabl
             if (var_type != rvalue_ret_type) // If in such cases var type and expression type don't match
             {
                 fprintf(stderr, "variableDef() -- Trying to assign value of incompatible type\n");
-                // TODO: cleanup()
-                exit(ERROR_TYPE);
+                compilerError(ERROR_TYPE);
             }
         }
     }
@@ -601,8 +591,7 @@ static DataType assignStatement(AST_NODE *assign_node, HTEntry *function_entry, 
     if (assign_node == NULL || sym_table == NULL)
     {
         fprintf(stderr, "variableDef() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // use getIdentifier() to search even outer scope for the variable
@@ -610,15 +599,13 @@ static DataType assignStatement(AST_NODE *assign_node, HTEntry *function_entry, 
     if (var_entry == NULL)
     {
         fprintf(stderr, "variableDef() -- Trying to assign to undefined variable\n");
-        // TODO: cleanup()
-        exit(ERROR_UNDEF);
+        compilerError(ERROR_UNDEF);
     }
     // Assigning to immutable variable
     if (var_entry->entry_type == VAL)
     {
         fprintf(stderr, "variableDef() -- Trying to assign to immutable variable\n");
-        // TODO: cleanup()
-        exit(ERROR_IMMUTABLE);
+        compilerError(ERROR_IMMUTABLE);
     }
 
     // Evaluate rvalue return type
@@ -636,17 +623,20 @@ static DataType assignStatement(AST_NODE *assign_node, HTEntry *function_entry, 
     if (rvalue_ret_type == NIL)
     {
         fprintf(stderr, "assignStatement() -- couldn't infer type from right side of assignment\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     // Get variable's data type and check type compatibility between lvalue-rvalue
     DataType var_type = var_entry->entry_data.variable_data_type;
+
+    // Separately handle case of assigning Int to Double -> Leads to Int->Double implicit conversion
+    if (var_type == DOUBLE && rvalue_ret_type == INT)
+        rvalue_ret_type = DOUBLE;
+
     if (var_type != rvalue_ret_type)
     {
         fprintf(stderr, "assignStatement() -- Trying to assign value of incompatible type\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     // If no problems, annotate AST node with left side identifier for codegen
@@ -668,8 +658,7 @@ static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table)
     if (expr_node == NULL || sym_table == NULL)
     {
         fprintf(stderr, "exprStatement() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     switch (expr_node->token.type)
@@ -701,16 +690,17 @@ static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table)
         case TOKEN_TYPE_LT:
         case TOKEN_TYPE_LTE:
         case TOKEN_TYPE_GTE:
+            return relatExpr(expr_node, sym_table);
         case TOKEN_TYPE_EQ:
         case TOKEN_TYPE_NEQ:
-            return relatExpr(expr_node, sym_table);
+            return compareExpr(expr_node, sym_table);
 
             // TODO: ADD VALMEM expressions
-            // TODO: ADD LISTS expressions -- Doesn't work in parser anyway, check scala.txt
+            // TODO: ADD LISTS expressions -- Doesn't work in parser anyway...
 
         default:
             fprintf(stderr, "exprStatement() -- Expression of unsupported type\n");
-            // TODO: cleanup()
+            compilerError(ERROR_INTERNAL);
             exit(ERROR_INTERNAL);
     }
 }
@@ -730,8 +720,7 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
     if (arithm_node == NULL || sym_table == NULL)
     {
         fprintf(stderr, "arithmExpr() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     DataType left_operand, right_operand;
@@ -745,16 +734,14 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
             if (id_entry == NULL)
             {
                 fprintf(stderr, "arithmExpr() -- Variable is undefined\n");
-                // TODO: cleanup()
-                exit(ERROR_UNDEF);
+                compilerError(ERROR_UNDEF);
             }
             // Arithmetic operators support only numeric types and string concatenation
             if (id_entry->entry_data.variable_data_type != INT && id_entry->entry_data.variable_data_type != DOUBLE &&
                 id_entry->entry_data.variable_data_type != STRING)
             {
-                fprintf(stderr, "arithmExpr() -- Arithmetic expression contains invalid operand type\n");
-                // TODO: cleanup()
-                exit(ERROR_TYPE);
+                fprintf(stderr, "arithmExpr() -- Arithmetic expression contains operands of invalid type\n");
+                compilerError(ERROR_TYPE);
             }
             // Else annotate the term in AST with sym_table info, then return var's data type
             annotateAST(arithm_node, id_entry, id_entry->entry_type);
@@ -768,14 +755,13 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
             return STRING;
 
         // Arithmetic operator
-        case TOKEN_TYPE_PLUS:
-        case TOKEN_TYPE_MUL:
-        case TOKEN_TYPE_DIV:
         case TOKEN_TYPE_MINUS:
             if (arithm_node->right_ch == NULL) // if '-' is unary operator, else processed below
                 // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
                 return arithmExpr(arithm_node->left_ch, sym_table);
-
+        case TOKEN_TYPE_PLUS:
+        case TOKEN_TYPE_MUL:
+        case TOKEN_TYPE_DIV:
             left_operand = arithmExpr(arithm_node->left_ch, sym_table);
             right_operand = arithmExpr(arithm_node->right_ch, sym_table);
             break;
@@ -784,8 +770,8 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
             // TODO: ADD LISTS expressions -- Doesn't work in parser anyway, check scala.txt
 
         default:
-            fprintf(stderr, "arithmExpr() -- Expression contains invalid operator/operand\n");
-            // TODO: cleanup()
+            fprintf(stderr, "arithmExpr() -- Expression contains operator/operand of invalid type\n");
+            compilerError(ERROR_TYPE);
             exit(ERROR_TYPE);
     }
 
@@ -795,8 +781,7 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
     if (left_operand == STRING && right_operand == STRING && arithm_node->token.type != TOKEN_TYPE_PLUS)
     {
         fprintf(stderr, "arithmExpr() -- Arithmetic expressions don't support non-numeric types\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
     // Handle implicit conversion INT->DOUBLE
     if ((left_operand == DOUBLE && right_operand == INT) || (left_operand == INT && right_operand == DOUBLE))
@@ -806,8 +791,7 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
     if (left_operand != right_operand)
     {
         fprintf(stderr, "arithmExpr() -- Expression on operands of incompatible type\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     // If everything alright, return the expression's return value type
@@ -827,8 +811,7 @@ static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table)
     if (bool_node == NULL || sym_table == NULL)
     {
         fprintf(stderr, "boolExpr() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     DataType left_operand, right_operand;
@@ -842,15 +825,13 @@ static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table)
             if (id_entry == NULL)
             {
                 fprintf(stderr, "boolExpr() -- Variable is undefined\n");
-                // TODO: cleanup()
-                exit(ERROR_UNDEF);
+                compilerError(ERROR_UNDEF);
             }
             // Boolean operators support only boolean types
             if (id_entry->entry_data.variable_data_type != BOOLEAN)
             {
-                fprintf(stderr, "boolExpr() -- Boolean expression contains invalid operand type\n");
-                // TODO: cleanup()
-                exit(ERROR_TYPE);
+                fprintf(stderr, "boolExpr() -- Boolean expression contains operator/operand of invalid type\n");
+                compilerError(ERROR_TYPE);
             }
             // Else annotate the variable in AST with sym_table info, then return var's data type
             annotateAST(bool_node, id_entry, id_entry->entry_type);
@@ -863,9 +844,10 @@ static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table)
         case TOKEN_TYPE_LTE:
         case TOKEN_TYPE_GT:
         case TOKEN_TYPE_GTE:
+            return relatExpr(bool_node, sym_table);
         case TOKEN_TYPE_EQ:
         case TOKEN_TYPE_NEQ:
-            return relatExpr(bool_node, sym_table);
+            return compareExpr(bool_node, sym_table);
 
         // Boolean operator
         case TOKEN_TYPE_NOT:
@@ -878,8 +860,8 @@ static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table)
             break;
 
         default:
-            fprintf(stderr, "boolExpr() -- Boolean expression contains invalid operator/operand\n");
-            // TODO: cleanup()
+            fprintf(stderr, "boolExpr() -- Boolean expression contains operator/operand of invalid type\n");
+            compilerError(ERROR_TYPE);
             exit(ERROR_TYPE);
     }
 
@@ -889,8 +871,7 @@ static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table)
     if (left_operand != right_operand)
     {
         fprintf(stderr, "arithmExpr() -- Expression on operands of incompatible type\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     // Everything checks out, so return Boolean -- the only type it can return
@@ -909,8 +890,7 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
     if (relat_node == NULL || sym_table == NULL)
     {
         fprintf(stderr, "relatExpr() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     DataType left_operand, right_operand;
@@ -924,16 +904,14 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
             if (id_entry == NULL)
             {
                 fprintf(stderr, "relatExpr() -- Variable is undefined\n");
-                // TODO: cleanup()
-                exit(ERROR_UNDEF);
+                compilerError(ERROR_UNDEF);
             }
             // Relational operators support only numeric types and strings comparison
             if (id_entry->entry_data.variable_data_type != INT && id_entry->entry_data.variable_data_type != DOUBLE &&
                 id_entry->entry_data.variable_data_type != STRING)
             {
-                fprintf(stderr, "relatExpr() -- Relational expression contains invalid operand type\n");
-                // TODO: cleanup()
-                exit(ERROR_TYPE);
+                fprintf(stderr, "relatExpr() -- Relational expression contains operator/operand of invalid type\n");
+                compilerError(ERROR_TYPE);
             }
             // Else annotate the term in AST with sym_table info, then return var's data type
             annotateAST(relat_node, id_entry, id_entry->entry_type);
@@ -946,20 +924,32 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
         case TOKEN_TYPE_STRING: // function called on operator node, so expr is just string literal
             return STRING;
 
+        // Arithmetic operator
+        case TOKEN_TYPE_MINUS:
+            if (relat_node->right_ch == NULL) // if '-' is unary operator, else processed below
+                // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
+                return arithmExpr(relat_node->left_ch, sym_table);
+        case TOKEN_TYPE_PLUS:
+        case TOKEN_TYPE_MUL:
+        case TOKEN_TYPE_DIV:
+            return arithmExpr(relat_node, sym_table);
+
         // Relational operator
         case TOKEN_TYPE_LT:
         case TOKEN_TYPE_LTE:
         case TOKEN_TYPE_GT:
         case TOKEN_TYPE_GTE:
-        case TOKEN_TYPE_EQ:
-        case TOKEN_TYPE_NEQ:
             left_operand = relatExpr(relat_node->left_ch, sym_table);
             right_operand = relatExpr(relat_node->right_ch, sym_table);
             break;
 
+        case TOKEN_TYPE_EQ:
+        case TOKEN_TYPE_NEQ:
+            return compareExpr(relat_node, sym_table);
+
         default:
-            fprintf(stderr, "relatExpr() -- Relational expression contains invalid operator/operand\n");
-            // TODO: cleanup()
+            fprintf(stderr, "relatExpr() -- Relational expression contains operator/operand of invalid type\n");
+            compilerError(ERROR_TYPE);
             exit(ERROR_TYPE);
     }
 
@@ -973,8 +963,96 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
     if (left_operand != right_operand)
     {
         fprintf(stderr, "relatExpr() -- Expression on operands of incompatible type\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
+    }
+
+    // Everything checks out, so return Boolean -- the only type it can return
+    return BOOLEAN;
+}
+
+/*
+ * Processes relational expression with operator '==' and '!='
+ * They support any operands of same data type
+ *
+ * Helper function for exprStatement(), from where it's called on the operator node
+ */
+static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table)
+{
+    // Argument error-handling
+    if (neq_node == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "compareExpr() -- at least one argument is invalid\n");
+        compilerError(ERROR_TYPE);
+    }
+
+    DataType left_operand, right_operand;
+    HTEntry *id_entry = NULL;
+    switch (neq_node->token.type)
+    {
+        // Term
+        case TOKEN_TYPE_IDENTIFIER:
+            // Resolve identifier first; check for var defined
+            id_entry = getIdentifier(neq_node->token.attr.str_val, VAR, sym_table);
+            if (id_entry == NULL)
+            {
+                fprintf(stderr, "relatExpr() -- Variable is undefined\n");
+                compilerError(ERROR_UNDEF);
+            }
+
+            // Else annotate the term in AST with sym_table info, then return var's data type
+            annotateAST(neq_node, id_entry, id_entry->entry_type);
+            return getTermType(neq_node, sym_table);
+
+        case TOKEN_TYPE_INT:
+            return INT;
+        case TOKEN_TYPE_DOUBLE:
+            return DOUBLE;
+        case TOKEN_TYPE_STRING: // function called on operator node, so expr is just string literal
+            return STRING;
+        case TOKEN_TYPE_BOOL:
+            return BOOLEAN;
+
+        // Arithmetic operator
+        case TOKEN_TYPE_MINUS:
+            if (neq_node->right_ch == NULL) // if '-' is unary operator, else processed below
+                // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
+                return arithmExpr(neq_node->left_ch, sym_table);
+        case TOKEN_TYPE_PLUS:
+        case TOKEN_TYPE_MUL:
+        case TOKEN_TYPE_DIV:
+            return arithmExpr(neq_node, sym_table);
+
+        // Relational operator
+        case TOKEN_TYPE_LT:
+        case TOKEN_TYPE_LTE:
+        case TOKEN_TYPE_GT:
+        case TOKEN_TYPE_GTE:
+            return relatExpr(neq_node->left_ch, sym_table);
+            return relatExpr(neq_node->right_ch, sym_table);
+
+        case TOKEN_TYPE_EQ:
+        case TOKEN_TYPE_NEQ:
+            left_operand = compareExpr(neq_node->left_ch, sym_table);
+            right_operand = compareExpr(neq_node->right_ch, sym_table);
+            break;
+
+        default:
+            fprintf(stderr, "relatExpr() -- Relational expression contains operator/operand of invalid type\n");
+            compilerError(ERROR_TYPE);
+            exit(ERROR_TYPE);
+    }
+
+    // Upon leaving the nesting, check type compatibility of operands
+
+    // Handle implicit conversion INT->DOUBLE
+    if ((left_operand == DOUBLE && right_operand == INT) || (left_operand == INT && right_operand == DOUBLE))
+        return BOOLEAN;
+
+    // Left operand and right operand have incompatible types, switch-statement guarantees that these are boolean
+    if (left_operand != right_operand)
+    {
+        fprintf(stderr, "relatExpr() -- Expression on operands of incompatible type\n");
+        compilerError(ERROR_TYPE);
     }
 
     // Everything checks out, so return Boolean -- the only type it can return
@@ -991,24 +1069,21 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
     if (if_node == NULL || function_entry == NULL || sym_table == NULL)
     {
         fprintf(stderr, "ifStatement() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     AST_NODE *cond_node = if_node->left_ch;
     if (cond_node == NULL)
     {
         fprintf(stderr, "ifStatement() -- AST condition node is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Evaluate the condition first
     if (exprStatement(cond_node->left_ch, sym_table) != BOOLEAN)
     {
         fprintf(stderr, "ifStatement() -- condition expression is not boolean\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     // Process if-branch's block
@@ -1028,16 +1103,14 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
     if (if_ret_type == NIL)
     {
         fprintf(stderr, "ifExpr() -- if-branch block does not return valid type\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     // Make sure the else-branch actually exists, guarantee by syntactic analysis
     if (if_node->right_ch == NULL)
     {
         fprintf(stderr, "ifExpr() -- if-expression in assignment doesn't contain else-branch\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Process mandatory else-branch
@@ -1057,8 +1130,7 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
     if (else_ret_type == NIL)
     {
         fprintf(stderr, "ifExpr() -- else-branch block does not return valid type\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
     // In case of one branch returning INT, the other returning DOUBLE -> implicit conversion INT->DOUBLE
@@ -1069,10 +1141,10 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
     if (if_ret_type != else_ret_type)
     {
         fprintf(stderr, "ifExpr() -- if-branch and else-branch return value types incompatible\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
+        compilerError(ERROR_TYPE);
     }
 
+    // Return the final return value type of the whole if-expression
     return if_ret_type;
 }
 
@@ -1090,15 +1162,13 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
     if (program_node == NULL || function_entry == NULL || sym_table == NULL)
     {
         fprintf(stderr, "programStatement() -- at least one function argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     if (program_node->type != NODE_PROGRAM)
     {
         fprintf(stderr, "programStatement() -- passed program_node is not a statement\n");
-        // TODO: cleanup()
-        exit(ERROR_OTHER);
+        compilerError(ERROR_OTHER);
     }
 
     switch (program_node->left_ch->type)
@@ -1121,8 +1191,7 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
         //
         case NODE_VALMEM:
         case NODE_LIST:
-            // TODO: return exprStatement(program_node->left_ch, sym_table);
-            break;
+            return exprStatement(program_node->left_ch, sym_table);
 
         case NODE_TOKEN_ONLY:
             switch (program_node->left_ch->token.type)
@@ -1168,11 +1237,9 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
 
         default:
             fprintf(stderr, "programStatement() -- Function contains statement of unsupported type\n");
-            // TODO: cleanup()
-            exit(ERROR_OTHER);
+            compilerError(ERROR_OTHER);
     }
 
-    // TODO: Here should probably be the error statements in the switch case default
     return UNIT;
 }
 /*
@@ -1187,8 +1254,7 @@ static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table)
     if (sym_table == NULL)
     {
         fprintf(stderr, "topLevelStatement() -- argument sym_table is NULL\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     if (program_node != NULL)
@@ -1196,8 +1262,7 @@ static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table)
         if (program_node->type != NODE_PROGRAM)
         {
             fprintf(stderr, "topLevelStatement() -- passed program_node is not a statement\n");
-            // TODO: cleanup()
-            exit(ERROR_OTHER);
+            compilerError(ERROR_OTHER);
         }
 
         switch (program_node->left_ch->type)
@@ -1210,8 +1275,7 @@ static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table)
                 break;
             default:
                 fprintf(stderr, "topLevelStatement() -- Top-level scope contains statement of unsupported type\n");
-                // TODO: cleanup()
-                exit(ERROR_OTHER);
+                compilerError(ERROR_OTHER);
         }
     }
 }
@@ -1224,8 +1288,20 @@ static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table)
  */
 void semanticAnalysis(AST_NODE *root)
 {
+    // Argument error-handling
+    if (root == NULL)
+    {
+        fprintf(stderr, "semanticAnalysis() -- AST_NODE root is NULL");
+        ast_free_node(root);
+        exit(ERROR_INTERNAL);
+    }
+
     // Create and initialize sym_table with global scope
     SymTable *sym_table = createSymTable();
+
+    // Initialize static pointers in cleanup module to memory that needs cleanup upon abnormal termination
+    registerAST(root);
+    registerSymTable(sym_table);
 
     // Traverses top-level scope for @main tagged function, also checks proper top-level structure (only func def's)
     checkMain(root, sym_table);
@@ -1250,6 +1326,7 @@ void semanticAnalysis(AST_NODE *root)
 
     // Free any allocated memory in sym_table
     destroySymTable(sym_table);
+    sym_table = NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1311,7 +1388,6 @@ static DataType getParamType(AST_NODE *type_node)
                 default:;
             }
         default:
-            // TODO:
             fprintf(stderr, "getParamType() -- returning NIL?\n");
             return NIL;
     }
@@ -1325,7 +1401,7 @@ static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table)
     size_t param_count = countParams(param_node);
 
     HTEntry param_entry = {0};
-    while (param_count-- > 0)
+    while (param_count > 0)
     {
         param_entry.state = BUSY;
         param_entry.identifier = param_node->token.attr.str_val;
@@ -1334,12 +1410,12 @@ static void pushParamsIntoScope(AST_NODE *param_node, SymTable *sym_table)
         if (param_entry.entry_data.variable_data_type == NIL)
         {
             fprintf(stderr, "pushParamsIntoScope() -- function parameter doesn't have a supported type annotation.\n");
-            // TODO: cleanup()
-            exit(ERROR_INTERNAL);
+            compilerError(ERROR_INTERNAL);
         }
 
         createIdentifier(&param_entry, sym_table);
 
+        param_count--;
         param_node = param_node->right_ch;
     }
 }
@@ -1357,8 +1433,7 @@ static DataType checkRangeFunc(AST_NODE *call_node, SymTable *sym_table)
     if (call_node == NULL || sym_table == NULL)
     {
         fprintf(stderr, "checkRangeFunc() -- at least one argument is invalid\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Get the range(start, end, step) function - They're basically the same except the step parameter
@@ -1374,8 +1449,7 @@ static DataType checkRangeFunc(AST_NODE *call_node, SymTable *sym_table)
         if (arg_type == NIL)
         {
             fprintf(stderr, "checkRangeFunc() -- function argument of indeterminate type\n");
-            // TODO: cleanup()
-            exit(ERROR_PARAM);
+            compilerError(ERROR_PARAM);
         }
 
         // if function parameter has type Any, it aceppts any argument type
@@ -1390,8 +1464,7 @@ static DataType checkRangeFunc(AST_NODE *call_node, SymTable *sym_table)
         if (arg_type != function_entry->entry_data.function.parameters[index])
         {
             fprintf(stderr, "checkRangeFunc() -- function argument of incompatible type\n");
-            // TODO: cleanup()
-            exit(ERROR_PARAM);
+            compilerError(ERROR_PARAM);
         }
     }
 
@@ -1408,8 +1481,7 @@ static void annotateAST(AST_NODE *identifier_node, HTEntry *sym_table_entry, HTE
     if (sym_table_entry == NULL || identifier_node == NULL || entry_type == NONE)
     {
         fprintf(stderr, "annotateAST() -- at least one argument is invalid.\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Allocate new HTEntry
@@ -1417,16 +1489,14 @@ static void annotateAST(AST_NODE *identifier_node, HTEntry *sym_table_entry, HTE
     if (ast_entry == NULL)
     {
         fprintf(stderr, "annotateAST() -- calloc() failed.\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
     size_t str_len = strlen(sym_table_entry->identifier);
     ast_entry->identifier = calloc(str_len + 1, sizeof(char));
     if (ast_entry->identifier == NULL)
     {
         fprintf(stderr, "annotateAST() -- calloc() failed.\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
     strncpy(ast_entry->identifier, sym_table_entry->identifier, str_len);
     ast_entry->entry_type = sym_table_entry->entry_type;
@@ -1445,8 +1515,7 @@ static void annotateAST(AST_NODE *identifier_node, HTEntry *sym_table_entry, HTE
         if (ast_data->function.parameters == NULL)
         {
             fprintf(stderr, "annotateAST() -- calloc() failed.\n");
-            // TODO: cleanup()
-            exit(ERROR_INTERNAL);
+            compilerError(ERROR_INTERNAL);
         }
 
         // Copy over the parameters (data types)
@@ -1468,8 +1537,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
     if (sym_table == NULL)
     {
         fprintf(stderr, "insertBuiltin() -- argument is NULL\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     HTEntry builtin_function = {
@@ -1682,10 +1750,8 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             break;
         default:
             fprintf(stderr, "insertBuiltin() -- argument builtin_count has wrong value\n");
-            // TODO: cleanup()
-            exit(ERROR_INTERNAL);
+            compilerError(ERROR_INTERNAL);
     }
-    createIdentifier(&builtin_function, sym_table);
 }
 
 /*
@@ -1700,8 +1766,7 @@ static void checkMain(AST_NODE *root, SymTable *sym_table)
     if (sym_table == NULL)
     {
         fprintf(stderr, "checkMain() -- passed sym_table argument is NULL\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
     bool main_found = false;
     while (root != NULL)
@@ -1710,15 +1775,13 @@ static void checkMain(AST_NODE *root, SymTable *sym_table)
         if (root->type != NODE_PROGRAM)
         {
             fprintf(stderr, "checkMain() -- top-level scope contains a non-statement\n");
-            // TODO: cleanup()
-            exit(ERROR_OTHER);
+            compilerError(ERROR_OTHER);
         }
         // Check that top-level scope contains only function definitions
         if (root->left_ch->type != NODE_MAIN && root->left_ch->type != NODE_FUNC_DEF)
         {
             fprintf(stderr, "checkMain() -- top-level scope contains an unsupported statement\n");
-            // TODO: cleanup()
-            exit(ERROR_OTHER);
+            compilerError(ERROR_OTHER);
         }
 
         if (root->left_ch->type == NODE_MAIN)
@@ -1726,8 +1789,7 @@ static void checkMain(AST_NODE *root, SymTable *sym_table)
             if (main_found) // if already found @main-tagged function before
             {
                 fprintf(stderr, "checkMain() -- Program contains more than one @main-tagged functions\n");
-                // TODO: cleanup()
-                exit(ERROR_REDEF);
+                compilerError(ERROR_REDEF);
             }
 
             main_found = true;
@@ -1736,16 +1798,14 @@ static void checkMain(AST_NODE *root, SymTable *sym_table)
             if (root->left_ch->left_ch->left_ch->left_ch->token.type != KEYWORD_UNIT)
             {
                 fprintf(stderr, "checkMain() -- @main-tagged function has wrong return type\n");
-                // TODO: cleanup()
-                exit(ERROR_TYPE);
+                compilerError(ERROR_TYPE);
             }
 
             // Check that @main contains no parameters
             if (root->left_ch->left_ch->left_ch->right_ch != NULL)
             {
                 fprintf(stderr, "checkMain() -- non-parametric @main-tagged function contains parameters\n");
-                // TODO: cleanup()
-                exit(ERROR_PARAM);
+                compilerError(ERROR_PARAM);
             }
         }
 
@@ -1755,8 +1815,7 @@ static void checkMain(AST_NODE *root, SymTable *sym_table)
     if (!main_found)
     {
         fprintf(stderr, "checkMain() -- no @main-tagged function in program\n");
-        // TODO: cleanup()
-        exit(ERROR_UNDEF);
+        compilerError(ERROR_UNDEF);
     }
 }
 
@@ -1772,22 +1831,19 @@ static void allocateParams(size_t param_count, DataType **param_ptr)
     if (param_ptr == NULL)
     {
         fprintf(stderr, "allocateParams() -- param_ptr is not NULL\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
     if (param_count == 0)
     {
         fprintf(stderr, "allocateParams() -- argument param_count is 0\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     *param_ptr = calloc(param_count, sizeof(DataType));
     if (*param_ptr == NULL)
     {
         fprintf(stderr, "allocateParams() -- calloc() failed\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 }
 
@@ -1803,8 +1859,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
     if (root == NULL || sym_table == NULL)
     {
         fprintf(stderr, "insertAllFunctions() -- at least one passed argument is NULL\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     HTEntry function_entry = {0}; // Initialize HTEntry
@@ -1820,8 +1875,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
         if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
         {
             fprintf(stderr, "insertAllFunctions() -- Function was previously defined\n");
-            // TODO: cleanup()
-            exit(ERROR_REDEF);
+            compilerError(ERROR_REDEF);
         }
 
         function_entry.entry_type = FUNCTION;
@@ -1842,8 +1896,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
                 if (function_entry.entry_data.function.parameters[index] == NIL)
                 {
                     fprintf(stderr, "insertAllFunctions() -- function parameter doesn't have type annotation\n");
-                    // TODO: cleanup()
-                    exit(2); // ERROR_SYNTACTIC
+                    compilerError(2); // ERROR_SYNTACTIC
                 }
                 param_node = param_node->right_ch;
             }
@@ -1858,88 +1911,17 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
 }
 
 /*
- * Checks that for-loop generator contains only ints
- *
- * Helper function for forStatement()
- */
-static void checkGeneratorInts(AST_NODE *for_node, SymTable *sym_table)
-{
-    // TODO: Maybe remake to check just one and then call 3 times from forStatement() to save LoC
-    // TODO: Probably checks for List[Int] literals and variables won't work right now
-    // Check generator for type compatibility -- only int literals/int variables/list[Int] literals/list[Int] variables
-
-    AST_NODE *from_node = for_node->left_ch->left_ch->left_ch->left_ch;
-    AST_NODE *to_node = for_node->left_ch->left_ch->left_ch->right_ch;
-
-    if (from_node->token.type == TOKEN_TYPE_IDENTIFIER) // If term is a variable
-    {
-        DataType term_type = getTermType(from_node, sym_table);
-        if (term_type != INT)
-        {
-            fprintf(stderr, "checkGeneratorInts() -- for-loop generator contains non-integer value\n");
-            // TODO: cleanup()
-            exit(ERROR_TYPE);
-        }
-    }
-    else if (from_node->token.type != TOKEN_TYPE_INT) // term is not an int literal nor variable
-    {
-        fprintf(stderr, "checkGeneratorInts() -- for-loop generator contains non-integer value\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
-    }
-
-    if (to_node->token.type == TOKEN_TYPE_IDENTIFIER) // If term is a variable
-    {
-        DataType term_type = getTermType(to_node, sym_table);
-        if (term_type != INT)
-        {
-            fprintf(stderr, "checkGeneratorInts() -- for-loop generator contains non-integer value\n");
-            // TODO: cleanup()
-            exit(ERROR_TYPE);
-        }
-    }
-    else if (to_node->token.type != TOKEN_TYPE_INT) // term is not an int literal nor variable
-    {
-        fprintf(stderr, "checkGeneratorInts() -- for-loop generator contains non-integer value\n");
-        // TODO: cleanup()
-        exit(ERROR_TYPE);
-    }
-
-    AST_NODE *step_node = for_node->left_ch->left_ch->right_ch;
-    // if generator step exists
-    if (step_node != NULL)
-    {
-        if (step_node->token.type == TOKEN_TYPE_IDENTIFIER) // If term is a variable
-        {
-            DataType term_type = getTermType(step_node, sym_table);
-            if (term_type != INT)
-            {
-                fprintf(stderr, "checkGeneratorInts() -- for-loop contains non-integer literal/variable\n");
-                // TODO: cleanup()
-                exit(ERROR_TYPE);
-            }
-        }
-        else if (step_node->token.type != TOKEN_TYPE_INT) // term is not an int literal nor variable
-        {
-            fprintf(stderr, "checkGeneratorInts() -- for-loop contains non-integer literal/variable\n");
-            // TODO: cleanup()
-            exit(ERROR_TYPE);
-        }
-    }
-}
-
-/*
  * Return data type of term (literal/variable)
  *
  * Mainly for resolving terms in expressions (their types)
  */
 static DataType getTermType(AST_NODE *term_node, SymTable *sym_table)
 {
+    // Argument error-handling
     if (sym_table == NULL || term_node == NULL)
     {
         fprintf(stderr, "getTermType() -- at least one argument is invalid.\n");
-        // TODO: cleanup()
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Term is variable
@@ -1949,8 +1931,7 @@ static DataType getTermType(AST_NODE *term_node, SymTable *sym_table)
         if (var_entry == NULL)
         {
             fprintf(stderr, "getTermType() -- undefined variable\n");
-            // TODO: cleanup()
-            exit(ERROR_UNDEF);
+            compilerError(ERROR_UNDEF);
         }
 
         return var_entry->entry_data.variable_data_type;
@@ -1970,25 +1951,23 @@ static DataType getTermType(AST_NODE *term_node, SymTable *sym_table)
         case TOKEN_TYPE_UNIT:
             return UNIT;
         case KEYWORD_LIST:
-            // TODO: NEeds to be remade, probably not KEYWORD....
             switch (term_node->left_ch->token.type)
             {
-                case KEYWORD_STRING:
+                case TOKEN_TYPE_STRING:
                     return LIST_STRING;
-                case KEYWORD_DOUBLE:
+                case TOKEN_TYPE_DOUBLE:
                     return LIST_DOUBLE;
-                case KEYWORD_INT:
+                case TOKEN_TYPE_INT:
                     return LIST_INT;
-                case KEYWORD_BOOLEAN:
+                case TOKEN_TYPE_BOOL:
                     return LIST_BOOLEAN;
-                case KEYWORD_UNIT:
+                case TOKEN_TYPE_UNIT:
                     return LIST_UNIT;
                 // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
                 //     return LIST_ANY;
                 default:;
             }
         default:
-            // TODO:
             fprintf(stderr, "getTermType() -- returning NIL?\n");
             return NIL;
     }
