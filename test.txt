@@ -1,0 +1,5 @@
+import ifj26.*
+
+@main
+def runFoo(): Unit =
+    val empty: List[Int] = (1, 2)
