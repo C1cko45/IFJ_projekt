@@ -16,6 +16,8 @@ AST_NODE *ast_create_node(Token token)
     new_node->right_ch = NULL;
     new_node->left_ch = NULL;
 
+    new_node->identifier_entry = NULL;
+
     return new_node;
 }
 AST_NODE *ast_create_node_type(AST_NODE_TYPE type)
@@ -33,6 +35,8 @@ AST_NODE *ast_create_node_type(AST_NODE_TYPE type)
 
     new_node->right_ch = NULL;
     new_node->left_ch = NULL;
+
+    new_node->identifier_entry = NULL;
 
     return new_node;
 }
@@ -64,6 +68,20 @@ void ast_free_node(AST_NODE *node)
 
     ast_free_node(node->left_ch);
     ast_free_node(node->right_ch);
+
+    // Free HTEntry
+    if (node->identifier_entry != NULL)
+    {
+        free(node->identifier_entry->identifier);
+        node->identifier_entry->identifier = NULL;
+        if (node->identifier_entry->entry_type == FUNCTION)
+        {
+            free(node->identifier_entry->entry_data.function.parameters);
+            node->identifier_entry->entry_data.function.parameters = NULL;
+        }
+    }
+    free(node->identifier_entry);
+    node->identifier_entry = NULL;
 
     if (node->type == NODE_TOKEN_ONLY)
     {
