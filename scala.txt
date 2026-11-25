@@ -47,12 +47,7 @@ def main(value: Int): Int =
     !(-(5 + 3) > 5.0) || x
 
     // TODO: if-statement passed program_node is not a statement
-    if -(5) > 3 then
-        print(5)
-    else if true then
-        6
-    else
-        5
+
 
     5
 

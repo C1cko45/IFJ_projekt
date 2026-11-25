@@ -321,8 +321,8 @@ static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable
 
     popScope(sym_table);
 
-    // Process optional else-if and else branches
-    if (if_node->right_ch != NULL)
+    // If else-if and/or else branches exist, process them
+    if (if_node->right_ch->type == NODE_IF || if_node->right_ch->type == NODE_ELSE)
         elseStatement(if_node->right_ch, function_entry, sym_table);
 
     return UNIT;
@@ -331,11 +331,13 @@ static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable
 /*
  * Semantic checks for AST subtree of if-statement's else-if, else branches
  * Helper function for ifStatement(), should never be called on its own
+ *
+ * Either else_node->left_ch == NODE_PROGRAM (else branch)
+ * or it's else_node->left_ch = NODE_PODMIENKA (else-if branch)
  */
 static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable *sym_table)
 {
-    // TBD: Either else_node->left_ch == NODE_PROGRAM (else branch)
-    // or it's else_node->left_ch = NODE_IF (else-if branch)
+
     // Argument error-handling
     if (else_node == NULL || function_entry == NULL || sym_table == NULL)
     {
@@ -344,27 +346,31 @@ static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable
     }
 
     // else_node is else-if branch
-    if (else_node->left_ch->type == NODE_IF)
+    if (else_node->type == NODE_IF)
     {
         // process the else-if branch block
-        ifStatement(else_node->left_ch, function_entry, sym_table);
+        ifStatement(else_node, function_entry, sym_table);
         // process another else-if/else branch exists
         if (else_node->right_ch != NULL)
             elseStatement(else_node->left_ch, function_entry, sym_table);
     }
-
-    // else_node is else branch
-    // process else branch block
-    pushScope(sym_table);
-
-    AST_NODE *program_node = else_node->left_ch;
-    while (program_node != NULL)
+    else if (else_node->type == NODE_ELSE)
     {
-        programStatement(program_node, function_entry, sym_table);
-        program_node = program_node->right_ch;
+        // else_node is else branch
+        // process else branch block
+        pushScope(sym_table);
+
+        AST_NODE *program_node = else_node->left_ch;
+        while (program_node != NULL)
+        {
+            programStatement(program_node, function_entry, sym_table);
+            program_node = program_node->right_ch;
+        }
+
+        popScope(sym_table);
     }
 
-    popScope(sym_table);
+    // If no else-if or else branch
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
