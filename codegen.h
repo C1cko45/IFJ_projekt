@@ -44,6 +44,7 @@ typedef struct{
 
     unsigned int variable_counter;
     CodegenBinding *bindings;
+    unsigned int scope_depth;
 
     int force_list_double;
     int current_function_list_double;
@@ -69,6 +70,13 @@ void codegen_emit_jump(CodegenContext *ctx, const char *label);
 void generate_return(AST_NODE *node, CodegenContext *ctx);
 
 const char *codegen_variable_name(const AST_NODE *identifier, CodegenContext *ctx);
+void codegen_reserve_variable(const AST_NODE *identifier, CodegenContext *ctx);
+void codegen_declare_variable(const AST_NODE *identifier, CodegenContext *ctx);
+void codegen_set_variable_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type);
+CodegenType codegen_variable_type(const AST_NODE *identifier, const CodegenContext *ctx);
+void codegen_enter_scope(CodegenContext *ctx);
+void codegen_leave_scope(CodegenContext *ctx);
+void codegen_clear_bindings(CodegenContext *ctx);
 
 CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenContext *ctx);
 

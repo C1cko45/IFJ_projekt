@@ -150,11 +150,17 @@ static CodegenType get_expression_type(const AST_NODE *node, const CodegenContex
     }
 
     if(node->type == NODE_CALL){
-        if(node->left_ch != NULL && node->left_ch->identifier_entry != NULL){
-            const HTEntry *entry =node->left_ch->identifier_entry;
+        if(node->left_ch != NULL && codegen_variable_type(node->left_ch, ctx) == CG_TYPE_LIST){
+            return codegen_list_item_type(node->left_ch, ctx);
+        }
 
-            if((entry->entry_type == VAR || entry->entry_type == VAL) && codegen_from_semantic_type(entry->entry_data.variable_data_type) == CG_TYPE_LIST){
-                return codegen_list_item_type(node->left_ch, ctx);
+        if(node->left_ch != NULL && node->left_ch->type == NODE_TOKEN_ONLY &&
+            node->left_ch->identifier_entry != NULL){
+            const HTEntry *entry = node->left_ch->identifier_entry;
+
+            if((entry->entry_type == VAR || entry->entry_type == VAL) &&
+                codegen_from_semantic_type(entry->entry_data.variable_data_type) == CG_TYPE_LIST){
+                    return codegen_list_item_type(node->left_ch, ctx);
             }
         }
 
@@ -163,14 +169,17 @@ static CodegenType get_expression_type(const AST_NODE *node, const CodegenContex
         }
 
         if(node->left_ch != NULL && node->left_ch->type == NODE_VALMEM &&
-        node->left_ch->left_ch != NULL && node->left_ch->left_ch->token.type == KEYWORD_LIST){
-            return CG_TYPE_LIST;
-    }
+            node->left_ch->left_ch != NULL && node->left_ch->left_ch->type == NODE_TOKEN_ONLY &&
+            node->left_ch->left_ch->token.type == KEYWORD_LIST && node->left_ch->right_ch != NULL &&
+            node->left_ch->right_ch->token.attr.str_val != NULL &&
+            strcmp(node->left_ch->right_ch->token.attr.str_val, "range") == 0){
+                return CG_TYPE_LIST;
+        }
 
-        if(node->left_ch != NULL && node->left_ch->type == NODE_VALMEM){
+        if(node->left_ch != NULL && node->left_ch->type == NODE_VALMEM && node->left_ch->right_ch != NULL){
             const char *member = node->left_ch->right_ch->token.attr.str_val;
 
-            if(strcmp(member, "take") == 0 || strcmp(member, "drop") == 0 || strcmp(member, "slice") == 0){
+            if(member != NULL && (strcmp(member, "take") == 0 || strcmp(member, "drop") == 0 || strcmp(member, "slice") == 0)){
                 return CG_TYPE_LIST;
             }
         }
@@ -182,8 +191,8 @@ static CodegenType get_expression_type(const AST_NODE *node, const CodegenContex
             return CG_TYPE_UNIT;
         }
 
-        if(name != NULL && name->identifier_entry != NULL &&
-        name->identifier_entry->entry_type == FUNCTION){
+        if(name != NULL && name->type == NODE_TOKEN_ONLY && name->identifier_entry != NULL &&
+            name->identifier_entry->entry_type == FUNCTION){
             return codegen_from_semantic_type(name->identifier_entry->entry_data.function.return_type);
         }
 
@@ -191,6 +200,10 @@ static CodegenType get_expression_type(const AST_NODE *node, const CodegenContex
     }
 
     if(node->type == NODE_VALMEM){
+        if(node->right_ch == NULL || node->right_ch->token.attr.str_val == NULL){
+            return CG_TYPE_UNKNOWN;
+        }
+
         const char *member = node->right_ch->token.attr.str_val;
 
         if(strcmp(member, "length") == 0 ||
@@ -237,9 +250,16 @@ static CodegenType get_expression_type(const AST_NODE *node, const CodegenContex
         case TOKEN_TYPE_UNIT:
             return CG_TYPE_UNIT;
 
-        case TOKEN_TYPE_IDENTIFIER:
-            if(node->identifier_entry != NULL){
-                return codegen_from_semantic_type(node->identifier_entry->entry_data.variable_data_type);
+        case TOKEN_TYPE_IDENTIFIER: {
+            CodegenType bound_type = codegen_variable_type(node, ctx);
+
+            if(bound_type != CG_TYPE_UNKNOWN){
+                return bound_type;
+            }
+
+            if(node->identifier_entry != NULL &&
+                (node->identifier_entry->entry_type == VAR || node->identifier_entry->entry_type == VAL)){
+                    return codegen_from_semantic_type(node->identifier_entry->entry_data.variable_data_type);
             }
 
             if(node->token.attr.str_val == NULL || ctx->symbols == NULL){
@@ -254,6 +274,7 @@ static CodegenType get_expression_type(const AST_NODE *node, const CodegenContex
             }
 
             return CG_TYPE_UNKNOWN;
+        }
 
         case TOKEN_TYPE_PLUS:
         case TOKEN_TYPE_MINUS:
@@ -336,12 +357,18 @@ CodegenType codegen_expression_type(const AST_NODE *node, const CodegenContext *
 }
 
 
-static CodegenType get_declared_type(const AST_NODE *identifier){
-    if(identifier != NULL && identifier->identifier_entry != NULL){
-        return codegen_from_semantic_type(identifier->identifier_entry->entry_data.variable_data_type);
+static CodegenType get_declared_type(const AST_NODE *identifier, const CodegenContext *ctx){
+    if(identifier == NULL){
+        return CG_TYPE_UNKNOWN;
     }
 
-    if(identifier == NULL || identifier->left_ch == NULL){
+    CodegenType bound = codegen_variable_type(identifier, ctx);
+
+    if(bound != CG_TYPE_UNKNOWN){
+        return bound;
+    }
+
+    if(identifier->left_ch == NULL){
         return CG_TYPE_UNKNOWN;
     }
 
@@ -352,28 +379,28 @@ static CodegenType get_declared_type(const AST_NODE *identifier){
     }
 
     if(type_node->type != NODE_TOKEN_ONLY){
-    return CG_TYPE_UNKNOWN;
-}
+        return CG_TYPE_UNKNOWN;
+    }
 
     switch(type_node->token.type){
-        case KEYWORD_INT:     
+        case KEYWORD_INT:
             return CG_TYPE_INT;
 
-        case KEYWORD_DOUBLE:  
+        case KEYWORD_DOUBLE:
             return CG_TYPE_DOUBLE;
 
-        case KEYWORD_STRING:  
+        case KEYWORD_STRING:
             return CG_TYPE_STRING;
 
-        case KEYWORD_BOOLEAN: 
+        case KEYWORD_BOOLEAN:
             return CG_TYPE_BOOL;
 
-        case KEYWORD_UNIT:    
+        case KEYWORD_UNIT:
             return CG_TYPE_UNIT;
 
-        default:              
+        default:
             return CG_TYPE_UNKNOWN;
-}
+    }
 }
 
 
@@ -1248,6 +1275,9 @@ static void generate_if_expression(AST_NODE *node, CodegenContext *ctx){
     }
 
     CodegenType result_type = codegen_expression_type(node, ctx);
+    int previous_force = ctx->force_list_double;
+    int force_list_double = result_type == CG_TYPE_LIST &&
+        (ctx->force_list_double || ctx->current_function_list_double);
 
     unsigned int id = ctx->label_counter++;
 
@@ -1260,7 +1290,10 @@ static void generate_if_expression(AST_NODE *node, CodegenContext *ctx){
     fprintf(ctx->output, "PUSHS bool@false\n"
                         "JUMPIFEQS $$if_expr_else_%u\n", id);
 
+    codegen_enter_scope(ctx);
+    ctx->force_list_double = force_list_double;
     generate_control_branch_value(pair->right_ch, result_type, ctx);
+    codegen_leave_scope(ctx);
 
     if(ctx->error_code != 0){
         return;
@@ -1269,13 +1302,17 @@ static void generate_if_expression(AST_NODE *node, CodegenContext *ctx){
     fprintf(ctx->output, "JUMP $$if_expr_end_%u\n"
                         "LABEL $$if_expr_else_%u\n", id, id);
 
+    codegen_enter_scope(ctx);
+    ctx->force_list_double = force_list_double;
     generate_control_branch_value(else_body, result_type, ctx);
+    codegen_leave_scope(ctx);
 
     if(ctx->error_code != 0){
         return;
     }
 
     fprintf(ctx->output, "LABEL $$if_expr_end_%u\n", id);
+    ctx->force_list_double = previous_force;
 }
 
 
@@ -1314,13 +1351,15 @@ void generate_definition(AST_NODE *node, CodegenContext *ctx){
             return;
     }
 
+    codegen_declare_variable(identifier, ctx);
+
     const char *name = codegen_variable_name(identifier, ctx);
 
     if(ctx->error_code != 0){
         return;
     }
 
-    if(identifier->identifier_entry != NULL && expression->type == NODE_CALL &&
+    if(expression->type == NODE_CALL &&
    expression->left_ch != NULL && expression->left_ch->token.type == KEYWORD_LIST){
 
         CodegenType element_type = codegen_list_item_type(identifier, ctx);
@@ -1338,7 +1377,7 @@ void generate_definition(AST_NODE *node, CodegenContext *ctx){
         codegen_set_list_item_type(identifier, ctx, element_type);
     }
 
-    if(identifier->identifier_entry != NULL && codegen_list_item_type(identifier, ctx) == CG_TYPE_UNKNOWN){
+    if(codegen_list_item_type(identifier, ctx) == CG_TYPE_UNKNOWN){
     CodegenType item_type = codegen_list_item_type(expression, ctx);
 
     if(item_type != CG_TYPE_UNKNOWN){
@@ -1348,9 +1387,11 @@ void generate_definition(AST_NODE *node, CodegenContext *ctx){
 
     int previous_force = ctx->force_list_double;
 
-    if(expression->type == NODE_CALL && expression->left_ch != NULL &&
-    expression->left_ch->token.type == KEYWORD_LIST && codegen_list_item_type(identifier, ctx) == CG_TYPE_DOUBLE){
-        ctx->force_list_double = 1;
+    if(codegen_list_item_type(identifier, ctx) == CG_TYPE_DOUBLE &&
+        (expression->type == NODE_IF ||
+        (expression->type == NODE_CALL && expression->left_ch != NULL &&
+        expression->left_ch->type == NODE_TOKEN_ONLY && expression->left_ch->token.type == KEYWORD_LIST))){
+            ctx->force_list_double = 1;
     }
 
     generate_expression(expression, ctx);
@@ -1361,12 +1402,16 @@ void generate_definition(AST_NODE *node, CodegenContext *ctx){
         return;
     }
 
-    CodegenType declare_type = get_declared_type(identifier);
+    CodegenType declare_type = get_declared_type(identifier, ctx);
+    CodegenType expression_type = get_expression_type(expression, ctx);
+
+    if(declare_type == CG_TYPE_UNKNOWN){
+        declare_type = expression_type;
+    }
+
+    codegen_set_variable_type(identifier, ctx, declare_type);
 
     if(declare_type == CG_TYPE_DOUBLE){
-        CodegenType expression_type = get_expression_type(expression, ctx);
-    
-
         if(expression_type == CG_TYPE_INT){
             fprintf(ctx->output, "INT2FLOATS\n");
         }
@@ -1406,7 +1451,11 @@ void generate_assignment(AST_NODE *identifier, AST_NODE *expression, CodegenCont
             return;
     }
 
-    CodegenType variable_type = get_expression_type(identifier, ctx);
+    CodegenType variable_type = get_declared_type(identifier, ctx);
+
+    if(variable_type == CG_TYPE_UNKNOWN){
+        variable_type = get_expression_type(identifier, ctx);
+    }
 
     CodegenType expression_type = get_expression_type(expression, ctx);
 
@@ -1422,7 +1471,17 @@ void generate_assignment(AST_NODE *identifier, AST_NODE *expression, CodegenCont
         return;
     }
 
+    int previous_force = ctx->force_list_double;
+
+    if(variable_type == CG_TYPE_LIST && codegen_list_item_type(identifier, ctx) == CG_TYPE_DOUBLE &&
+        (expression->type == NODE_IF ||
+        (expression->type == NODE_CALL && expression->left_ch != NULL &&
+        expression->left_ch->type == NODE_TOKEN_ONLY && expression->left_ch->token.type == KEYWORD_LIST))){
+            ctx->force_list_double = 1;
+    }
+
     generate_expression(expression, ctx);
+    ctx->force_list_double = previous_force;
 
     if(ctx->error_code != 0){
         return;
@@ -1446,7 +1505,3 @@ void generate_assignment(AST_NODE *identifier, AST_NODE *expression, CodegenCont
 
 
 //FB0
-
-
-
-

@@ -37,6 +37,45 @@ static void generate_parameters_reverse(AST_NODE *param, CodegenContext *ctx){
         return;
     }
 
+    codegen_declare_variable(param, ctx);
+
+    if(param->left_ch != NULL){
+        CodegenType type = CG_TYPE_UNKNOWN;
+
+        if(param->left_ch->type == NODE_LIST){
+            type = CG_TYPE_LIST;
+        }
+
+        else if(param->left_ch->type == NODE_TOKEN_ONLY){
+            switch(param->left_ch->token.type){
+                case KEYWORD_INT:
+                    type = CG_TYPE_INT;
+                    break;
+
+                case KEYWORD_DOUBLE:
+                    type = CG_TYPE_DOUBLE;
+                    break;
+
+                case KEYWORD_STRING:
+                    type = CG_TYPE_STRING;
+                    break;
+
+                case KEYWORD_BOOLEAN:
+                    type = CG_TYPE_BOOL;
+                    break;
+
+                case KEYWORD_UNIT:
+                    type = CG_TYPE_UNIT;
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        codegen_set_variable_type(param, ctx, type);
+    }
+
     const char *name = codegen_variable_name(param, ctx);
 
     if(ctx->error_code != 0){
@@ -46,10 +85,8 @@ static void generate_parameters_reverse(AST_NODE *param, CodegenContext *ctx){
     fprintf(ctx->output, "DEFVAR LF@%s\n"
                         "POPS LF@%s\n", name, name);
 
-    int expects_double = (param->left_ch != NULL && param->left_ch->token.type == KEYWORD_DOUBLE) ||
-        (param->identifier_entry != NULL &&
-         (param->identifier_entry->entry_type == VAR || param->identifier_entry->entry_type == VAL) &&
-         param->identifier_entry->entry_data.variable_data_type == DOUBLE);
+    int expects_double = param->left_ch != NULL && param->left_ch->type == NODE_TOKEN_ONLY &&
+        param->left_ch->token.type == KEYWORD_DOUBLE;
 
     if(expects_double){
         unsigned int id = ctx->label_counter++;
@@ -119,7 +156,7 @@ static void generate_nonunit_body(AST_NODE *body, CodegenContext *ctx, CodegenTy
 
         while(current->right_ch != NULL){
             if(current->type != NODE_PROGRAM || current->left_ch == NULL ||
-               current->right_ch->type != NODE_PROGRAM){
+                current->right_ch->type != NODE_PROGRAM){
                     ctx->error_code = 99;
                     return;
             }
@@ -146,8 +183,7 @@ static void generate_nonunit_body(AST_NODE *body, CodegenContext *ctx, CodegenTy
         return;
     }
 
-    if(last->type == NODE_TOKEN_ONLY &&
-       last->token.type == KEYWORD_RETURN){
+    if(last->type == NODE_TOKEN_ONLY && last->token.type == KEYWORD_RETURN){
         generate_return(last, ctx);
         return;
     }
@@ -155,19 +191,49 @@ static void generate_nonunit_body(AST_NODE *body, CodegenContext *ctx, CodegenTy
     if(last->type == NODE_IF){
         CodegenType actual_type = codegen_expression_type(last, ctx);
 
-        if(actual_type == CG_TYPE_UNKNOWN){
+        if(actual_type == CG_TYPE_UNIT || (actual_type == CG_TYPE_UNKNOWN && last->right_ch == NULL)){
             codegen_generate_node(last, ctx);
+
+            if(ctx->error_code == 0 && expected_type == CG_TYPE_UNKNOWN){
+                fputs("PUSHS nil@nil\n", ctx->output);
+            }
+
+            else if(expected_type != CG_TYPE_UNIT){
+                ctx->error_code = 99;
+            }
+
+            return;
         }
 
-        else{
-            generate_function_result(last, ctx);
+        if(expected_type != CG_TYPE_UNKNOWN && actual_type != CG_TYPE_UNKNOWN &&
+            actual_type != expected_type &&
+            !(expected_type == CG_TYPE_DOUBLE && actual_type == CG_TYPE_INT)){
+                ctx->error_code = 99;
+                return;
+        }
 
-            if(expected_type == CG_TYPE_DOUBLE && actual_type == CG_TYPE_INT){
-                fputs("INT2FLOATS\n", ctx->output);
-            }
+        generate_function_result(last, ctx);
+
+        if(ctx->error_code == 0 && expected_type == CG_TYPE_DOUBLE && actual_type == CG_TYPE_INT){
+            fputs("INT2FLOATS\n", ctx->output);
         }
 
         return;
+    }
+
+    if(last->type == NODE_VAR_DEF || last->type == NODE_VAL_DEF || last->type == NODE_WHILE ||
+        last->type == NODE_FOR || (last->type == NODE_TOKEN_ONLY && last->token.type == TOKEN_TYPE_ASSIGN)){
+            codegen_generate_node(last, ctx);
+
+            if(ctx->error_code == 0 && expected_type == CG_TYPE_UNKNOWN){
+                fputs("PUSHS nil@nil\n", ctx->output);
+            }
+
+            else if(expected_type != CG_TYPE_UNIT){
+                ctx->error_code = 99;
+            }
+
+            return;
     }
 
     if(last->type != NODE_TOKEN_ONLY && last->type != NODE_CALL && last->type != NODE_VALMEM){
@@ -175,17 +241,13 @@ static void generate_nonunit_body(AST_NODE *body, CodegenContext *ctx, CodegenTy
         return;
     }
 
-    CodegenType actual_type =
-        codegen_expression_type(last, ctx);
+    CodegenType actual_type = codegen_expression_type(last, ctx);
+    int convert = expected_type == CG_TYPE_DOUBLE && actual_type == CG_TYPE_INT;
 
-    int convert =
-        expected_type == CG_TYPE_DOUBLE &&
-        actual_type == CG_TYPE_INT;
-
-    if(actual_type == CG_TYPE_UNKNOWN ||
-       (actual_type != expected_type && !convert)){
-        ctx->error_code = 99;
-        return;
+    if(expected_type != CG_TYPE_UNKNOWN && actual_type != CG_TYPE_UNKNOWN &&
+        actual_type != expected_type && !convert){
+            ctx->error_code = 99;
+            return;
     }
 
     generate_function_result(last, ctx);
@@ -200,34 +262,7 @@ static void generate_nonunit_body(AST_NODE *body, CodegenContext *ctx, CodegenTy
 }
 
 
-typedef struct LocalDeclName{
-    const char *name;
-    const HTEntry *entry;
-    struct LocalDeclName *next;
-} LocalDeclName;
-
-
-static int parameter_has_name(const AST_NODE *param, const AST_NODE *identifier){
-    while(param != NULL){
-        if(param->identifier_entry != NULL && identifier->identifier_entry != NULL){
-            if(param->identifier_entry == identifier->identifier_entry){
-                return 1;
-            }
-        }
-
-        else if(param->identifier_entry == NULL && identifier->identifier_entry == NULL &&
-                strcmp(param->token.attr.str_val, identifier->token.attr.str_val) == 0){
-            return 1;
-        }
-
-        param = param->right_ch;
-    }
-
-    return 0;
-}
-
-
-static void collect_local_declarations(AST_NODE *node, const AST_NODE *params, LocalDeclName **declared, CodegenContext *ctx){
+static void collect_local_declarations(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code != 0){
         return;
     }
@@ -237,7 +272,17 @@ static void collect_local_declarations(AST_NODE *node, const AST_NODE *params, L
     }
 
     if(node->type == NODE_FOR){
+        codegen_reserve_variable(node->left_ch, ctx);
+
+        if(ctx->error_code != 0){
+            return;
+        }
+
         const char *name = codegen_variable_name(node->left_ch, ctx);
+
+        if(ctx->error_code != 0){
+            return;
+        }
 
         fprintf(ctx->output, "DEFVAR LF@%s\n"
                             "DEFVAR LF@%%cg_for_end_%s\n"
@@ -246,72 +291,28 @@ static void collect_local_declarations(AST_NODE *node, const AST_NODE *params, L
 
     if(node->type == NODE_VAR_DEF || node->type == NODE_VAL_DEF){
         AST_NODE *identifier = node->left_ch;
-
-        if(identifier == NULL || identifier->type != NODE_TOKEN_ONLY ||
-           identifier->token.type != TOKEN_TYPE_IDENTIFIER ||
-           identifier->token.attr.str_val == NULL ||
-           identifier->token.attr.str_val[0] == '\0'){
-                ctx->error_code = 99;
-                return;
-        }
-
-        const char *name = identifier->token.attr.str_val;
-
-        if(parameter_has_name(params, identifier)){
-            ctx->error_code = 99;
-            return;
-        }
-
-        for(LocalDeclName *item = *declared; item != NULL;  item = item->next){
-            if(identifier->identifier_entry != NULL && item->entry == identifier->identifier_entry){
-                ctx->error_code = 99;
-                return;
-            }
-
-            if(identifier->identifier_entry == NULL && item->entry == NULL &&
-            strcmp(item->name, name) == 0){
-                ctx->error_code = 99;
-                return;
-            }
-        }
-
-        LocalDeclName *item = malloc(sizeof(*item));
-
-        if(item == NULL){
-            ctx->error_code = 99;
-            return;
-        }
-
-        item->name = name;
-        item->entry = identifier->identifier_entry;
-        item->next = *declared;
-        *declared = item;
-
-        const char *internal_name = codegen_variable_name(identifier, ctx);
+        codegen_reserve_variable(identifier, ctx);
 
         if(ctx->error_code != 0){
             return;
         }
 
-        fprintf(ctx->output, "DEFVAR LF@%s\n", internal_name);
+        const char *name = codegen_variable_name(identifier, ctx);
+
+        if(ctx->error_code != 0){
+            return;
+        }
+
+        fprintf(ctx->output, "DEFVAR LF@%s\n", name);
     }
 
-    collect_local_declarations(node->left_ch, params, declared, ctx);
-
-    collect_local_declarations(node->right_ch, params, declared, ctx);
+    collect_local_declarations(node->left_ch, ctx);
+    collect_local_declarations(node->right_ch, ctx);
 }
 
 
-static void generate_local_declarations(AST_NODE *body, const AST_NODE *params, CodegenContext *ctx){
-    LocalDeclName *declared = NULL;
-
-    collect_local_declarations(body, params, &declared, ctx);
-
-    while(declared != NULL){
-        LocalDeclName *next = declared->next;
-        free(declared);
-        declared = next;
-    }
+static void generate_local_declarations(AST_NODE *body, CodegenContext *ctx){
+    collect_local_declarations(body, ctx);
 }
 
 
@@ -346,7 +347,7 @@ static CodegenType infer_function_return_type(const AST_NODE *body, const Codege
         case NODE_IF: {
             CodegenType type = codegen_expression_type(last, ctx);
 
-            if(type == CG_TYPE_UNKNOWN){
+            if(type == CG_TYPE_UNKNOWN && last->right_ch == NULL){
                 return CG_TYPE_UNIT;
             }
 
@@ -406,24 +407,19 @@ void generate_function(AST_NODE *node, CodegenContext *ctx){
             return;
     }
 
+    codegen_clear_bindings(ctx);
+
     AST_NODE *return_type = function_definicion->left_ch;
 
     CodegenType declare_type = CG_TYPE_UNKNOWN;
 
-    if(function_definicion->identifier_entry != NULL &&
-    function_definicion->identifier_entry->entry_type == FUNCTION){
-        declare_type = codegen_from_semantic_type(function_definicion->identifier_entry->entry_data.function.return_type);
-    }
-
-    if(declare_type == CG_TYPE_UNKNOWN){
-        declare_type = get_function_return_type(return_type);
-    }
+    declare_type = get_function_return_type(return_type);
 
     if(declare_type == CG_TYPE_UNKNOWN && return_type == NULL){
         declare_type = infer_function_return_type(function_body, ctx);
     }
 
-    if(declare_type == CG_TYPE_UNKNOWN){
+    if(declare_type == CG_TYPE_UNKNOWN && return_type != NULL){
         ctx->error_code = 99;
         return;
     }
@@ -441,16 +437,10 @@ void generate_function(AST_NODE *node, CodegenContext *ctx){
 
     int previous_function_list_double = ctx->current_function_list_double;
 
-    int semantic_list_double = 0;
-
-    if(function_definicion->identifier_entry != NULL && function_definicion->identifier_entry->entry_type == FUNCTION){
-        semantic_list_double = function_definicion->identifier_entry->entry_data.function.return_type == LIST_DOUBLE;
-    }
-
     int ast_list_double = return_type != NULL && return_type->type == NODE_LIST && return_type->left_ch != NULL &&
         return_type->left_ch->type == NODE_TOKEN_ONLY && return_type->left_ch->token.type == KEYWORD_DOUBLE;
 
-    ctx->current_function_list_double = declare_type == CG_TYPE_LIST && (semantic_list_double || ast_list_double);
+    ctx->current_function_list_double = declare_type == CG_TYPE_LIST && ast_list_double;
 
     ctx->inside_function = 1;
     ctx->current_is_main = is_main;
@@ -469,7 +459,7 @@ void generate_function(AST_NODE *node, CodegenContext *ctx){
     generate_parameters_reverse(function_definicion->right_ch, ctx);
 
     if(ctx->error_code == 0){
-        generate_local_declarations(function_body, function_definicion->right_ch, ctx);
+        generate_local_declarations(function_body, ctx);
     }
 
     if(ctx->error_code == 0){
@@ -503,6 +493,7 @@ void generate_function(AST_NODE *node, CodegenContext *ctx){
     ctx->current_return_type = old_return_type;
 
     ctx->current_function_list_double = previous_function_list_double;
+    codegen_clear_bindings(ctx);
 }
 
 
@@ -545,7 +536,8 @@ void generate_return(AST_NODE *node, CodegenContext *ctx){
 
         int convert = ctx->current_return_type == CG_TYPE_DOUBLE && actual_type == CG_TYPE_INT;
 
-        if(actual_type != ctx->current_return_type && !convert){
+        if(ctx->current_return_type != CG_TYPE_UNKNOWN && actual_type != CG_TYPE_UNKNOWN &&
+            actual_type != ctx->current_return_type && !convert){
             ctx->error_code = 99;
             return;
         }
@@ -580,6 +572,3 @@ void generate_return(AST_NODE *node, CodegenContext *ctx){
 
 
 //FB0
-
-
-
