@@ -545,6 +545,7 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
         rvalue_ret_type = exprStatement(rvalue_node, sym_table);
 
     // Evaluating right side expression/function call couldn't infer type
+    // Leads to ERROR_TYPE whether var def has type annotation or not
     if (rvalue_ret_type == NIL)
     {
         fprintf(stderr, "variableDef() -- couldn't infer type from right side of assignment\n");
@@ -552,26 +553,32 @@ static DataType variableDef(AST_NODE *def_node, SymTable *sym_table)
         exit(ERROR_TYPE);
     }
 
+    // Get var def's type annotation -> if has, check type compatibility
+    DataType var_type = NIL;
+    if (def_node->left_ch->left_ch != NULL)
+    {
+        var_type = getParamType(def_node->left_ch->left_ch);
+        // If not assigning Int rside to Double lside, which leads to Int->Double implicit conversion
+        if (!(var_type == DOUBLE && rvalue_ret_type == INT))
+        {
+            if (var_type != rvalue_ret_type) // If in such cases var type and expression type don't match
+            {
+                fprintf(stderr, "variableDef() -- Trying to assign value of incompatible type\n");
+                // TODO: cleanup()
+                exit(ERROR_TYPE);
+            }
+        }
+    }
+    else // var def has no type annotation, infer from rvalue expression/function call
+        var_type = rvalue_ret_type;
+
     // Initialize the HTEntry to insert into sym_table
     HTEntry var_entry;
     var_entry.entry_type = var_modifier;
     var_entry.state = BUSY;
     var_entry.identifier = def_node->left_ch->token.attr.str_val;
+    var_entry.entry_data.variable_data_type = var_type;
 
-    // Variable definition has type annotation -> check type compatibility
-    if (def_node->left_ch->left_ch != NULL)
-    {
-        DataType var_type = getParamType(def_node->left_ch->left_ch);
-        if (var_type != rvalue_ret_type)
-        {
-            fprintf(stderr, "variableDef() -- Trying to assign value of incompatible type\n");
-            // TODO: cleanup()
-            exit(ERROR_TYPE);
-        }
-    }
-
-    // Variable definition doesn't have type annotation -> infer variable type from right side of assignment
-    var_entry.entry_data.variable_data_type = rvalue_ret_type;
     // Insert HTEntry into sym_table
     createIdentifier(&var_entry, sym_table);
 
