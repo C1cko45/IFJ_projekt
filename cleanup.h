@@ -1,3 +1,8 @@
+/*
+ * IFJ26
+ * Autor: Pham Vu Duy Anh, xphamv00
+ */
+
 #ifndef CLEANUP_H
 #define CLEANUP_H
 

@@ -1,3 +1,8 @@
+/*
+ * IFJ26
+ * Autor: Pham Vu Duy Anh, xphamv00
+ */
+
 #include <stdlib.h>
 
 #include "ast.h"
