@@ -1075,8 +1075,17 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
         // Arithmetic operator
         case TOKEN_TYPE_MINUS:
             if (arithm_node->right_ch == NULL) // if '-' is unary operator, else processed below
+            {
                 // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
-                return arithmExpr(arithm_node->left_ch, sym_table);
+                left_operand = arithmExpr(arithm_node->left_ch, sym_table);
+                if (left_operand != INT && left_operand != DOUBLE)
+                {
+                    fprintf(stderr, "arithmExpr() -- unary '-' operation contains unsupported operand type\n");
+                    compilerError(ERROR_TYPE);
+                }
+                break;
+            }
+
             left_operand = arithmExpr(arithm_node->left_ch, sym_table);
             right_operand = arithmExpr(arithm_node->right_ch, sym_table);
             break;
