@@ -92,6 +92,8 @@ static Token get_token_internal(void)
     static bool stack_is_initialized = false;
     // kontrola vratenia vsetkych ukoncenych indentov. (dedentov)
     static bool dedent_in_progress = false;
+    // kontrola ci sa automat nachadza v zatvorke.
+    static int paren_depth = 0;
 
     if (!stack_is_initialized)
     {
@@ -164,9 +166,13 @@ static Token get_token_internal(void)
             // instant tokens.
             case '(':
                 token.type = TOKEN_TYPE_LPAREN;
+                paren_depth++;
                 return token;
             case ')':
                 token.type = TOKEN_TYPE_RPAREN;
+                if (paren_depth > 0) {
+                    paren_depth--;
+                }
                 return token;
             case '[':
                 token.type = TOKEN_TYPE_LBRACKET;
@@ -232,6 +238,9 @@ static Token get_token_internal(void)
             // koniec riadku.
             case '\n':
                 token.type = TOKEN_TYPE_EOL;
+                if (paren_depth > 0) {
+                    break;
+                }
                 is_at_new_line = true;
                 return token;
             // konec suboru. + kontrola zabudnutych dedentov.
@@ -377,7 +386,9 @@ static Token get_token_internal(void)
                 {
                     ungetc(character, stdin);
                 }
-
+                if (paren_depth > 0) {
+                    break;
+                }
                 token.type = TOKEN_TYPE_EOL;
                 is_at_new_line = true;
                 return token;
