@@ -1363,6 +1363,17 @@ static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table)
             right_operand = compareExpr(neq_node->right_ch, sym_table);
             break;
 
+        // Boolean operator
+        case TOKEN_TYPE_NOT:
+            // boolExpr() guaranteed to return a boolean type or it errors; no need for type checks
+            return boolExpr(neq_node, sym_table);
+
+        case TOKEN_TYPE_AND:
+        case TOKEN_TYPE_OR:
+            left_operand = boolExpr(neq_node->left_ch, sym_table);
+            right_operand = boolExpr(neq_node->right_ch, sym_table);
+            break;
+
         default:
             fprintf(stderr, "relatExpr() -- Relational expression contains operator/operand of invalid type\n");
             compilerError(ERROR_TYPE);
