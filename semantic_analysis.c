@@ -100,15 +100,10 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
             // Evaluate return value and compare its type with function return type
             DataType retval_type = programStatement(program_node, function_entry, sym_table);
 
-            // If function signature doesn't have explicit return type (and function has no return statements)
-            // -> Function return type inferred from its last statement
-            // Checks for explicit return type when function contains return statements -> see returnStatement()
-            if (*func_ret_type == NIL)
-                *func_ret_type = retval_type;
-
-            // If function def has explicit return type UNIT -> returns UNIT no matter what (return values discarded)
-            if (*func_ret_type != UNIT)
+            // If function's explicit return type isn't UNIT -> match return value type and function signature
+            if (*func_ret_type != UNIT && *func_ret_type != NIL)
             {
+                // And also last statement if-statement --> special checks, see language spec
                 if (program_node->left_ch->type != NODE_IF)
                 {
                     if (retval_type != *func_ret_type)
@@ -117,7 +112,37 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
                         compilerError(ERROR_TYPE);
                     }
                 }
+                // If if-statement last, and explicit return type not UNIT, check if every branch has return statement
+                else if (program_node->left_ch->type == NODE_IF)
+                {
+                    AST_NODE *if_node = program_node->left_ch;
+                    while (if_node != NULL)
+                    {
+                        bool return_found = false;
+                        AST_NODE *body_program_node = if_node->left_ch->right_ch;
+                        while (!return_found && body_program_node != NULL)
+                        {
+                            // If found return statement in branch block, correct and continue checking another branch
+                            if (body_program_node->left_ch->token.type == KEYWORD_RETURN)
+                                return_found = true;
+                            body_program_node = body_program_node->right_ch;
+                        }
+
+                        if (!return_found)
+                        {
+                            fprintf(stderr, "functionDef() -- not all if-branches have return statement\n");
+                            compilerError(ERROR_TYPE);
+                        }
+
+                        if_node = if_node->right_ch;
+                    }
+                }
             }
+            // Function signature has no explicit return type
+            else if (*func_ret_type == NIL)
+                *func_ret_type = retval_type;
+
+            // If function def has explicit return type UNIT -> returns UNIT no matter what (return values discarded)
         }
         else
             programStatement(program_node, function_entry, sym_table);
