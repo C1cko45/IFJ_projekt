@@ -51,10 +51,14 @@ void ast_add_parent(AST_NODE *parent, AST_NODE *child, int side){
     if (side == 0){
         parent->left_ch = child;        //vlozime do left_ch pointer na nas novy child
 
-    }else{
+    if (side == 0)
+    {
+        parent->left_ch = child; // vlozime do left_ch pointer na nas novy child
+    }
+    else
+    {
         parent->right_ch = child;
     }
-
 }
 
 // ast_free_node: rekurzivne uvolni uzol, oboch potomkov a retazec v tokene (identifikator / string)
@@ -67,7 +71,22 @@ void ast_free_node(AST_NODE *node) {
     ast_free_node(node->left_ch);
     ast_free_node(node->right_ch);
 
-    if (node->type == NODE_TOKEN_ONLY) {
+    // Free HTEntry
+    if (node->identifier_entry != NULL)
+    {
+        free(node->identifier_entry->identifier);
+        node->identifier_entry->identifier = NULL;
+        if (node->identifier_entry->entry_type == FUNCTION)
+        {
+            free(node->identifier_entry->entry_data.function.parameters);
+            node->identifier_entry->entry_data.function.parameters = NULL;
+        }
+    }
+    free(node->identifier_entry);
+    node->identifier_entry = NULL;
+
+    if (node->type == NODE_TOKEN_ONLY)
+    {
         token_free(&node->token);
     }
 

@@ -20,12 +20,15 @@ static void generate_list_index(AST_NODE *node, CodegenContext *ctx);
 
 
 struct CodegenBinding {
-    const HTEntry *entry;
+    const AST_NODE *identifier;
+    const char *source_name;
+    CodegenType type;
     CodegenType list_item_type;
+    unsigned int scope_depth;
+    int active;
     char name[40];
     struct CodegenBinding *next;
 };
-
 
 
 static CodegenType codegen_element_type_from_datatype(DataType type){
@@ -79,28 +82,198 @@ static CodegenType codegen_declared_list_item_type(const AST_NODE *identifier){
 }
 
 
-void codegen_set_list_item_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type){
-    if(identifier == NULL || identifier->identifier_entry == NULL || type == CG_TYPE_UNKNOWN){
-        return;
+static CodegenType codegen_declared_variable_type(const AST_NODE *identifier){
+    if(identifier == NULL || identifier->left_ch == NULL){
+        return CG_TYPE_UNKNOWN;
     }
 
-    codegen_variable_name(identifier, ctx);
+    const AST_NODE *type = identifier->left_ch;
 
-    for(CodegenBinding *binding = ctx->bindings; binding != NULL; binding = binding->next){
-        if(binding->entry == identifier->identifier_entry){
-            binding->list_item_type = type;
-            return;
-        }
+    if(type->type == NODE_LIST){
+        return CG_TYPE_LIST;
+    }
+
+    if(type->type != NODE_TOKEN_ONLY){
+        return CG_TYPE_UNKNOWN;
+    }
+
+    switch(type->token.type){
+        case KEYWORD_INT:
+            return CG_TYPE_INT;
+
+        case KEYWORD_DOUBLE:
+            return CG_TYPE_DOUBLE;
+
+        case KEYWORD_STRING:
+            return CG_TYPE_STRING;
+
+        case KEYWORD_BOOLEAN:
+            return CG_TYPE_BOOL;
+
+        case KEYWORD_UNIT:
+            return CG_TYPE_UNIT;
+
+        default:
+            return CG_TYPE_UNKNOWN;
     }
 }
 
 
+static CodegenBinding *codegen_binding_for_declaration(const AST_NODE *identifier, const CodegenContext *ctx){
+    if(identifier == NULL || ctx == NULL){
+        return NULL;
+    }
+
+    for(CodegenBinding *binding = ctx->bindings; binding != NULL; binding = binding->next){
+        if(binding->identifier == identifier){
+            return binding;
+        }
+    }
+
+    return NULL;
+}
+
+
+static CodegenBinding *codegen_active_binding(const AST_NODE *identifier, const CodegenContext *ctx){
+    if(identifier == NULL || ctx == NULL || identifier->type != NODE_TOKEN_ONLY ||
+        identifier->token.type != TOKEN_TYPE_IDENTIFIER || identifier->token.attr.str_val == NULL){
+            return NULL;
+    }
+
+    CodegenBinding *selected = NULL;
+
+    for(CodegenBinding *binding = ctx->bindings; binding != NULL; binding = binding->next){
+        if(binding->active && binding->source_name != NULL &&
+            strcmp(binding->source_name, identifier->token.attr.str_val) == 0 &&
+            (selected == NULL || binding->scope_depth > selected->scope_depth)){
+                selected = binding;
+        }
+    }
+
+    return selected;
+}
+
+
+//Pripravi jedinecny nazov pre premennu
+void codegen_reserve_variable(const AST_NODE *identifier, CodegenContext *ctx){
+    if(identifier == NULL || ctx == NULL || ctx->error_code != 0){
+        return;
+    }
+
+    if(codegen_binding_for_declaration(identifier, ctx) != NULL){
+        return;
+    }
+
+    if(identifier->type != NODE_TOKEN_ONLY || identifier->token.type != TOKEN_TYPE_IDENTIFIER ||
+        identifier->token.attr.str_val == NULL){
+            ctx->error_code = 99;
+            return;
+    }
+
+    CodegenBinding *binding = calloc(1, sizeof(*binding));
+
+    if(binding == NULL){
+        ctx->error_code = 99;
+        return;
+    }
+
+    binding->identifier = identifier;
+    binding->source_name = identifier->token.attr.str_val;
+    binding->type = codegen_declared_variable_type(identifier);
+    binding->list_item_type = codegen_declared_list_item_type(identifier);
+    snprintf(binding->name, sizeof(binding->name), "%%cg_v%u", ctx->variable_counter++);
+    binding->next = ctx->bindings;
+    ctx->bindings = binding;
+}
+
+
+//Spristupni premennu v aktualnom bloku
+void codegen_declare_variable(const AST_NODE *identifier, CodegenContext *ctx){
+    codegen_reserve_variable(identifier, ctx);
+
+    if(ctx == NULL || ctx->error_code != 0){
+        return;
+    }
+
+    CodegenBinding *binding = codegen_binding_for_declaration(identifier, ctx);
+
+    if(binding == NULL){
+        ctx->error_code = 99;
+        return;
+    }
+
+    binding->active = 1;
+    binding->scope_depth = ctx->scope_depth;
+}
+
+
+void codegen_set_variable_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type){
+    if(ctx == NULL || type == CG_TYPE_UNKNOWN){
+        return;
+    }
+
+    CodegenBinding *binding = codegen_binding_for_declaration(identifier, ctx);
+
+    if(binding != NULL){
+        binding->type = type;
+    }
+}
+
+
+//Zisti typ ulozenej premennej
+CodegenType codegen_variable_type(const AST_NODE *identifier, const CodegenContext *ctx){
+    CodegenBinding *binding = codegen_active_binding(identifier, ctx);
+
+    if(binding == NULL){
+        binding = codegen_binding_for_declaration(identifier, ctx);
+    }
+
+    return binding == NULL ? CG_TYPE_UNKNOWN : binding->type;
+}
+
+
+void codegen_set_list_item_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type){
+    if(ctx == NULL || type == CG_TYPE_UNKNOWN){
+        return;
+    }
+
+    CodegenBinding *binding = codegen_binding_for_declaration(identifier, ctx);
+
+    if(binding != NULL){
+        binding->list_item_type = type;
+    }
+}
+
+
+//Zisti typ prvkov zoznamu
 CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenContext *ctx){
     if(identifier == NULL || ctx == NULL){
         return CG_TYPE_UNKNOWN;
     }
 
-    const HTEntry *entry = identifier->identifier_entry;
+    CodegenType declared = codegen_declared_list_item_type(identifier);
+
+    if(declared != CG_TYPE_UNKNOWN){
+        return declared;
+    }
+
+    if(identifier->type == NODE_TOKEN_ONLY && identifier->token.type == TOKEN_TYPE_IDENTIFIER){
+        CodegenBinding *binding = codegen_active_binding(identifier, ctx);
+
+        if(binding == NULL){
+            binding = codegen_binding_for_declaration(identifier, ctx);
+        }
+
+        if(binding != NULL && binding->list_item_type != CG_TYPE_UNKNOWN){
+            return binding->list_item_type;
+        }
+    }
+
+    const HTEntry *entry = NULL;
+
+    if(identifier->type == NODE_TOKEN_ONLY && identifier->token.type == TOKEN_TYPE_IDENTIFIER){
+        entry = identifier->identifier_entry;
+    }
 
     if(identifier->type == NODE_CALL && identifier->left_ch != NULL &&
        identifier->left_ch->type == NODE_TOKEN_ONLY && identifier->left_ch->token.type == TOKEN_TYPE_IDENTIFIER){
@@ -108,19 +281,14 @@ CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenCont
     }
 
     if(entry != NULL){
-        DataType semantic_type;
+        DataType semantic_type = ANY;
 
         if(entry->entry_type == VAR || entry->entry_type == VAL){
             semantic_type = entry->entry_data.variable_data_type;
         }
 
         else if(entry->entry_type == FUNCTION){
-
             semantic_type = entry->entry_data.function.return_type;
-        }
-
-        else{
-            semantic_type = ANY;
         }
 
         CodegenType element_type = codegen_element_type_from_datatype(semantic_type);
@@ -131,7 +299,6 @@ CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenCont
     }
 
     if(identifier->type == NODE_VALMEM && identifier->right_ch != NULL){
-
         const char *member = identifier->right_ch->token.attr.str_val;
 
         if(member != NULL){
@@ -150,13 +317,12 @@ CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenCont
 
         if(callee->type == NODE_VALMEM && callee->right_ch != NULL){
             const AST_NODE *receiver = callee->left_ch;
-
             const char *method = callee->right_ch->token.attr.str_val;
 
             if(method != NULL){
                 if(strcmp(method, "range") == 0 && receiver != NULL &&
-                   receiver->type == NODE_TOKEN_ONLY && receiver->token.type == KEYWORD_LIST){
-                    return CG_TYPE_INT;
+                    receiver->type == NODE_TOKEN_ONLY && receiver->token.type == KEYWORD_LIST){
+                        return CG_TYPE_INT;
                 }
 
                 if(strcmp(method, "take") == 0 || strcmp(method, "drop") == 0 || strcmp(method, "slice") == 0){
@@ -166,7 +332,6 @@ CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenCont
         }
 
         if(callee->type == NODE_TOKEN_ONLY && callee->token.type == KEYWORD_LIST){
-
             CodegenType item_type = CG_TYPE_UNKNOWN;
 
             for(const AST_NODE *arg = identifier->right_ch; arg != NULL && arg->left_ch != NULL; arg = arg->right_ch){
@@ -196,67 +361,80 @@ CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenCont
 
     if(identifier->type == NODE_TOKEN_ONLY && identifier->token.type == TOKEN_TYPE_CONCAT){
         CodegenType left = codegen_list_item_type(identifier->left_ch, ctx);
-
         CodegenType right = codegen_list_item_type(identifier->right_ch, ctx);
-
         return left == right ? left : CG_TYPE_UNKNOWN;
-    }
-
-    
-    CodegenType declared = codegen_declared_list_item_type(identifier);
-
-    if(declared != CG_TYPE_UNKNOWN){
-        return declared;
-    }
-
-    if(identifier != NULL && identifier->identifier_entry != NULL){
-        for(CodegenBinding *binding = ctx->bindings; binding != NULL; binding = binding->next){
-            if(binding->entry == identifier->identifier_entry){
-                return binding->list_item_type;
-            }
-        }
     }
 
     return CG_TYPE_UNKNOWN;
 }
 
 
+//Najde interny nazov premennej
 const char *codegen_variable_name(const AST_NODE *identifier, CodegenContext *ctx){
-    if(identifier->identifier_entry == NULL){
-        return identifier->token.attr.str_val;
-    }
-
-    CodegenType element_type = codegen_declared_list_item_type(identifier);
-
-    for(CodegenBinding *binding = ctx->bindings; binding != NULL; binding = binding->next){
-        if(binding->entry == identifier->identifier_entry){
-            if(element_type != CG_TYPE_UNKNOWN){
-                binding->list_item_type = element_type;
-            }
-
-            return binding->name;
-        }
-    }
-
-    CodegenBinding *binding = malloc(sizeof(*binding));
-
-    if(binding == NULL){
-        ctx->error_code = 99;
+    if(identifier == NULL || ctx == NULL){
         return NULL;
     }
 
-    binding->entry = identifier->identifier_entry;
-    binding->list_item_type = element_type;
+    CodegenBinding *binding = codegen_binding_for_declaration(identifier, ctx);
 
-    snprintf(binding->name, sizeof(binding->name), "%%cg_v%u", ctx->variable_counter++);
+    if(binding == NULL){
+        binding = codegen_active_binding(identifier, ctx);
+    }
 
-    binding->next = ctx->bindings;
-    ctx->bindings = binding;
+    if(binding != NULL){
+        return binding->name;
+    }
 
-    return binding->name;
+    if(ctx->symbols != NULL && identifier->token.attr.str_val != NULL){
+        return identifier->token.attr.str_val;
+    }
+
+    ctx->error_code = 99;
+    return NULL;
 }
 
 
+//Zacne novy blok premennych
+void codegen_enter_scope(CodegenContext *ctx){
+    if(ctx != NULL){
+        ctx->scope_depth++;
+    }
+}
+
+
+//Ukonci blok a skryje jeho premenne
+void codegen_leave_scope(CodegenContext *ctx){
+    if(ctx == NULL || ctx->scope_depth == 0){
+        return;
+    }
+
+    for(CodegenBinding *binding = ctx->bindings; binding != NULL; binding = binding->next){
+        if(binding->active && binding->scope_depth == ctx->scope_depth){
+            binding->active = 0;
+        }
+    }
+
+    ctx->scope_depth--;
+}
+
+
+//Uvolni zaznamy o premennych
+void codegen_clear_bindings(CodegenContext *ctx){
+    if(ctx == NULL){
+        return;
+    }
+
+    while(ctx->bindings != NULL){
+        CodegenBinding *next = ctx->bindings->next;
+        free(ctx->bindings);
+        ctx->bindings = next;
+    }
+
+    ctx->scope_depth = 0;
+}
+
+
+//Prida pomocnu funkciu na prevod zoznamu na text
 static void codegen_emit_list_to_string_runtime(CodegenContext *ctx){
     fputs("LABEL $$cg_list_to_str\n"
         "CREATEFRAME\nPUSHFRAME\n"
@@ -333,6 +511,7 @@ static void codegen_emit_list_to_string_runtime(CodegenContext *ctx){
 }
 
 
+//Vypise zaciatok programu IFJcode26
 void codegen_emit_header(CodegenContext *ctx){
     if(ctx == NULL || ctx->output == NULL){
         return;
@@ -362,6 +541,7 @@ void codegen_emit_jump(CodegenContext *ctx, const char *label){
 }
 
 
+//Spusti generovanie s pripravenym nastavenim
 int codegen_generate_ctx(AST_NODE *root, CodegenContext *ctx){
     if(root == NULL || ctx == NULL || ctx->output == NULL){
         return 99;
@@ -381,16 +561,13 @@ int codegen_generate_ctx(AST_NODE *root, CodegenContext *ctx){
         ctx->error_code = 99;
     }
 
-    while(ctx->bindings != NULL){
-        CodegenBinding *next = ctx->bindings->next;
-        free(ctx->bindings);
-        ctx->bindings = next;
-    }
+    codegen_clear_bindings(ctx);
 
     return ctx->error_code;
 }
 
 
+//Hlavny vstup do generatora
 int codegen_generate(AST_NODE *root, FILE *output){
     CodegenContext ctx = {0};
     ctx.output = output;
@@ -399,6 +576,7 @@ int codegen_generate(AST_NODE *root, FILE *output){
 }
 
 
+//Vyberie postup podla druhu AST uzla
 void codegen_generate_node(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx->error_code != 0){
         return;
@@ -487,6 +665,7 @@ static void generate_program(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+//Vygeneruje argumenty volanej funkcie
 static int generate_call_arguments(AST_NODE *args, CodegenContext *ctx){
     int count = 0;
 
@@ -543,41 +722,65 @@ static void generate_list_range_call(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+//Vygeneruje volanie funkcie alebo pracu so zoznamom
 void codegen_generate_call_expression(AST_NODE *node, CodegenContext *ctx){
-    if(node->left_ch != NULL && node->left_ch->type == NODE_VALMEM && node->left_ch->right_ch != NULL){
-        const char *method = node->left_ch->right_ch->token.attr.str_val;
+    if(node == NULL || ctx == NULL || ctx->error_code != 0 || node->left_ch == NULL){
+        if(ctx != NULL){
+            ctx->error_code = 99;
+        }
+        return;
+    }
+
+    AST_NODE *callee = node->left_ch;
+
+    if(callee->type == NODE_VALMEM && callee->right_ch != NULL &&
+        callee->right_ch->type == NODE_TOKEN_ONLY){
+        const char *method = callee->right_ch->token.attr.str_val;
 
         if(method != NULL && (strcmp(method, "take") == 0 || strcmp(method, "drop") == 0 || strcmp(method, "slice") == 0)){
             codegen_generate_list_method_expression(node, ctx);
             return;
         }
+
+        if(method != NULL && strcmp(method, "range") == 0 && callee->left_ch != NULL &&
+            callee->left_ch->type == NODE_TOKEN_ONLY && callee->left_ch->token.type == KEYWORD_LIST){
+                generate_list_range_call(node, ctx);
+                return;
+        }
     }
 
-    if(node->left_ch != NULL && node->left_ch->type == NODE_VALMEM &&
-    node->left_ch->left_ch != NULL && node->left_ch->left_ch->token.type == KEYWORD_LIST){
-        generate_list_range_call(node, ctx);
-        return;
-    }
-    
-    if(node->left_ch != NULL && node->left_ch->token.type == KEYWORD_LIST){
+    if(callee->type == NODE_TOKEN_ONLY && callee->token.type == KEYWORD_LIST){
         generate_list_constructor(node, ctx);
         return;
     }
 
-    const HTEntry *entry = node->left_ch->identifier_entry;
-
-    if(entry != NULL && (entry->entry_type == VAR || entry->entry_type == VAL) && codegen_from_semantic_type(entry->entry_data.variable_data_type) == CG_TYPE_LIST){
-        generate_list_index(node, ctx);
-        return;
+    if(callee->type != NODE_TOKEN_ONLY || callee->token.type != TOKEN_TYPE_IDENTIFIER ||
+        callee->token.attr.str_val == NULL){
+            ctx->error_code = 99;
+            return;
     }
 
-    const char *name = node->left_ch->token.attr.str_val;
+    if(codegen_variable_type(callee, ctx) == CG_TYPE_LIST){
+            generate_list_index(node, ctx);
+            return;
+    }
+
+    const char *name = callee->token.attr.str_val;
 
     if(strcmp(name, "print") == 0){
         AST_NODE *arg = node->right_ch;
 
-        if(arg->type == NODE_ARGUMENT || arg->type == NODE_PROGRAM){
+        if(arg != NULL && (arg->type == NODE_ARGUMENT || arg->type == NODE_PROGRAM)){
+            if(arg->right_ch != NULL){
+                ctx->error_code = 99;
+                return;
+            }
             arg = arg->left_ch;
+        }
+
+        if(arg == NULL){
+            ctx->error_code = 99;
+            return;
         }
 
         CodegenType type = codegen_expression_type(arg, ctx);
@@ -591,7 +794,7 @@ void codegen_generate_call_expression(AST_NODE *node, CodegenContext *ctx){
         if(type == CG_TYPE_LIST){
             fputs("CALL $$cg_list_to_str\n"
                 "POPS GF@%cg_tmp\n"
-                "WRITE GF@%cg_tmp\n", ctx->output);  
+                "WRITE GF@%cg_tmp\n", ctx->output);
         }
 
         else if(type == CG_TYPE_UNIT){
@@ -797,6 +1000,7 @@ static void emit_builtin_substr(CodegenContext *ctx){
 }
 
 
+//Vygeneruje volanie vstavanej funkcie
 void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
     if(ctx == NULL || ctx->error_code != 0){
         return;
@@ -963,7 +1167,7 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
             }
 
             case CG_TYPE_STRING:
-                //placeholder
+
                 break;
 
             case CG_TYPE_UNIT:
@@ -984,6 +1188,7 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+//Vygeneruje cyklus while
 static void generate_while(AST_NODE *node, CodegenContext *ctx){
     if(ctx == NULL || ctx->error_code != 0){
         return;
@@ -1010,7 +1215,9 @@ static void generate_while(AST_NODE *node, CodegenContext *ctx){
     fprintf(ctx->output, "PUSHS bool@false\n");
     fprintf(ctx->output, "JUMPIFEQS $$while_end_%u\n", id);
 
+    codegen_enter_scope(ctx);
     codegen_generate_node(body, ctx);
+    codegen_leave_scope(ctx);
 
     if(ctx->error_code != 0){
         return;
@@ -1022,16 +1229,35 @@ static void generate_while(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+//Vygeneruje vetvenie if a else
 static void generate_if(AST_NODE *node, CodegenContext *ctx){
+    if(node == NULL || node->left_ch == NULL || node->left_ch->left_ch == NULL ||
+        node->left_ch->right_ch == NULL || ctx == NULL || ctx->error_code != 0){
+            if(ctx != NULL){
+                ctx->error_code = 99;
+            }
+            return;
+    }
+
     AST_NODE *pair = node->left_ch;
     unsigned int id = ctx->label_counter++;
 
     generate_expression(pair->left_ch, ctx);
 
+    if(ctx->error_code != 0){
+        return;
+    }
+
     fprintf(ctx->output, "PUSHS bool@false\n"
                         "JUMPIFEQS $$if_else_%u\n", id);
 
+    codegen_enter_scope(ctx);
     codegen_generate_node(pair->right_ch, ctx);
+    codegen_leave_scope(ctx);
+
+    if(ctx->error_code != 0){
+        return;
+    }
 
     fprintf(ctx->output, "JUMP $$if_end_%u\n"
                         "LABEL $$if_else_%u\n", id, id);
@@ -1043,17 +1269,21 @@ static void generate_if(AST_NODE *node, CodegenContext *ctx){
             branch = branch->left_ch;
         }
 
+        codegen_enter_scope(ctx);
         codegen_generate_node(branch, ctx);
+        codegen_leave_scope(ctx);
     }
 
     fprintf(ctx->output, "LABEL $$if_end_%u\n", id);
 }
 
 
+//Vygeneruje cyklus for nad zoznamom
 static void generate_for_list(AST_NODE *node, CodegenContext *ctx){
     AST_NODE *iterator = node->left_ch;
     AST_NODE *source = iterator->left_ch->left_ch;
 
+    codegen_enter_scope(ctx);
     const char *name = codegen_variable_name(iterator, ctx);
 
     if(ctx->error_code != 0){
@@ -1061,12 +1291,16 @@ static void generate_for_list(AST_NODE *node, CodegenContext *ctx){
     }
 
     unsigned int id = ctx->label_counter++;
+    CodegenType item_type = codegen_list_item_type(source, ctx);
 
     generate_expression(source, ctx);
 
     if(ctx->error_code != 0){
         return;
     }
+
+    codegen_declare_variable(iterator, ctx);
+    codegen_set_variable_type(iterator, ctx, item_type);
 
     fprintf(ctx->output,"POPS LF@%%cg_for_end_%s\n"
                         "MOVE LF@%%cg_for_step_%s int@0\n"
@@ -1099,10 +1333,18 @@ static void generate_for_list(AST_NODE *node, CodegenContext *ctx){
                         "ADD LF@%%cg_for_step_%s LF@%%cg_for_step_%s int@1\n"
                         "JUMP $$cg_for_list_check_%u\n"
                         "LABEL $$cg_for_list_end_%u\n", id, name, name, id, id);
+
+    codegen_leave_scope(ctx);
 }
 
 
+//Vygeneruje nacitanie prvku zoznamu
 static void generate_list_index(AST_NODE *node, CodegenContext *ctx){
+    if(node->right_ch == NULL || node->right_ch->left_ch == NULL || node->right_ch->right_ch != NULL){
+        ctx->error_code = 99;
+        return;
+    }
+
     const char *name = codegen_variable_name(node->left_ch, ctx);
 
     if(ctx->error_code != 0){
@@ -1153,6 +1395,7 @@ static void generate_list_index(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+//Vytvori novy zoznam z hodnot
 static void generate_list_constructor(AST_NODE *node, CodegenContext *ctx){
     size_t count = 0;
     int needs_double = ctx->force_list_double;
@@ -1198,6 +1441,7 @@ static void generate_list_constructor(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+//Vygeneruje cyklus for
 static void generate_for(AST_NODE *node, CodegenContext *ctx){
     AST_NODE *iterator = node->left_ch;
     AST_NODE *limit = iterator->left_ch;
@@ -1208,15 +1452,11 @@ static void generate_for(AST_NODE *node, CodegenContext *ctx){
         return;
     }
 
-    if(range->token.type != KEYWORD_TO && range->token.type != KEYWORD_UNTIL){
-        ctx->error_code = 99;
-        return;
-    }
-
     AST_NODE *start = range->left_ch;
     AST_NODE *end = range->right_ch;
     AST_NODE *step = limit->right_ch;
 
+    codegen_enter_scope(ctx);
     const char *name = codegen_variable_name(iterator, ctx);
 
     unsigned int id = ctx->label_counter++;
@@ -1245,6 +1485,9 @@ static void generate_for(AST_NODE *node, CodegenContext *ctx){
                         "EXIT int@40\n"
                         "LABEL $$for_valid_%u\n", id, name, id);
 
+    codegen_declare_variable(iterator, ctx);
+    codegen_set_variable_type(iterator, ctx, CG_TYPE_INT);
+
     fprintf(ctx->output, "LABEL $$for_check_%u\n"
                         "LT GF@%%cg_tmp LF@%%cg_for_step_%s int@0\n"
                         "JUMPIFEQ $$for_negative_%u GF@%%cg_tmp bool@true\n", id, name, id);
@@ -1272,7 +1515,10 @@ static void generate_for(AST_NODE *node, CodegenContext *ctx){
                         "ADD LF@%s LF@%s LF@%%cg_for_step_%s\n"
                         "JUMP $$for_check_%u\n"
                         "LABEL $$for_end_%u\n", id, name, name, name, id, id);
+
+    codegen_leave_scope(ctx);
 }
+
 
 
 

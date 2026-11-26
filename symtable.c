@@ -9,11 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cleanup.h"
 #include "symtable.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#define ERROR_INTERNAL 99 // internal program error; failed memory allocation, ...
 
 #define HTABLE_MAX_LOAD_FACTOR 7 // Load factor*10, to avoid floating-point conversion and arithmetic
 #define HTABLE_INIT_CAPACITY 29  // Min value to satisfy load factor for initial global scope - has 19 builtin functions
@@ -47,8 +46,7 @@ SymTable *createSymTable(void)
     if (sym_table == NULL)
     {
         fprintf(stderr, "createSymTable() -- calloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Create symTable's global scope
@@ -56,8 +54,7 @@ SymTable *createSymTable(void)
     if (sym_table->scopes == NULL)
     {
         fprintf(stderr, "createSymTable() -- calloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Initialize symTable
@@ -69,8 +66,7 @@ SymTable *createSymTable(void)
     if (sym_table->scopes[GLOBAL_SCOPE_INDEX].entries == NULL)
     {
         fprintf(stderr, "createSymTable() -- calloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
     sym_table->scopes[GLOBAL_SCOPE_INDEX].count = 0;
     sym_table->scopes[GLOBAL_SCOPE_INDEX].capacity = HTABLE_INIT_CAPACITY;
@@ -86,20 +82,23 @@ void destroySymTable(SymTable *sym_table)
     if (sym_table == NULL)
     {
         fprintf(stderr, "destroySymTable() -- passed argument sym_table is NULL.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Destroy all existing scopes
-    // This particular way avoids size_t underflow, that would cause infinite loop otherwise
-    sym_table->capacity = sym_table->current + 1;
-    while (sym_table->capacity > 0)
+    while (sym_table->current > 0)
         popScope(sym_table);
+
+    // Destroy the global scope (size_t issues in while-loop)
+    popScope(sym_table);
 
     free(sym_table->scopes);
     sym_table->scopes = NULL;
     sym_table->capacity = 0;
     sym_table->current = 0;
+
+    free(sym_table);
+    sym_table = NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -113,8 +112,7 @@ void pushScope(SymTable *sym_table)
     if (sym_table == NULL)
     {
         fprintf(stderr, "pushScope() -- passed argument sym_table is NULL.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // scopes_count + 1 > scopes_capacity -> grow SymTable
@@ -126,8 +124,7 @@ void pushScope(SymTable *sym_table)
     if (sym_table->scopes[sym_table->current + 1].entries == NULL)
     {
         fprintf(stderr, "pushScope() -- calloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
     sym_table->scopes[sym_table->current + 1].count = 0;
     sym_table->scopes[sym_table->current + 1].capacity = HTABLE_INIT_CAPACITY;
@@ -143,19 +140,20 @@ void popScope(SymTable *sym_table)
     if (sym_table == NULL)
     {
         fprintf(stderr, "popScope() -- passed argument sym_table is NULL.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     HTable *scope = &sym_table->scopes[sym_table->current];
     // free memory of all non-empty entries in scope (HTable)
-    // This particular way avoids size_t underflow, that would cause infinite loop otherwise
-    while (scope->capacity > 0)
-        if (scope->entries[scope->capacity - 1].state != EMPTY)
+    for (size_t index = 0; index < scope->capacity; ++index)
+    {
+        if (scope->entries[index].state != EMPTY)
         {
-            free(scope->entries[scope->capacity - 1].identifier);
-            --scope->capacity;
+            free(scope->entries[index].identifier);
+            if (scope->entries[index].entry_type == FUNCTION)
+                free(scope->entries[index].entry_data.function.parameters);
         }
+    }
 
     free(scope->entries);
     scope->entries = NULL;
@@ -163,7 +161,8 @@ void popScope(SymTable *sym_table)
     scope->capacity = 0;
 
     // Update sym_table's stack pointer
-    sym_table->current--;
+    if (sym_table->current > 0)
+        sym_table->current--;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -180,8 +179,7 @@ bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
     if (key == NULL || table == NULL || entry_type == NONE)
     {
         fprintf(stderr, "isEntry() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     size_t index_hash = DJBHash(key);
@@ -194,10 +192,21 @@ bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
     {
         if (target_entry->state != DELETED) // if valid entry
         {
-            // if found specified entry
-            if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
-                return true;
-            target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            // If we're looking for function
+            if (entry_type == FUNCTION)
+            {
+                // if found specified entry
+                if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
+                    return target_entry;
+                target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            }
+            else
+            {
+                // if found specified entry
+                if (strcmp(key, target_entry->identifier) == 0)
+                    return target_entry;
+                target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            }
         }
     }
 
@@ -215,8 +224,7 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
     if (key == NULL || table == NULL || entry_type == NONE)
     {
         fprintf(stderr, "getEntry() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     size_t index_hash = DJBHash(key);
@@ -229,10 +237,21 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
     {
         if (target_entry->state != DELETED)
         {
-            // if found specified entry
-            if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
-                return target_entry;
-            target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            // If we're looking for function
+            if (entry_type == FUNCTION)
+            {
+                // if found specified entry
+                if (target_entry->entry_type == entry_type && strcmp(key, target_entry->identifier) == 0)
+                    return target_entry;
+                target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            }
+            else
+            {
+                // if found specified entry
+                if (strcmp(key, target_entry->identifier) == 0)
+                    return target_entry;
+                target_entry = &table->entries[(index_hash + i * probe_step_hash) % table->capacity];
+            }
         }
     }
 
@@ -250,38 +269,10 @@ void createIdentifier(HTEntry *entry, SymTable *sym_table)
     if (entry == NULL || sym_table == NULL)
     {
         fprintf(stderr, "createIdentifier() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     insertEntry(entry, &sym_table->scopes[sym_table->current]);
-}
-/*
- * Finds specified local immutable variable and updates its data type
- *
- * Should be called when assigning value to a mutable variable that previously held value of different data type
- * Function assumes existence of specified variable identifier visible in current scope and that it is mutable
- *
- * Returns TRUE if found such a variable and changed data type, otherwise FALSE
- */
-bool changeVarType(const char *identifier, DataType target_type, SymTable *sym_table)
-{
-    if (identifier == NULL || sym_table == NULL || target_type == ANY)
-    {
-        fprintf(stderr, "changeVarType() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
-    }
-
-    HTEntry *target_entry = getIdentifier(identifier, VAR, sym_table);
-
-    if (target_entry != NULL)
-    {
-        target_entry->entry_data.variable_data_type = target_type;
-        return true;
-    }
-
-    return false;
 }
 
 /*
@@ -297,8 +288,7 @@ bool isIdentifier(const char *identifier, HTEntryType entry_type, SymTable *sym_
     if (identifier == NULL || sym_table == NULL || entry_type == NONE)
     {
         fprintf(stderr, "isIdentifier() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     if (entry_type == FUNCTION)
@@ -330,8 +320,7 @@ HTEntry *getIdentifier(const char *identifier, HTEntryType entry_type, SymTable 
     if (identifier == NULL || sym_table == NULL || entry_type == NONE)
     {
         fprintf(stderr, "getIdentifier() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     if (entry_type == FUNCTION)
@@ -362,8 +351,7 @@ static uint32_t DJBHash(const char *key)
     if (key == NULL)
     {
         fprintf(stderr, "DJBHash() -- Passed argument is NULL.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     uint32_t hash = 5381;
@@ -380,8 +368,7 @@ static uint32_t BKDRHash(const char *key)
     if (key == NULL)
     {
         fprintf(stderr, "DJBHash() -- Passed argument is NULL.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     uint32_t hash = 0;
@@ -430,8 +417,7 @@ static size_t nextPrime(size_t number)
         if (number > SIZE_MAX - 2)
         {
             fprintf(stderr, "nextPrime() -- searching for next prime failed, exhausted size_t value range.\n");
-            // TODO: cleanup();
-            exit(ERROR_INTERNAL);
+            compilerError(ERROR_INTERNAL);
         }
         number += 2;
     }
@@ -450,8 +436,7 @@ static void resizeSymTable(SymTable *sym_table)
     if (sym_table == NULL)
     {
         fprintf(stderr, "resizeSymTable() -- argument sym_table is NULL.\n");
-        // TODO: cleanup();
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Assigning to tmp variable -> if realloc() failed, we would lose access to original unfreed memory
@@ -459,8 +444,7 @@ static void resizeSymTable(SymTable *sym_table)
     if (new_scopes == NULL)
     {
         fprintf(stderr, "resizeSymTable() -- realloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     sym_table->scopes = new_scopes;
@@ -479,8 +463,7 @@ static void resizeScope(HTable *scope)
     if (scope == NULL)
     {
         fprintf(stderr, "resizeScope() -- passed argument scope is NULL.\n");
-        // TODO: cleanup();
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     size_t old_capacity = scope->capacity;
@@ -491,8 +474,7 @@ static void resizeScope(HTable *scope)
     if (scope->entries == NULL)
     {
         fprintf(stderr, "resizeScope() -- calloc() failed.\n");
-        // TODO: cleanup();
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
     scope->capacity = new_capacity;
     scope->count = 0;
@@ -502,12 +484,9 @@ static void resizeScope(HTable *scope)
 
     // Memory cleanup of old HTable
     // This particular way avoids size_t underflow, that would cause infinite loop otherwise
-    while (old_capacity > 0)
-    {
-        if (old_entries[old_capacity - 1].state != EMPTY)
-            free(old_entries[old_capacity - 1].identifier);
-        --old_capacity;
-    }
+    for (size_t index = 0; index < old_capacity; ++index)
+        if (old_entries[index].state != EMPTY)
+            free(old_entries[index].identifier);
 
     free(old_entries);
 }
@@ -525,8 +504,7 @@ static void insertEntry(HTEntry *entry, HTable *table)
     if (entry == NULL || table == NULL)
     {
         fprintf(stderr, "insertEntry() -- at least one argument is invalid.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // If inserting exceeds load_factor (0.7) -> grow HTable, rehash
@@ -548,16 +526,27 @@ static void insertEntry(HTEntry *entry, HTable *table)
     if (target_entry->identifier == NULL)
     {
         fprintf(stderr, "insertEntry() -- calloc() failed.\n");
-        // TODO: cleanup(); -- must free AST memory
-        exit(ERROR_INTERNAL);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Insert specified entry into correct HTable index
     // Avoids shallow copy -- non-pointer struct fields passed by value, pointer struct fields handled separately
     strncpy(target_entry->identifier, entry->identifier, str_len); // Rest of target_entry->identifier filled with '\0'
     target_entry->entry_type = entry->entry_type;
-    target_entry->entry_data = entry->entry_data;
     target_entry->state = BUSY;
+    if (entry->entry_type == VAR || entry->entry_type == VAL)
+        target_entry->entry_data.variable_data_type = entry->entry_data.variable_data_type;
+    else if (entry->entry_type == FUNCTION)
+    {
+        target_entry->entry_data.function.param_count = entry->entry_data.function.param_count;
+        target_entry->entry_data.function.return_type = entry->entry_data.function.return_type;
+        target_entry->entry_data.function.parameters = entry->entry_data.function.parameters;
+    }
+    else
+    {
+        fprintf(stderr, "insertEntry() -- Attempt to insert entry of type NONE\n");
+        compilerError(ERROR_INTERNAL);
+    }
 
     table->count++;
 }

@@ -3,7 +3,9 @@
 
 #include "codegen.h"
 
+//Vygeneruje vyraz
 void generate_expression(AST_NODE *node, CodegenContext *ctx);
+//Vygeneruje definiciu premennej
 void generate_definition(AST_NODE *node, CodegenContext *ctx);
 void generate_assignment(AST_NODE *identifier, AST_NODE *expression, CodegenContext *ctx);
 
