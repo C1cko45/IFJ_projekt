@@ -1306,7 +1306,7 @@ void semanticAnalysis(AST_NODE *root)
     checkMain(root, sym_table);
 
     // Insert all builtin functions
-    for (size_t builtin_count = 18; builtin_count > 0; --builtin_count)
+    for (size_t builtin_count = 20; builtin_count > 0; --builtin_count)
         insertBuiltin(builtin_count, sym_table);
 
     // Fills sym_table with all func identifiers to support function call before its respective definition
@@ -1554,7 +1554,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
         /* Ordered from 0-parameter, to most */
         // IFJ26 BASE
         // 0-parameter functions
-        case 18:
+        case 20:
             // readLine(): String
             builtin_function.identifier = "readLine";
             builtin_function.entry_data.function.param_count = 0;
@@ -1563,7 +1563,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 17:
+        case 19:
             // readInt(): Int
             builtin_function.identifier = "readInt";
             builtin_function.entry_data.function.param_count = 0;
@@ -1572,7 +1572,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 16:
+        case 18:
             // readDouble(): Double
             builtin_function.identifier = "readDouble";
             builtin_function.entry_data.function.param_count = 0;
@@ -1585,7 +1585,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // 1-parameter functions
-        case 15:
+        case 17:
             // print(value: Any): Unit
             builtin_function.identifier = "print";
             builtin_function.entry_data.function.param_count = 1;
@@ -1595,7 +1595,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 14:
+        case 16:
             // toStr(value: Any): String -- LZE I ARGUMENT value: List[T]
             builtin_function.identifier = "toStr";
             builtin_function.entry_data.function.param_count = 1;
@@ -1605,7 +1605,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 13:
+        case 15:
             // toInt(value: Double): Int
             builtin_function.identifier = "toInt";
             builtin_function.entry_data.function.param_count = 1;
@@ -1615,7 +1615,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 12:
+        case 14:
             // strLength(value: String): Int
             builtin_function.identifier = "strLength";
             builtin_function.entry_data.function.param_count = 1;
@@ -1625,7 +1625,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 11:
+        case 13:
             // chr(code: Int): String
             builtin_function.identifier = "chr";
             builtin_function.entry_data.function.param_count = 1;
@@ -1636,7 +1636,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // 2-parameter functions
-        case 10:
+        case 12:
             // ord(value: String, index: Int): Int
             builtin_function.identifier = "ord";
             builtin_function.entry_data.function.param_count = 2;
@@ -1648,7 +1648,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // 3-parameter functions
-        case 9:
+        case 11:
             // subStr(value: String, start: Int, end: Int): String
             builtin_function.identifier = "subStr";
             builtin_function.entry_data.function.param_count = 3;
@@ -1661,7 +1661,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // BOOLTHEN extension
-        case 8:
+        case 10:
             // readBoolean(): Boolean
             builtin_function.identifier = "readBoolean";
             builtin_function.entry_data.function.param_count = 0;
@@ -1672,7 +1672,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             break;
         // LISTS extension
         // 0-parameter functions
-        case 7:
+        case 9:
             // head(): T ~> ANY
             builtin_function.identifier = "head";
             builtin_function.entry_data.function.param_count = 0;
@@ -1681,7 +1681,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 6:
+        case 8:
             // tail(): List[T] ~> LIST_ANY
             builtin_function.identifier = "tail";
             builtin_function.entry_data.function.param_count = 0;
@@ -1690,7 +1690,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 5:
+        case 7:
             // toString(): String
             builtin_function.identifier = "toString";
             builtin_function.entry_data.function.param_count = 0;
@@ -1700,7 +1700,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // 1-parameter functions
-        case 4:
+        case 6:
             // drop(n): List[T]
             builtin_function.identifier = "drop";
             builtin_function.entry_data.function.param_count = 1;
@@ -1710,7 +1710,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 3:
+        case 5:
             // take(n): List[T]
             builtin_function.identifier = "take";
             builtin_function.entry_data.function.param_count = 1;
@@ -1721,7 +1721,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // 2-parameter functions
-        case 2:
+        case 4:
             // slice(from, until): List[T]
             builtin_function.identifier = "slice";
             builtin_function.entry_data.function.param_count = 2;
@@ -1733,7 +1733,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // 3-parameter functions
-        case 1:
+        case 3:
             // range(start, end, step): List[Int]
 
             // Dubious one, language spec supports builtin range(start, end) AND builtin range(start,end,step)
@@ -1749,6 +1749,24 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             builtin_function.entry_data.function.parameters[0] = DOUBLE; // Posibble also INT -> DOUBLE
             builtin_function.entry_data.function.parameters[1] = DOUBLE; // Posibble also INT -> DOUBLE
             builtin_function.entry_data.function.parameters[2] = DOUBLE; // Posibble also INT -> DOUBLE
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        // VALMEM extension
+        // 0-parameter functions
+        case 2:
+            // Double.floor: Double
+            builtin_function.identifier = "floor";
+            builtin_function.entry_data.function.param_count = 0;
+            builtin_function.entry_data.function.return_type = DOUBLE;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        case 1:
+            // String.length: Int
+            builtin_function.identifier = "length";
+            builtin_function.entry_data.function.param_count = 0;
+            builtin_function.entry_data.function.return_type = INT;
 
             createIdentifier(&builtin_function, sym_table);
             break;
