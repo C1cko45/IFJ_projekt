@@ -2,7 +2,6 @@ import ifj26.*
 
 @main
 def runFoo(): Unit = 
-    if 5 > 3 then print(5)
+    val lst = List.range(1, 10)
+    val x = lst(2)
 
-def f(x: Int): Unit =
-    return
