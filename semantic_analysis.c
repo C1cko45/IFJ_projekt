@@ -761,6 +761,7 @@ static DataType valmemExpr(AST_NODE *valmem_node, SymTable *sym_table)
                 case TOKEN_TYPE_BOOL:
                 case KEYWORD_LIST:
                     left_operand = getTermType(valmem_node->left_ch, sym_table);
+                    break;
 
                 // Arithmetic operator
                 case TOKEN_TYPE_PLUS:
@@ -768,12 +769,14 @@ static DataType valmemExpr(AST_NODE *valmem_node, SymTable *sym_table)
                 case TOKEN_TYPE_MUL:
                 case TOKEN_TYPE_DIV:
                     left_operand = arithmExpr(valmem_node->left_ch, sym_table);
+                    break;
 
                 // Logical operator
                 case TOKEN_TYPE_AND:
                 case TOKEN_TYPE_OR:
                 case TOKEN_TYPE_NOT:
                     left_operand = boolExpr(valmem_node->left_ch, sym_table);
+                    break;
 
                 // Relational operator
                 case TOKEN_TYPE_GT:
@@ -781,9 +784,11 @@ static DataType valmemExpr(AST_NODE *valmem_node, SymTable *sym_table)
                 case TOKEN_TYPE_LTE:
                 case TOKEN_TYPE_GTE:
                     left_operand = relatExpr(valmem_node->left_ch, sym_table);
+                    break;
                 case TOKEN_TYPE_EQ:
                 case TOKEN_TYPE_NEQ:
                     left_operand = compareExpr(valmem_node->left_ch, sym_table);
+                    break;
 
                 default:
                     fprintf(stderr, "valmemExpr() -- VALMEM method called on expression of unsupported type\n");
