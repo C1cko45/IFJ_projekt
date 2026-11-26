@@ -454,7 +454,7 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
         {
             return DOUBLE;
         }
-        if (retval_type != func_ret_type)
+        if (retval_type != func_ret_type && func_ret_type != UNIT)
         {
             fprintf(stderr, "returnStatement() -- return statement's value type doesn't match function signature\n");
             compilerError(ERROR_TYPE);
@@ -470,7 +470,7 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
         {
             return DOUBLE;
         }
-        if (retval_type != func_ret_type)
+        if (retval_type != func_ret_type && func_ret_type != UNIT)
         {
             fprintf(stderr, "returnStatement() -- return value type doesn't match function signature\n");
             compilerError(ERROR_TYPE);
