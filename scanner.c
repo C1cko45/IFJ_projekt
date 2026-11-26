@@ -1,12 +1,3 @@
-/*
-* Implementácia prekladača pre jazyk IFJ26.
-*
-* Lexikálny analyzátor - konečný automat, generuje tokeny.
-*
-* Autor:   Deák Dominik    
-* Login:   xdeakdo00
-*/
-
 #include "dstring.h"
 #include "stack.h"
 #include "token.h"
@@ -101,8 +92,6 @@ static Token get_token_internal(void)
     static bool stack_is_initialized = false;
     // kontrola vratenia vsetkych ukoncenych indentov. (dedentov)
     static bool dedent_in_progress = false;
-    // kontrola ci sa automat nachadza v zatvorke.
-    static int paren_depth = 0;
 
     if (!stack_is_initialized)
     {
@@ -175,13 +164,9 @@ static Token get_token_internal(void)
             // instant tokens.
             case '(':
                 token.type = TOKEN_TYPE_LPAREN;
-                paren_depth++;
                 return token;
             case ')':
                 token.type = TOKEN_TYPE_RPAREN;
-                if (paren_depth > 0) {
-                    paren_depth--;
-                }
                 return token;
             case '[':
                 token.type = TOKEN_TYPE_LBRACKET;
@@ -247,9 +232,6 @@ static Token get_token_internal(void)
             // koniec riadku.
             case '\n':
                 token.type = TOKEN_TYPE_EOL;
-                if (paren_depth > 0) {
-                    break;
-                }
                 is_at_new_line = true;
                 return token;
             // konec suboru. + kontrola zabudnutych dedentov.
@@ -395,9 +377,7 @@ static Token get_token_internal(void)
                 {
                     ungetc(character, stdin);
                 }
-                if (paren_depth > 0) {
-                    break;
-                }
+
                 token.type = TOKEN_TYPE_EOL;
                 is_at_new_line = true;
                 return token;
@@ -561,10 +541,12 @@ static Token get_token_internal(void)
                 return token;
             }
             break;
+        // TODO: OPRAVIT
         case STATE_ZERO:
             if (character == '.')
             {
                 actual_state = STATE_DIGIT_DOT;
+                // dstring_add_char(&string, '.');
                 break;
             }
             else if (character == 'e' || character == 'E')
@@ -666,6 +648,7 @@ static Token get_token_internal(void)
                 return token;
             }
             break;
+        // TODO:
         case STATE_DOUBLE:
             if (character >= '0' && character <= '9')
             {
@@ -807,7 +790,6 @@ static Token get_token_internal(void)
             {
                 space_counter++;
             }
-            //pridane
             else if(character == '\t')
             {
                 token.type = TOKEN_ERROR_LEX;
@@ -852,7 +834,7 @@ static Token get_token_internal(void)
     }
 }
 
-// obal nad get_token_internal, kontroluje ukoncenie prikazov EOL, aby program nespadol.
+// obal nad get_token_internal.
 Token scanner_get_next_token(void) {
     static TokenType last_type = TOKEN_TYPE_EOL;
     static bool has_pending = false;

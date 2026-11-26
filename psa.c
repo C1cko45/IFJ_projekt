@@ -215,14 +215,7 @@ void reduce(void){
                 stack[index-1].idx != P_EXPR || stack[index+1].idx != P_EXPR){
                 parser_error_exit(2, "Syntakticka chyba vo vyraze: binarnemu operatoru chyba operand");
             }
-
-            /*
-            if(stack[index].idx == P_DOT){
-                temp = ast_create_node_type(NODE_VALMEM);   // clen hodnoty: lavy = prijemca, pravy = nazov clena
-            }else{
-                temp = ast_create_node(stack[index].token);
-            }
-            */
+            
             if(stack[index].idx == P_DOT){
                 AST_NODE *member = stack[index+1].node;
 

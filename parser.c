@@ -770,29 +770,6 @@ AST_NODE* function_list(void){
 
 // prolog: skontroluje povinny prolog "import meno.*" ukonceny EOL (pred nim mozu byt prazdne riadky a komentare)
 //! Volana z: program()
-
-/*
-bool prolog(void){
-    Token current_token = next();
-    while(current_token.type == TOKEN_TYPE_EOL){ current_token = next(); }   // pred prologom mozu byt komentare a prazdne riadky
-    if (current_token.type != KEYWORD_IMPORT) return false;
-    
-    current_token = next();       
-    if (current_token.type != TOKEN_TYPE_IDENTIFIER) return false;
-    token_free(&current_token);
-    
-    current_token = next();       
-    if (current_token.type != TOKEN_TYPE_DOT) return false;
-    
-    current_token = next();       
-    if (current_token.type != TOKEN_TYPE_MUL) return false;
-    
-    current_token = next();
-    if (current_token.type != TOKEN_TYPE_EOL) return false;
-
-    return true;
-}
-*/
 bool prolog(void)
 {
     Token current_token = next();
@@ -829,49 +806,6 @@ bool prolog(void)
 
  // program: vstupna funkcia parsera - prolog a potom zoznam definicii funkcii, vracia koren AST
 //! Volana z: main.c: main
-
-/*
-AST_NODE* program(void){
-    AST_NODE* root = ast_create_node_type(NODE_PROGRAM);
-    ast_root = root;
-    if (prolog() == false){
-        parser_error_exit(2,"Syntakticka chyba: chybajuci alebo chybny prolog 'import ifj26.*'");
-    }
-
-    AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
-    AST_NODE* last_program_node = root;
-    Token current_token = peek();  //volanie lexera
-    while (current_token.type != TOKEN_TYPE_EOF){            //kontrola ci po prologu nasleduju definicie funkcii. Kazda funkcia ma v sebe zvysok pravidiel
-        
-        switch(current_token.type){
-            case TOKEN_TYPE_AT_MAIN:
-                temp = function_list();
-                ast_add_parent(last_program_node, temp, 0);
-                break;
-            case KEYWORD_DEF:
-                temp = function_list();
-                ast_add_parent(last_program_node, temp, 0);   
-                break; 
-            case TOKEN_TYPE_EOL:
-                next();
-                current_token = peek();
-                continue;
-            default:
-                parser_error_exit(2,"Syntakticka chyba: na najvyssej urovni moze byt iba definicia funkcie (def alebo @main)");
-        }
-
-        current_token = peek();
-        if(current_token.type != TOKEN_TYPE_EOF){
-            AST_NODE* program_node = ast_create_node_type(NODE_PROGRAM);
-            ast_add_parent(last_program_node, program_node, 1);
-            last_program_node = program_node;
-        }
-        
-    }
-    return root;
-}
-*/
-
 AST_NODE *program(void)
 {
     AST_NODE *root = ast_create_node_type(NODE_PROGRAM);

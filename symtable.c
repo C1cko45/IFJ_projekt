@@ -12,6 +12,7 @@
 #include "cleanup.h"
 #include "symtable.h"
 
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #define HTABLE_MAX_LOAD_FACTOR 7 // Load factor*10, to avoid floating-point conversion and arithmetic
@@ -73,7 +74,6 @@ SymTable *createSymTable(void)
 
     return sym_table;
 }
-
 /*
  * Destroys the whole SymTable
  * ~> Free memory of every scope's hash array, free the stack, set stack's to uninitialized
@@ -83,7 +83,7 @@ void destroySymTable(SymTable *sym_table)
     if (sym_table == NULL)
     {
         fprintf(stderr, "destroySymTable() -- sym_table is NULL.\n");
-        compilerError(ERROR_INTERNAL);
+        exit(ERROR_INTERNAL);
     }
 
     while (sym_table->current > 0)
@@ -138,16 +138,16 @@ void popScope(SymTable *sym_table)
 
     HTable *scope = &sym_table->scopes[sym_table->current];
     // free memory of all non-empty entries in scope (HTable)
-    for (size_t index = 0; index < scope->capacity; ++index)
+   for (size_t index = 0; index < scope->capacity; ++index)
     {
-        if (scope->entries[index].state == BUSY || scope->entries[index].state == DELETED)
+        if (scope->entries[index].state == BUSY)
         {
             free(scope->entries[index].identifier);
 
             if (scope->entries[index].entry_type == FUNCTION)
                 free(scope->entries[index].entry_data.function.parameters);
-        }
     }
+}
 
     free(scope->entries);
     scope->entries = NULL;
@@ -182,10 +182,11 @@ bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
  */
 HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
 {
-    if (key == NULL || table == NULL || entry_type == NONE || table->entries == NULL || table->capacity < 2)
+    if (key == NULL || table == NULL || entry_type == NONE ||
+        table->entries == NULL || table->capacity < 2)
     {
         fprintf(stderr, "getEntry() -- invalid argument.\n");
-        compilerError(ERROR_INTERNAL);
+        exit(ERROR_INTERNAL);
     }
 
     size_t capacity = table->capacity;
@@ -199,14 +200,17 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
         if (entry->state == EMPTY)
             return NULL;
 
-        if (entry->state == BUSY && entry->identifier != NULL && strcmp(entry->identifier, key) == 0)
+        if (entry->state == BUSY &&
+            entry->identifier != NULL &&
+            strcmp(entry->identifier, key) == 0)
         {
             if (entry_type == FUNCTION)
             {
                 if (entry->entry_type == FUNCTION)
                     return entry;
             }
-            else if (entry->entry_type == VAR || entry->entry_type == VAL)
+            else if (entry->entry_type == VAR ||
+                     entry->entry_type == VAL)
             {
                 return entry;
             }
@@ -226,7 +230,8 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
  */
 void createIdentifier(HTEntry *entry, SymTable *sym_table)
 {
-    if (entry == NULL || sym_table == NULL || entry->identifier == NULL || entry->entry_type == NONE)
+    if (entry == NULL || sym_table == NULL ||
+        entry->identifier == NULL || entry->entry_type == NONE)
     {
         fprintf(stderr, "createIdentifier() -- invalid argument.\n");
         compilerError(ERROR_INTERNAL);
@@ -243,6 +248,23 @@ void createIdentifier(HTEntry *entry, SymTable *sym_table)
     insertEntry(entry, scope);
 }
 
+bool changeVarType(const char *identifier, DataType target_type, SymTable *sym_table)
+{
+    if (identifier == NULL || sym_table == NULL ||
+        target_type == ANY || target_type == NIL)
+    {
+        fprintf(stderr, "changeVarType() -- invalid argument.\n");
+        compilerError(ERROR_INTERNAL);
+    }
+
+    HTEntry *target_entry = getIdentifier(identifier, VAR, sym_table);
+
+    if (target_entry == NULL || target_entry->entry_type != VAR)
+        return false;
+
+    target_entry->entry_data.variable_data_type = target_type;
+    return true;
+}
 /*
  * Resolves identifier based on lexical scope rules of IFJ26
  * Identifiers are valid from place of definition until end of block (current scope) including its subblocks
@@ -436,14 +458,15 @@ static void resizeScope(HTable *scope)
     size_t old_capacity = scope->capacity;
     HTEntry *old_entries = scope->entries;
     size_t new_capacity = nextPrime(scope->capacity * 2);
-    HTEntry *new_entries = calloc(new_capacity, sizeof(HTEntry));
+
+   HTEntry *new_entries = calloc(new_capacity, sizeof(HTEntry));
     if (new_entries == NULL)
     {
         fprintf(stderr, "resizeScope() -- calloc() failed.\n");
         compilerError(ERROR_INTERNAL);
     }
 
-    scope->entries = new_entries;
+scope->entries = new_entries;
     scope->capacity = new_capacity;
     scope->count = 0;
     for (size_t index = 0; index < old_capacity; ++index)
@@ -472,14 +495,14 @@ static void insertEntry(HTEntry *entry, HTable *table)
     if (entry == NULL || table == NULL || entry->identifier == NULL)
     {
         fprintf(stderr, "insertEntry() -- invalid argument.\n");
-        compilerError(ERROR_INTERNAL);
+        exit(ERROR_INTERNAL);
     }
 
-    // If inserting exceeds load_factor (0.7) -> grow HTable, rehash
-    // COUNT+1 > MAX_COUNT
-    // MAX_COUNT = (CAPACITY * 0.7) * 10 -- To avoid floating-points
-    if ((table->count + 1) * 10 > table->capacity * HTABLE_MAX_LOAD_FACTOR)
+    if ((table->count + 1) * 10 >
+        table->capacity * HTABLE_MAX_LOAD_FACTOR)
+    {
         resizeScope(table);
+    }
 
     size_t capacity = table->capacity;
     size_t index = DJBHash(entry->identifier) % capacity;
@@ -492,11 +515,12 @@ static void insertEntry(HTEntry *entry, HTable *table)
         if (target->state != BUSY)
         {
             size_t len = strlen(entry->identifier) + 1;
-            char *name = calloc(len, sizeof(char));
+
+            char *name = malloc(len);
             if (name == NULL)
             {
-                fprintf(stderr, "insertEntry() -- calloc failed.\n");
-                compilerError(ERROR_INTERNAL);
+                fprintf(stderr, "insertEntry() -- malloc failed.\n");
+                exit(ERROR_INTERNAL);
             }
 
             memcpy(name, entry->identifier, len);
@@ -514,5 +538,5 @@ static void insertEntry(HTEntry *entry, HTable *table)
     }
 
     fprintf(stderr, "insertEntry() -- hash table is full.\n");
-    compilerError(ERROR_INTERNAL);
+    exit(ERROR_INTERNAL);
 }
