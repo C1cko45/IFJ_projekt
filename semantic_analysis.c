@@ -880,6 +880,11 @@ static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table)
     if (expr_node->type == NODE_VALMEM)
         return valmemExpr(expr_node, sym_table);
 
+    // If list literal
+    if (expr_node->type == NODE_CALL && expr_node->left_ch != NULL && expr_node->left_ch->token.type == KEYWORD_LIST)
+    {
+    }
+
     HTEntry *var_entry = NULL;
     switch (expr_node->token.type)
     {
@@ -900,7 +905,6 @@ static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table)
         case TOKEN_TYPE_STRING:
         case TOKEN_TYPE_UNIT:
         case TOKEN_TYPE_BOOL:
-        case KEYWORD_LIST:
             return getTermType(expr_node, sym_table);
 
         // Arithmetic operator
