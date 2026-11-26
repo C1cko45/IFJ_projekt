@@ -798,7 +798,7 @@ static DataType valmemExpr(AST_NODE *valmem_node, SymTable *sym_table)
             function_entry = getIdentifier(valmem_node->right_ch->token.attr.str_val, FUNCTION, sym_table);
             if (function_entry == NULL)
             {
-                fprintf(stderr, "valmemExpr() -- Called method doesn't exist\n");
+                fprintf(stderr, "valmemExpr() -- Called method is undefined\n");
                 compilerError(ERROR_UNDEF);
             }
             break;
