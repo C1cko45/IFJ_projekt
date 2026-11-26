@@ -1348,6 +1348,7 @@ static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table)
         case TOKEN_TYPE_GTE:
             left_operand = relatExpr(neq_node->left_ch, sym_table);
             right_operand = relatExpr(neq_node->right_ch, sym_table);
+            break;
 
         case TOKEN_TYPE_EQ:
         case TOKEN_TYPE_NEQ:
@@ -1503,7 +1504,8 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
             if (program_node->left_ch->left_ch->token.type == TOKEN_TYPE_IDENTIFIER)
                 return functionCall(program_node->left_ch, function_entry, sym_table);
             // else List valmem call
-            return valmemList(program_node->left_ch, sym_table);
+            // return valmemList(program_node->left_ch, sym_table);
+            break;
         case NODE_VAR_DEF:
         case NODE_VAL_DEF:
             return variableDef(program_node->left_ch, function_entry, sym_table); // returns UNIT
