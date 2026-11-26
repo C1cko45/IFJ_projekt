@@ -5,7 +5,7 @@
 
 typedef enum
 {
-    NODE_PROGRAM, // preojenie jednotlivych stromov
+    NODE_PROGRAM, // prepojenie jednotlivych prikazov / funkcii (lavy = prikaz, pravy = dalsi NODE_PROGRAM)
     NODE_FUNC_DEF,
     NODE_MAIN,
     NODE_CALL,

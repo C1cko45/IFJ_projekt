@@ -25,12 +25,15 @@ static const PrecRel prec_table[P_COUNT][P_COUNT] = {
     /* ++  */ { L, G, G, L, L, L, G, G, L, L, G, G, L, G, G, G, L },
     /* .   */ { L, G, G, G, G, N, G, G, N, N, G, G, N, G, G, G, G },
 };
-//Koniec geenerovaneho kodu.
+//Koniec generovaneho kodu.
 
 
-static STACK_ITEM stack[STACK_MAX];
-static int stack_count = 0;
-static int paren_count = 0;
+static STACK_ITEM stack[STACK_MAX];   // zasobnik precedencnej analyzy (terminaly aj nonterminaly E)
+static int stack_count = 0;           // pocet poloziek na zasobniku
+static int paren_count = 0;           // pocet otvorenych '(' v aktualnom vyraze - ')' navyse ukoncuje vyraz (argumenty)
+
+// get_next_item: prevedie token na symbol precedencnej tabulky (P_I, P_PLUS, ..., P_DOLLAR = koniec vyrazu)
+//   prev = predchadzajuci symbol; podla neho rozlisi unarne/binarne +/- a odhali dva operandy za sebou
 STACK_ITEM get_next_item(Token token, PrecIndex prev){
     STACK_ITEM item = {0};
     switch (token.type){
@@ -40,8 +43,9 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         case TOKEN_TYPE_IDENTIFIER:
         case TOKEN_TYPE_BOOL:
         case TOKEN_TYPE_UNIT:
+        case KEYWORD_LIST:          
 
-            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz1");}
+            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Syntakticka chyba vo vyraze: dva operandy za sebou bez operatora");}
 
             item = (STACK_ITEM){.idx = P_I, .token = token};
 
@@ -76,14 +80,14 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         break;
 
         case TOKEN_TYPE_LPAREN:
-            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz2");}
+            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Syntakticka chyba vo vyraze: '(' priamo za operandom");}
             item = (STACK_ITEM){.idx = P_LPAREN, .token = token};
             
             
         break;
 
         case TOKEN_TYPE_RPAREN:
-            if(prev == P_DOLLAR){parser_error_exit(2, "Chyba vyraz");}
+            if(prev == P_DOLLAR){parser_error_exit(2, "Syntakticka chyba vo vyraze: ')' bez vyrazu");}
                 if(paren_count > 0){
                     item = (STACK_ITEM){.idx = P_RPAREN, .token = token};
                 }else{
@@ -102,7 +106,7 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         case KEYWORD_BY:
         case KEYWORD_IF:
         case KEYWORD_ELSE:
-            if(prev == P_LPAREN || prev == P_DOLLAR){parser_error_exit(2, "Chyba vyraz3");}
+            if(prev == P_LPAREN || prev == P_DOLLAR){parser_error_exit(2, "Syntakticka chyba vo vyraze: vyraz chyba alebo je neukonceny");}
             item = (STACK_ITEM){.idx = P_DOLLAR, .token = token};
             
         break;
@@ -111,20 +115,20 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         case TOKEN_TYPE_LTE:
         case TOKEN_TYPE_GT:
         case TOKEN_TYPE_GTE:
-            if(prev == P_REL){parser_error_exit(2, "Chyba vyraz4");}
+            if(prev == P_REL){parser_error_exit(2, "Syntakticka chyba vo vyraze: dva relacne operatory za sebou");}
             item = (STACK_ITEM){.idx = P_REL, .token = token};
             
         break;
 
         case TOKEN_TYPE_EQ:
         case TOKEN_TYPE_NEQ:
-            if(prev == P_EQ){parser_error_exit(2, "Chyba vyraz5");}
+            if(prev == P_EQ){parser_error_exit(2, "Syntakticka chyba vo vyraze: dva operatory == / != za sebou");}
             item = (STACK_ITEM){.idx = P_EQ, .token = token};
             
         break;
 
         case TOKEN_TYPE_NOT:
-            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Chyba vyraz6");}
+            if(prev == P_I || prev == P_RPAREN){parser_error_exit(2, "Syntakticka chyba vo vyraze: '!' priamo za operandom");}
             item = (STACK_ITEM){.idx = P_NOT, .token = token};
             
         break;
@@ -135,7 +139,7 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
         break;
 
         case TOKEN_TYPE_DOT:
-            if(prev != P_I && prev != P_RPAREN){parser_error_exit(2, "Chyba vyraz");}
+            if(prev != P_I && prev != P_RPAREN){parser_error_exit(2, "Syntakticka chyba vo vyraze: '.' musi nasledovat za hodnotou");}
             item = (STACK_ITEM){.idx = P_DOT, .token = token};
 
         break;
@@ -150,25 +154,27 @@ STACK_ITEM get_next_item(Token token, PrecIndex prev){
             
         break;
         default:
-            fprintf(stderr, "DEBUG: PSA dostala token typu %d\n", token.type);
-            parser_error_exit(2, "Chyba vyraz7");
+            parser_error_exit(2, "Syntakticka chyba vo vyraze: neocakavany token");
         break;
     }
     return item;
 }
 
+// insert: vlozi polozku na vrchol zasobnika PSA
 void insert(STACK_ITEM item){
-    if(stack_count == STACK_MAX){parser_error_exit(2, "Pretecenie stack kapacity");}
+    if(stack_count == STACK_MAX){parser_error_exit(2, "Syntakticka chyba: vyraz je prilis zlozity (pretecenie zasobnika PSA)");}
     stack[stack_count++] = item;
     return;
 }
+// stack_pop: odstrani a vrati polozku z vrcholu zasobnika PSA
 STACK_ITEM stack_pop(void){
     if(stack_count == 0){
-        parser_error_exit(99, "Pop z prazdneho zasobnika.");
+        parser_error_exit(99, "Interna chyba PSA: pop z prazdneho zasobnika");
     }
     stack_count--;
     return stack[stack_count];
 }
+// stack_top_position: index najvyssieho terminalu na zasobniku (nonterminal E sa preskakuje), -1 ak ziadny nie je
 static int stack_top_position(void){
     for (int i = stack_count-1; i>=0; i-- ){
         if(stack[i].idx < P_COUNT ){
@@ -177,9 +183,11 @@ static int stack_top_position(void){
     }
     return -1;
 }
+// reduce: aplikuje pravidlo podla najvyssieho terminalu a vytvori uzol AST:
+//   E -> i | E op E | E.id (NODE_VALMEM) | (E) | () (literal Unit) | unarny_op E
 void reduce(){
     int index = stack_top_position();
-    if(index < 0){parser_error_exit(99, "Prazdny zasobnik v reduce");}
+    if(index < 0){parser_error_exit(99, "Interna chyba PSA: redukcia na prazdnom zasobniku");}
     AST_NODE* temp = NULL;
 
     switch (stack[index].idx){
@@ -202,7 +210,7 @@ void reduce(){
             //pravidlo E->E znamienko E  (pre P_DOT je to E.id)
             if(index < 1 || index + 1 != stack_count - 1 ||
                 stack[index-1].idx != P_EXPR || stack[index+1].idx != P_EXPR){
-                parser_error_exit(2, "Chyba v pravidle E->E op E");
+                parser_error_exit(2, "Syntakticka chyba vo vyraze: binarnemu operatoru chyba operand");
             }
             if(stack[index].idx == P_DOT){
                 temp = ast_create_node_type(NODE_VALMEM);   // clen hodnoty: lavy = prijemca, pravy = nazov clena
@@ -217,9 +225,16 @@ void reduce(){
         break;
 
         case P_RPAREN:
+            //pravidlo E->() : scanner posiela "()" ako '(' a ')', vytvori sa literal typu Unit
+            if(index >= 1 && stack[index-1].idx == P_LPAREN){
+                Token unit = {.type = TOKEN_TYPE_UNIT};
+                stack_pop();
+                stack[stack_count-1] = (STACK_ITEM){.idx = P_EXPR, .node = ast_create_node(unit)};
+                break;
+            }
             //pravidlo E->(E)
             if(index < 2 || stack[index-1].idx != P_EXPR || stack[index-2].idx != P_LPAREN){
-                parser_error_exit(2, "Chyba v pravidle E->(E)");
+                parser_error_exit(2, "Syntakticka chyba vo vyraze: nespravne uzatvorkovanie");
             }
             stack[index-2] = stack[index-1];
             stack_pop();
@@ -231,7 +246,7 @@ void reduce(){
         case P_UMINUS:
             //pravidlo E->unarny op E
             if(index + 1 != stack_count - 1 || stack[index+1].idx != P_EXPR){
-                parser_error_exit(2, "Chyba v unarnom pravidle");
+                parser_error_exit(2, "Syntakticka chyba vo vyraze: unarnemu operatoru chyba operand");
             }
             temp = ast_create_node(stack[index].token);
             ast_add_parent(temp, stack[index+1].node, 0);
@@ -240,11 +255,19 @@ void reduce(){
         break;
 
         default:
-            parser_error_exit(2, "Chyba v reduce");
+            parser_error_exit(2, "Syntakticka chyba vo vyraze: neplatna redukcia");
         break;
     }
 }
+
+
+// parse_expression: precedencna syntakticka analyza vyrazu od aktualneho tokenu po prvy ukoncovaci token
+//   (EOL, ';', then, do, else, if, ',', ')' bez parovej '(' ...); ukoncovaci token nespotrebuje, vrati koren AST vyrazu
 AST_NODE* parse_expression(){
+    if(peek().type == KEYWORD_IF){      // if-vyraz (CONTROL), napr. val y = if x < 0 then 0 - x else x
+        next();
+        return if_statement();
+    }
     stack_count = 0;
     paren_count = 0;
     insert((STACK_ITEM){.idx = P_DOLLAR});
@@ -252,15 +275,52 @@ AST_NODE* parse_expression(){
 
     while(1){
         Token tk = peek();
-        // volanie funkcie: na zasobniku je len $ a identifikator, nasleduje '('
-        if(prev == P_I && stack_count == 2 && tk.type == TOKEN_TYPE_LPAREN
-        && stack[1].token.type == TOKEN_TYPE_IDENTIFIER){
-            Token name = stack[1].token;
-            next();                       // spotrebuje '('
-            return call_f(name, tk);
+        // '(' hned za operandom = volanie / index zoznamu / metoda - aj vo vnutri vyrazu (f(x) + 1, l.drop(1))
+        // to/until vo vnutri zatvorky = rozsah (od to do), napr. (1 to 5).toList; mimo zatvoriek konci vyraz (cyklus for)
+        bool is_call = tk.type == TOKEN_TYPE_LPAREN && (prev == P_I || prev == P_RPAREN);
+        bool is_range = (tk.type == KEYWORD_TO || tk.type == KEYWORD_UNTIL) && paren_count > 0;
+        if(is_call || is_range){
+            // lava strana: volany objekt (i, E.id, (E)), resp. dolna hranica rozsahu az po '('
+            while(is_call ? (stack[stack_top_position()].idx == P_I || stack[stack_top_position()].idx == P_DOT ||
+                             stack[stack_top_position()].idx == P_RPAREN)
+                          : (prec_table[stack[stack_top_position()].idx][P_RPAREN] == G)){
+                reduce();
+            }
+            if(stack[stack_count-1].idx != P_EXPR || (is_range && stack[stack_count-2].idx != P_LPAREN)){
+                parser_error_exit(2, "Syntakticka chyba vo vyraze: chybne volanie alebo rozsah (od to do)");
+            }
+            AST_NODE* left = stack[stack_count-1].node;
+            Token op = next();                      // spotrebuje '(' alebo to/until
+
+            // argumenty / horna hranica sa parsuju rekurzivne cez parse_expression -> zasobnik odlozit a obnovit
+            STACK_ITEM backup[STACK_MAX];
+            int backup_count = stack_count;
+            int backup_paren = paren_count;
+            for(int i = 0; i < backup_count; i++){ backup[i] = stack[i]; }
+
+            AST_NODE* result;
+            if(is_call){
+                // call_f spracuje argumenty; namiesto nazvu funkcie sa ako volany objekt pouzije lava strana
+                Token name = {.type = TOKEN_TYPE_IDENTIFIER};
+                result = call_f(name, op);
+                ast_free_node(result->left_ch);
+                result->left_ch = left;
+            }else{
+                result = ast_create_node(op);       // uzol to/until (lavy = od, pravy = do) ako v cykle for
+                ast_add_parent(result, left, 0);
+                ast_add_parent(result, parse_expression(), 1);   // skonci na ')' (vo vnorenom volani koniec vyrazu)
+            }
+
+            for(int i = 0; i < backup_count; i++){ stack[i] = backup[i]; }
+            stack_count = backup_count;
+            paren_count = backup_paren;
+
+            stack[stack_count-1] = (STACK_ITEM){.idx = P_EXPR, .node = result};
+            prev = is_call ? P_RPAREN : P_I;        // vysledok sa sprava ako uzavrety operand
+            continue;
         }
         STACK_ITEM item = get_next_item(peek(),prev);
-        
+
         PrecIndex first = stack[stack_top_position()].idx;
         PrecIndex second = item.idx;
 
@@ -269,7 +329,7 @@ AST_NODE* parse_expression(){
         }
 
         switch(prec_table[first][second]){
-                
+
                 case L:
                 case Q:
                     insert(item);
@@ -285,38 +345,75 @@ AST_NODE* parse_expression(){
 
                 case N:
                 default:
-                    parser_error_exit(2, "Chyba expression");
+                    parser_error_exit(2, "Syntakticka chyba vo vyraze: nepovolena postupnost (napr. a < b < c alebo chybajuca ')')");
                     break;
-                
+
             }
     }
     if(stack_count != 2 || stack[1].idx != P_EXPR){
-        parser_error_exit(2, "Chyba vyraz8");
+        parser_error_exit(2, "Syntakticka chyba vo vyraze: vyraz sa nepodarilo zredukovat (chybajuci operand alebo ')')");
     }
     return stack[1].node;
 }
 
-//funkcia ak sa uz token ziedol pri desifrovani ktora funkcia to je ale mi ho este potrebujeme
-
+// parse_expression_from: rovnako ako parse_expression, ale prvy token vyrazu uz spotreboval parser
+//   (statement() musel nahliadnut za identifikator, aby rozlisil priradenie od vyrazu)
 AST_NODE* parse_expression_from(Token token){
     stack_count = 0;
     paren_count = 0;
     insert((STACK_ITEM){.idx = P_DOLLAR});
     PrecIndex prev = P_DOLLAR;
     STACK_ITEM item = get_next_item(token, prev);
-    insert(item); 
+    insert(item);
     prev = item.idx;
     while(1){
         Token tk = peek();
-        // volanie funkcie: na zasobniku je len $ a identifikator, nasleduje '('
-        if(prev == P_I && stack_count == 2 && tk.type == TOKEN_TYPE_LPAREN
-        && stack[1].token.type == TOKEN_TYPE_IDENTIFIER){
-            Token name = stack[1].token;
-            next();                       // spotrebuje '('
-            return call_f(name, tk);
+        // '(' hned za operandom = volanie / index zoznamu / metoda - aj vo vnutri vyrazu (f(x) + 1, l.drop(1))
+        // to/until vo vnutri zatvorky = rozsah (od to do), napr. (1 to 5).toList; mimo zatvoriek konci vyraz (cyklus for)
+        bool is_call = tk.type == TOKEN_TYPE_LPAREN && (prev == P_I || prev == P_RPAREN);
+        bool is_range = (tk.type == KEYWORD_TO || tk.type == KEYWORD_UNTIL) && paren_count > 0;
+        if(is_call || is_range){
+            // lava strana: volany objekt (i, E.id, (E)), resp. dolna hranica rozsahu az po '('
+            while(is_call ? (stack[stack_top_position()].idx == P_I || stack[stack_top_position()].idx == P_DOT ||
+                             stack[stack_top_position()].idx == P_RPAREN)
+                          : (prec_table[stack[stack_top_position()].idx][P_RPAREN] == G)){
+                reduce();
+            }
+            if(stack[stack_count-1].idx != P_EXPR || (is_range && stack[stack_count-2].idx != P_LPAREN)){
+                parser_error_exit(2, "Syntakticka chyba vo vyraze: chybne volanie alebo rozsah (od to do)");
+            }
+            AST_NODE* left = stack[stack_count-1].node;
+            Token op = next();                      // spotrebuje '(' alebo to/until
+
+            // argumenty / horna hranica sa parsuju rekurzivne cez parse_expression -> zasobnik odlozit a obnovit
+            STACK_ITEM backup[STACK_MAX];
+            int backup_count = stack_count;
+            int backup_paren = paren_count;
+            for(int i = 0; i < backup_count; i++){ backup[i] = stack[i]; }
+
+            AST_NODE* result;
+            if(is_call){
+                // call_f spracuje argumenty; namiesto nazvu funkcie sa ako volany objekt pouzije lava strana
+                Token name = {.type = TOKEN_TYPE_IDENTIFIER};
+                result = call_f(name, op);
+                ast_free_node(result->left_ch);
+                result->left_ch = left;
+            }else{
+                result = ast_create_node(op);       // uzol to/until (lavy = od, pravy = do) ako v cykle for
+                ast_add_parent(result, left, 0);
+                ast_add_parent(result, parse_expression(), 1);   // skonci na ')' (vo vnorenom volani koniec vyrazu)
+            }
+
+            for(int i = 0; i < backup_count; i++){ stack[i] = backup[i]; }
+            stack_count = backup_count;
+            paren_count = backup_paren;
+
+            stack[stack_count-1] = (STACK_ITEM){.idx = P_EXPR, .node = result};
+            prev = is_call ? P_RPAREN : P_I;        // vysledok sa sprava ako uzavrety operand
+            continue;
         }
         STACK_ITEM item = get_next_item(peek(),prev);
-        
+
         PrecIndex first = stack[stack_top_position()].idx;
         PrecIndex second = item.idx;
 
@@ -325,7 +422,7 @@ AST_NODE* parse_expression_from(Token token){
         }
 
         switch(prec_table[first][second]){
-                
+
                 case L:
                 case Q:
                     insert(item);
@@ -341,13 +438,13 @@ AST_NODE* parse_expression_from(Token token){
 
                 case N:
                 default:
-                    parser_error_exit(2, "Chyba expression");
+                    parser_error_exit(2, "Syntakticka chyba vo vyraze: nepovolena postupnost (napr. a < b < c alebo chybajuca ')')");
                     break;
-                
+
             }
     }
     if(stack_count != 2 || stack[1].idx != P_EXPR){
-        parser_error_exit(2, "Chyba vyraz9");
+        parser_error_exit(2, "Syntakticka chyba vo vyraze: vyraz sa nepodarilo zredukovat (chybajuci operand alebo ')')");
     }
     return stack[1].node;
 }
