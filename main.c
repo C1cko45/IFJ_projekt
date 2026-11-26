@@ -7,16 +7,11 @@
 
 int main()
 {
-    // TODO: load file pre lexer a generator.
-    FILE *output = fopen("output.txt", "w");
-
     AST_NODE *strom = program();
 
-    // TODO: spustim semanticku analyzu.
     semanticAnalysis(strom);
 
-    int x = codegen_generate(strom, output); // vrati 99 alebo 0
+    int x = codegen_generate(strom, stdout); // vrati 99 alebo 0
     ast_free_node(strom);
-    fclose(output);
     exit(x);
 }
