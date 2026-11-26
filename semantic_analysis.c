@@ -3,12 +3,6 @@
  * Author: Pham Vu Duy Anh, xphamv00
  */
 
-//->  TODO: MAKE checkVALMEMBuiltins() -- will be called when encounter VALMEM/LIST expression function calls
-// Those must be handled separately, because the non-parametric ones actually accept argument in different AST_NODE
-// Probably check on VALMEM's function_name node that it exists in sym_table builtins
-// Then have to manually check in VALMEM's term (on which the function is called) is valid type for the function
-// And then have to handle returning the right data type (should just be in sym_table really)
-
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -911,9 +905,6 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
             left_operand = arithmExpr(arithm_node->left_ch, sym_table);
             right_operand = arithmExpr(arithm_node->right_ch, sym_table);
             break;
-
-            // TODO: ADD VALMEM expressions
-            // TODO: ADD LISTS expressions -- Doesn't work in parser anyway, check scala.txt
 
         default:
             fprintf(stderr, "arithmExpr() -- Expression contains operator/operand of invalid type\n");
