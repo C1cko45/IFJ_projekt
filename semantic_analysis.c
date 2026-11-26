@@ -97,22 +97,48 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
     {
         if (program_node->right_ch == NULL) // if last statement in function body
         {
-            // Evaluate return value and compare its type with function return type
-            DataType retval_type = programStatement(program_node, function_entry, sym_table);
-
-            // If function signature doesn't have explicit return type (and function has no return statements)
-            // -> Function return type inferred from its last statement
-            // Checks for explicit return type when function contains return statements -> see returnStatement()
-            if (*func_ret_type == NIL)
-                *func_ret_type = retval_type;
-
-            // If function def has explicit return type UNIT -> returns UNIT no matter what (return values discarded)
-            if (*func_ret_type != UNIT)
+            // If last function statment is if-statement
+            // And function has no explicit return type UNIT -> can only end if all branches have return
+            if (program_node->left_ch->type == NODE_IF && function_entry->entry_data.function.return_type != UNIT)
             {
-                if (retval_type != *func_ret_type)
+                AST_NODE *if_node = program_node->left_ch;
+                while (if_node != NULL)
                 {
-                    fprintf(stderr, "functionDef() -- return value type doesn't match function signature\n");
-                    compilerError(ERROR_TYPE);
+                    AST_NODE *if_last_node = if_node->left_ch;
+                    // Get if-branch's last statement
+                    while (if_last_node->right_ch != NULL)
+                        if_last_node = if_last_node->right_ch;
+
+                    if (if_last_node->left_ch->token.type != KEYWORD_RETURN)
+                    {
+                        fprintf(stderr,
+                                "functionDef() -- a branch in last if-statement doesn't have return statement\n");
+                        compilerError(ERROR_TYPE);
+                    }
+
+                    if_node = if_node->right_ch;
+                }
+            }
+            else
+            {
+                // Evaluate return value and compare its type with function return type
+                DataType retval_type = programStatement(program_node, function_entry, sym_table);
+
+                // If function signature doesn't have explicit return type (and function has no return statements)
+                // -> Function return type inferred from its last statement
+                // Checks for explicit return type when function contains return statements -> see returnStatement()
+                if (*func_ret_type == NIL)
+                    *func_ret_type = retval_type;
+
+                // If function def has explicit return type UNIT -> returns UNIT no matter what (return values
+                // discarded)
+                if (*func_ret_type != UNIT)
+                {
+                    if (retval_type != *func_ret_type)
+                    {
+                        fprintf(stderr, "functionDef() -- return value type doesn't match function signature\n");
+                        compilerError(ERROR_TYPE);
+                    }
                 }
             }
         }
@@ -306,10 +332,23 @@ static DataType ifStatement(AST_NODE *if_node, HTEntry *function_entry, SymTable
     pushScope(sym_table);
 
     AST_NODE *program_node = cond_node->right_ch;
+    DataType retvalue_type;
     while (program_node != NULL)
     {
-        programStatement(program_node, function_entry, sym_table);
-        program_node = program_node->right_ch;
+        if (program_node->right_ch == NULL)
+        {
+            retvalue_type = programStatement(program_node, function_entry, sym_table);
+            if (retvalue_type != function_entry->entry_data.function.return_type)
+            {
+                fprintf(stderr, "ifStatement() -- if-branch return value type doesn't match function signature\n");
+                compilerError(ERROR_TYPE);
+            }
+        }
+        else
+        {
+            programStatement(program_node, function_entry, sym_table);
+            program_node = program_node->right_ch;
+        }
     }
 
     popScope(sym_table);
@@ -355,10 +394,24 @@ static void elseStatement(AST_NODE *else_node, HTEntry *function_entry, SymTable
         pushScope(sym_table);
 
         AST_NODE *program_node = else_node->left_ch;
+        DataType retvalue_type;
         while (program_node != NULL)
         {
-            programStatement(program_node, function_entry, sym_table);
-            program_node = program_node->right_ch;
+            if (program_node->right_ch == NULL)
+            {
+                retvalue_type = programStatement(program_node, function_entry, sym_table);
+                if (retvalue_type != function_entry->entry_data.function.return_type)
+                {
+                    fprintf(stderr,
+                            "elseStatement() -- else/if-branch return value type doesn't match function signature\n");
+                    compilerError(ERROR_TYPE);
+                }
+            }
+            else
+            {
+                programStatement(program_node, function_entry, sym_table);
+                program_node = program_node->right_ch;
+            }
         }
 
         popScope(sym_table);
