@@ -2,6 +2,7 @@ import ifj26.*
 
 @main
 def runFoo(): Unit =
+    -(-5 < 3) && 5
     return 42
 
 def sign(x: Int): String =
