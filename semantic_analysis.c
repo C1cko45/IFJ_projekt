@@ -196,9 +196,10 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     // Check argument types -- can only be literals and identifiers (Should be guaranteed by syntactic analysis)
     // Handles possible Int->Double implicit conversion
     DataType arg_type;
-    for (size_t index = 0; arg_count > 0; ++index, --arg_count)
+    AST_NODE *arg_node = call_node->right_ch;
+    for (size_t index = 0; index < arg_count; ++index)
     {
-        arg_type = getTermType(call_node->right_ch->left_ch, sym_table);
+        arg_type = getTermType(arg_node->left_ch, sym_table);
         if (arg_type == NIL)
         {
             fprintf(stderr, "functionCall() -- function argument of indeterminate type\n");
@@ -217,7 +218,10 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
 
         // Handle case of implicit conversion Int->Double
         if (arg_type == INT && function_entry->entry_data.function.parameters[index] == DOUBLE)
+        {
+            arg_node = arg_node->right_ch;
             continue;
+        }
 
         if (arg_type != function_entry->entry_data.function.parameters[index])
         {
@@ -225,7 +229,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
             compilerError(ERROR_PARAM);
         }
 
-        call_node = call_node->right_ch;
+        arg_node = arg_node->right_ch;
     }
 
     // If all is correct, annotate AST node with sym_table info for codegen
@@ -477,12 +481,22 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
     // Check that for-loop's generator contains only expressions of type Int
     DataType from_type = exprStatement(for_node->left_ch->left_ch->left_ch->left_ch, sym_table);
     DataType to_type = exprStatement(for_node->left_ch->left_ch->left_ch->right_ch, sym_table);
-    DataType step_type = exprStatement(for_node->left_ch->left_ch->right_ch, sym_table);
-
-    if (from_type != INT || to_type != INT || step_type != INT)
+    if (from_type != INT || to_type != INT)
     {
-        fprintf(stderr, "forStatement() -- for-loop generator bounds/step contains non-integer expression\n");
+        fprintf(stderr, "forStatement() -- for-loop generator bounds contain non-integer expression\n");
         compilerError(ERROR_TYPE);
+    }
+
+    DataType step_type;
+    // If step exists, check
+    if (for_node->left_ch->left_ch->right_ch != NULL)
+    {
+        step_type = exprStatement(for_node->left_ch->left_ch->right_ch, sym_table);
+        if (step_type != INT)
+        {
+            fprintf(stderr, "forStatement() -- for-loop generator step contains non-integer expression\n");
+            compilerError(ERROR_TYPE);
+        }
     }
 
     // Evaluate every guard (if-expression condition)
@@ -1543,6 +1557,24 @@ static DataType getParamType(AST_NODE *type_node)
     }
 
     // passed argument node might be type literal or variable
+    if (type_node->type == NODE_LIST)
+        switch (type_node->left_ch->token.type)
+        {
+            case KEYWORD_STRING:
+                return LIST_STRING;
+            case KEYWORD_DOUBLE:
+                return LIST_DOUBLE;
+            case KEYWORD_INT:
+                return LIST_INT;
+            case KEYWORD_BOOLEAN:
+                return LIST_BOOLEAN;
+            case KEYWORD_UNIT:
+                return LIST_UNIT;
+            // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
+            //     return LIST_ANY;
+            default:;
+        }
+
     switch (type_node->token.type)
     {
         case KEYWORD_STRING:
@@ -1555,23 +1587,6 @@ static DataType getParamType(AST_NODE *type_node)
             return BOOLEAN;
         case KEYWORD_UNIT:
             return UNIT;
-        case KEYWORD_LIST:
-            switch (type_node->left_ch->token.type)
-            {
-                case KEYWORD_STRING:
-                    return LIST_STRING;
-                case KEYWORD_DOUBLE:
-                    return LIST_DOUBLE;
-                case KEYWORD_INT:
-                    return LIST_INT;
-                case KEYWORD_BOOLEAN:
-                    return LIST_BOOLEAN;
-                case KEYWORD_UNIT:
-                    return LIST_UNIT;
-                // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
-                //     return LIST_ANY;
-                default:;
-            }
         default:
             fprintf(stderr, "getParamType() -- returning NIL?\n");
             return NIL;
