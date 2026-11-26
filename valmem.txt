@@ -3,5 +3,8 @@ import ifj26.*
 @main
 def runFoo(): Unit =
     var x = 50
-    x.toInt
+    //x.toInt
     return
+
+def valmem(): Unit =
+    x.toDouble + 5
