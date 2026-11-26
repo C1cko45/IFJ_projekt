@@ -1,3 +1,6 @@
+//TODO: header
+
+
 #include "codegen.h"
 #include "gen_def.h"
 #include "gen_nondef.h"
@@ -31,6 +34,8 @@ struct CodegenBinding {
 };
 
 
+//Prevedie semanticky typ zoznamu (type) na typ jeho prvkov.
+//Pri neznamom alebo nezoznamovom type vracia CG_TYPE_UNKNOWN. (LISTS)
 static CodegenType codegen_element_type_from_datatype(DataType type){
     switch(type){
         case LIST_INT:
@@ -54,6 +59,8 @@ static CodegenType codegen_element_type_from_datatype(DataType type){
 }
 
 
+//Z typovej anotacie identifikatora v AST zisti typ prvku List[T].
+//Ak anotacia chyba alebo nie je podporovana, vracia CG_TYPE_UNKNOWN. (LISTS)
 static CodegenType codegen_declared_list_item_type(const AST_NODE *identifier){
     if(identifier == NULL || identifier->left_ch == NULL ||
         identifier->left_ch->type != NODE_LIST || identifier->left_ch->left_ch == NULL){
@@ -82,6 +89,8 @@ static CodegenType codegen_declared_list_item_type(const AST_NODE *identifier){
 }
 
 
+//Z laveho potomka identifier nacita explicitny typ deklaracie var/val alebo parametra.
+//Ak typ nie je uvedeny, vracia CG_TYPE_UNKNOWN; hodnotu neskor urci inicializator.
 static CodegenType codegen_declared_variable_type(const AST_NODE *identifier){
     if(identifier == NULL || identifier->left_ch == NULL){
         return CG_TYPE_UNKNOWN;
@@ -119,6 +128,8 @@ static CodegenType codegen_declared_variable_type(const AST_NODE *identifier){
 }
 
 
+//V zozname ctx->bindings hlada zaznam podla adresy deklaracneho uzla identifier.
+//Vracia zaznam aj vtedy, ked este nie je aktivny, inak NULL.
 static CodegenBinding *codegen_binding_for_declaration(const AST_NODE *identifier, const CodegenContext *ctx){
     if(identifier == NULL || ctx == NULL){
         return NULL;
@@ -134,6 +145,8 @@ static CodegenBinding *codegen_binding_for_declaration(const AST_NODE *identifie
 }
 
 
+//Pre identifikator vyhlada aktivny binding rovnakeho mena v najhlbsom scope.
+//Takto sa pri shadowingu vyberie najblizsia viditelna deklaracia; inak vracia NULL.
 static CodegenBinding *codegen_active_binding(const AST_NODE *identifier, const CodegenContext *ctx){
     if(identifier == NULL || ctx == NULL || identifier->type != NODE_TOKEN_ONLY ||
         identifier->token.type != TOKEN_TYPE_IDENTIFIER || identifier->token.attr.str_val == NULL){
@@ -154,7 +167,8 @@ static CodegenBinding *codegen_active_binding(const AST_NODE *identifier, const 
 }
 
 
-//Pripravi jedinecny nazov pre premennu
+//Priradi deklaracnemu uzlu identifier jedinecne interne meno pre LF a ulozi jeho typ.
+//Zaznam zatial neaktivuje; opakovane rezervovanie tej istej deklaracie nic nemeni.
 void codegen_reserve_variable(const AST_NODE *identifier, CodegenContext *ctx){
     if(identifier == NULL || ctx == NULL || ctx->error_code != 0){
         return;
@@ -187,7 +201,8 @@ void codegen_reserve_variable(const AST_NODE *identifier, CodegenContext *ctx){
 }
 
 
-//Spristupni premennu v aktualnom bloku
+//Rezervuje zaznam identifier, ak este neexistuje, a aktivuje ho v aktualnom scope.
+//Od tohto okamihu sa na premennu mozu odkazovat nasledujuce prikazy.
 void codegen_declare_variable(const AST_NODE *identifier, CodegenContext *ctx){
     codegen_reserve_variable(identifier, ctx);
 
@@ -207,6 +222,8 @@ void codegen_declare_variable(const AST_NODE *identifier, CodegenContext *ctx){
 }
 
 
+//Zapise zisteny typ type do zaznamu konkretnej deklaracie identifier.
+//Neznamy typ neprepise uz ulozeny typ.
 void codegen_set_variable_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type){
     if(ctx == NULL || type == CG_TYPE_UNKNOWN){
         return;
@@ -220,7 +237,8 @@ void codegen_set_variable_type(const AST_NODE *identifier, CodegenContext *ctx, 
 }
 
 
-//Zisti typ ulozenej premennej
+//Vrati typ premennej podla aktivneho bindingu, pripadne podla deklaracneho uzla.
+//Ak sa zaznam nenajde, vracia CG_TYPE_UNKNOWN.
 CodegenType codegen_variable_type(const AST_NODE *identifier, const CodegenContext *ctx){
     CodegenBinding *binding = codegen_active_binding(identifier, ctx);
 
@@ -232,6 +250,7 @@ CodegenType codegen_variable_type(const AST_NODE *identifier, const CodegenConte
 }
 
 
+//Ulozi typ prvkov type do zaznamu deklaracie identifier, ak je znamy. (LISTS)
 void codegen_set_list_item_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type){
     if(ctx == NULL || type == CG_TYPE_UNKNOWN){
         return;
@@ -245,7 +264,8 @@ void codegen_set_list_item_type(const AST_NODE *identifier, CodegenContext *ctx,
 }
 
 
-//Zisti typ prvkov zoznamu
+//Zisti typ prvkov zoznamu z anotacie, bindingu, semantickych udajov alebo vyrazu.
+//Pri konstruktore zjednoti typy Int a Double na Double; inak neznamy typ vracia ako CG_TYPE_UNKNOWN. (LISTS)
 CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenContext *ctx){
     if(identifier == NULL || ctx == NULL){
         return CG_TYPE_UNKNOWN;
@@ -369,7 +389,8 @@ CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenCont
 }
 
 
-//Najde interny nazov premennej
+//Pre identifier vrati interne meno premennej pouzivane v cielovom kode.
+//Najprv hlada konkretnu deklaraciu, potom viditelny binding; pri chybe nastavi kod 99.
 const char *codegen_variable_name(const AST_NODE *identifier, CodegenContext *ctx){
     if(identifier == NULL || ctx == NULL){
         return NULL;
@@ -394,7 +415,7 @@ const char *codegen_variable_name(const AST_NODE *identifier, CodegenContext *ct
 }
 
 
-//Zacne novy blok premennych
+//Zvysi hlbku lexikalneho scope v ctx. Nevytvara novy runtime ramec.
 void codegen_enter_scope(CodegenContext *ctx){
     if(ctx != NULL){
         ctx->scope_depth++;
@@ -402,7 +423,8 @@ void codegen_enter_scope(CodegenContext *ctx){
 }
 
 
-//Ukonci blok a skryje jeho premenne
+//Deaktivuje bindingy aktualneho scope a znizi jeho hlbku.
+//Vonkajsie deklaracie sa tym opat spristupnia; LF zostava nezmeneny.
 void codegen_leave_scope(CodegenContext *ctx){
     if(ctx == NULL || ctx->scope_depth == 0){
         return;
@@ -418,7 +440,8 @@ void codegen_leave_scope(CodegenContext *ctx){
 }
 
 
-//Uvolni zaznamy o premennych
+//Uvolni vsetky zaznamy o premennych v ctx a vynuluje hlbku scope.
+//Retazce mien patria AST, preto sa tu neuvolnuju.
 void codegen_clear_bindings(CodegenContext *ctx){
     if(ctx == NULL){
         return;
@@ -434,7 +457,8 @@ void codegen_clear_bindings(CodegenContext *ctx){
 }
 
 
-//Prida pomocnu funkciu na prevod zoznamu na text
+//Vypise pomocnu cielovu rutinu $$cg_list_to_str pre textovy tvar List(...).
+//Rutina odobera referenciu na pole zo zasobnika a vracia jeden retazec. (LISTS)
 static void codegen_emit_list_to_string_runtime(CodegenContext *ctx){
     fputs("LABEL $$cg_list_to_str\n"
         "CREATEFRAME\nPUSHFRAME\n"
@@ -511,7 +535,8 @@ static void codegen_emit_list_to_string_runtime(CodegenContext *ctx){
 }
 
 
-//Vypise zaciatok programu IFJcode26
+//Vypise povinnu hlavicku .IFJcode26, globalne pomocne premenne a skok na $$main.
+//Za skok umiestni pomocne rutiny, aby sa nevykonali pri starte programu.
 void codegen_emit_header(CodegenContext *ctx){
     if(ctx == NULL || ctx->output == NULL){
         return;
@@ -531,17 +556,20 @@ void codegen_emit_header(CodegenContext *ctx){
 }
 
 
+//Vypise instrukciu LABEL s nazvom label do vystupu ctx.
 void codegen_emit_label(CodegenContext *ctx, const char *label){
     fprintf(ctx->output, "LABEL %s\n", label);
 }
 
 
+//Vypise nepodmieneny skok JUMP na zadane navestie label.
 void codegen_emit_jump(CodegenContext *ctx, const char *label){
     fprintf(ctx->output, "JUMP %s\n", label);
 }
 
 
-//Spusti generovanie s pripravenym nastavenim
+//Spusti generovanie celeho AST root s uz pripravenym kontextom ctx.
+//Na konci uvolni bindingy a vrati 0 pri uspechu alebo kod internej chyby.
 int codegen_generate_ctx(AST_NODE *root, CodegenContext *ctx){
     if(root == NULL || ctx == NULL || ctx->output == NULL){
         return 99;
@@ -567,7 +595,8 @@ int codegen_generate_ctx(AST_NODE *root, CodegenContext *ctx){
 }
 
 
-//Hlavny vstup do generatora
+//Vstupny bod generatora: vytvori prazdny kontext a prelozi root do streamu output.
+//Vracia navratovy kod generatora (0 alebo 99).
 int codegen_generate(AST_NODE *root, FILE *output){
     CodegenContext ctx = {0};
     ctx.output = output;
@@ -576,7 +605,8 @@ int codegen_generate(AST_NODE *root, FILE *output){
 }
 
 
-//Vyberie postup podla druhu AST uzla
+//Prelozi uzol AST node ako prikaz podla jeho typu; rekurzivne spracuje podstromy.
+//Hodnoty samostatnych vyrazov a volani sa zahadzuju, aby nezostali na datovom zasobniku.
 void codegen_generate_node(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx->error_code != 0){
         return;
@@ -648,6 +678,8 @@ void codegen_generate_node(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+//Prejde retazec NODE_PROGRAM zlava doprava: lavy potomok je prikaz, pravy dalsi uzol.
+//Pri chybe v ctx sa generovanie dalsich prikazov zastavi.
 static void generate_program(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code != 0){
         return;
@@ -665,7 +697,8 @@ static void generate_program(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vygeneruje argumenty volanej funkcie
+//Vyhodnoti argumenty args zlava doprava a ulozi ich hodnoty na datovy zasobnik.
+//Vracia pocet argumentov, pri chybe v retazci -1. Volana funkcia ich odobera odzadu.
 static int generate_call_arguments(AST_NODE *args, CodegenContext *ctx){
     int count = 0;
 
@@ -696,6 +729,8 @@ static int generate_call_arguments(AST_NODE *args, CodegenContext *ctx){
 }
 
 
+//Prelozi argumenty volania List.range a doplni predvoleny krok 1, ak chyba.
+//Vytvoreny zoznam s vylucenym koncom zostane na zasobniku. (LISTS)
 static void generate_list_range_call(AST_NODE *node, CodegenContext *ctx){
     int count = 0;
 
@@ -722,7 +757,8 @@ static void generate_list_range_call(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vygeneruje volanie funkcie alebo pracu so zoznamom
+//Prelozi NODE_CALL ako hodnotu: rozlisi pouzivatelsku funkciu, builtin a operacie LISTS.
+//Pri beznom volani odovzda argumenty cez zasobnik a vypise CALL; vysledok ostava na zasobniku.
 void codegen_generate_call_expression(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code != 0 || node->left_ch == NULL){
         if(ctx != NULL){
@@ -824,6 +860,7 @@ void codegen_generate_call_expression(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+//Prelozi volanie node ako samostatny prikaz a jeho navratovu hodnotu odoberie zo zasobnika.
 static void generate_call(AST_NODE *node, CodegenContext *ctx){
     codegen_generate_call_expression(node, ctx);
 
@@ -833,6 +870,7 @@ static void generate_call(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+//Vrati meno volanej funkcie z laveho potomka NODE_CALL, inak NULL.
 static const char *get_call_name(const AST_NODE *node){
     if(node == NULL || node->type != NODE_CALL || node->left_ch == NULL ||
         node->left_ch->type != NODE_TOKEN_ONLY || node->left_ch->token.type != TOKEN_TYPE_IDENTIFIER){
@@ -843,6 +881,8 @@ static const char *get_call_name(const AST_NODE *node){
 }
 
 
+//Podla mena volania node urci navratovy typ builtin funkcie okrem print.
+//Nezname meno vracia ako CG_TYPE_UNKNOWN.
 CodegenType codegen_builtin_return_type(const AST_NODE *node){
     const char *name = get_call_name(node);
 
@@ -876,6 +916,8 @@ CodegenType codegen_builtin_return_type(const AST_NODE *node){
 }
 
 
+//Rozbali argumenty args do pola out s kapacitou expected.
+//Vracia nenulovu hodnotu pri zhodnom pocte argumentov, inak 0.
 static int get_builtin_arguments(AST_NODE *args, AST_NODE **out, int expected){
     int count = 0;
 
@@ -904,6 +946,8 @@ static int get_builtin_arguments(AST_NODE *args, AST_NODE **out, int expected){
 }
 
 
+//Vygeneruje ord(value, index) z dvoch hodnot na datovom zasobniku.
+//Index mimo retazca vrati -1, inak STRI2INT; vysledok Int ostava na zasobniku.
 static void emit_builtin_ord(CodegenContext *ctx){
     unsigned int id = ctx->label_counter++;
 
@@ -939,6 +983,8 @@ static void emit_builtin_ord(CodegenContext *ctx){
 }
 
 
+//Vygeneruje subStr(value, start, end) zo zasobnika; koncovy index je vyluceny.
+//Overi hranice podla zadania (chyba 40) a sklada retazec znak po znaku.
 static void emit_builtin_substr(CodegenContext *ctx){
     unsigned int id = ctx->label_counter++;
 
@@ -1000,7 +1046,8 @@ static void emit_builtin_substr(CodegenContext *ctx){
 }
 
 
-//Vygeneruje volanie vstavanej funkcie
+//Prelozi volanie builtin funkcie node (okrem print) a ponecha jej hodnotu na zasobniku.
+//READ doplni nahradnu hodnotu pri chybe vstupu; konverzie a retazcove operacie pouziju instrukcie IFJcode26.
 void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
     if(ctx == NULL || ctx->error_code != 0){
         return;
@@ -1049,9 +1096,17 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
         fprintf(ctx->output, "READ GF@%%cg_tmp %s\n"
                             "JUMPIFNEQ $$cg_read_ok_%u GF@%%cg_tmp nil@nil\n"
                             "MOVE GF@%%cg_tmp %s\n"
-                            "LABEL $$cg_read_ok_%u\n"
-                            "PUSHS GF@%%cg_tmp\n", read_type, id, fallback, id);
-        
+                            "LABEL $$cg_read_ok_%u\n", read_type, id, fallback, id);
+        if(strcmp(name, "readInt") == 0){
+            fputs("GT GF@%cg_str_left GF@%cg_tmp int@2147483647\n"
+                  "LT GF@%cg_str_right GF@%cg_tmp int@-2147483648\n"
+                  "OR GF@%cg_str_left GF@%cg_str_left GF@%cg_str_right\n", ctx->output);
+            fprintf(ctx->output, "JUMPIFEQ $$cg_read_range_%u GF@%%cg_str_left bool@false\n"
+                                "MOVE GF@%%cg_tmp int@0\n"
+                                "LABEL $$cg_read_range_%u\n", id, id);
+        }
+        fputs("PUSHS GF@%cg_tmp\n", ctx->output);
+
         return;
     }
 
@@ -1116,7 +1171,7 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
 
     CodegenType type = codegen_expression_type(arg, ctx);
 
-    if(type == CG_TYPE_UNKNOWN || (strcmp(name, "toInt") == 0 && type != CG_TYPE_DOUBLE) ||
+    if(type == CG_TYPE_UNKNOWN || (strcmp(name, "toInt") == 0 && type != CG_TYPE_DOUBLE && type != CG_TYPE_INT) ||
         (strcmp(name, "strLength") == 0 && type != CG_TYPE_STRING) ||
         (strcmp(name, "chr") == 0 && type != CG_TYPE_INT)){
             ctx->error_code = 99;
@@ -1130,6 +1185,10 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
     }
 
     if(strcmp(name, "toInt") == 0){
+        //An Int argument is valid via implicit Int -> Double conversion.
+        if(type == CG_TYPE_INT){
+            fputs("INT2FLOATS\n", ctx->output);
+        }
         fputs("FLOAT2INTS\n", ctx->output);
     }
 
@@ -1188,7 +1247,8 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vygeneruje cyklus while
+//Prelozi while node: pred kazdou iteraciou vyhodnoti podmienku a pri false skoci za cyklus.
+//Telo ma vlastny lexikalny scope, deklaracie LF su pripravene uz pri vstupe do funkcie.
 static void generate_while(AST_NODE *node, CodegenContext *ctx){
     if(ctx == NULL || ctx->error_code != 0){
         return;
@@ -1229,7 +1289,8 @@ static void generate_while(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vygeneruje vetvenie if a else
+//Prelozi if node ako prikaz, teda bez ponechania hodnoty vetvy na zasobniku.
+//Podla podmienky skoci do then/else, podporuje aj chybajuce else a retazenie else if (BOOLTHEN).
 static void generate_if(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || node->left_ch == NULL || node->left_ch->left_ch == NULL ||
         node->left_ch->right_ch == NULL || ctx == NULL || ctx->error_code != 0){
@@ -1278,7 +1339,8 @@ static void generate_if(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vygeneruje cyklus for nad zoznamom
+//Prelozi for nad zoznamom; iteruje po prvkoch pola, ktoreho index 0 obsahuje dlzku.
+//Straze sa vyhodnocuju pred telom; nepravdiva straz preskoci aktualny prvok. (LISTS)
 static void generate_for_list(AST_NODE *node, CodegenContext *ctx){
     AST_NODE *iterator = node->left_ch;
     AST_NODE *source = iterator->left_ch->left_ch;
@@ -1338,7 +1400,8 @@ static void generate_for_list(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vygeneruje nacitanie prvku zoznamu
+//Prelozi indexovanie zoznamu node, overi rozsah indexu a nacita hodnotu.
+//Zdrojovy index sa posunie o 1 (na indexe 0 je dlzka); pri chybe skonci s kodom 40. (LISTS)
 static void generate_list_index(AST_NODE *node, CodegenContext *ctx){
     if(node->right_ch == NULL || node->right_ch->left_ch == NULL || node->right_ch->right_ch != NULL){
         ctx->error_code = 99;
@@ -1395,7 +1458,8 @@ static void generate_list_index(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vytvori novy zoznam z hodnot
+//Prelozi List(...) na pole s dlzkou na indexe 0 a prvkami od indexu 1.
+//Argumenty vyhodnoti v povodnom poradi, pripadne rozsiri Int na Double; referenciu ulozi na zasobnik. (LISTS)
 static void generate_list_constructor(AST_NODE *node, CodegenContext *ctx){
     size_t count = 0;
     int needs_double = ctx->force_list_double;
@@ -1441,7 +1505,8 @@ static void generate_list_constructor(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vygeneruje cyklus for
+//Prelozi for s rozsahom to/until (CONTROL); start, koniec a krok vyhodnoti raz.
+//Podla znamienka kroku a typu hranice zvoli porovnanie, straze mozu preskocit telo; nulovy krok konci kodom 40.
 static void generate_for(AST_NODE *node, CodegenContext *ctx){
     AST_NODE *iterator = node->left_ch;
     AST_NODE *limit = iterator->left_ch;

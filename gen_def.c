@@ -1,3 +1,6 @@
+//TODO: header
+
+
 #include "gen_def.h"
 #include "gen_nondef.h"
 #include <stdio.h>
@@ -6,7 +9,8 @@
 
 
 
-//Vytvori a otvori ramiec funkcie
+//Vypise CREATEFRAME a PUSHFRAME, cim pripravi prazdny lokalny ramec LF volanej funkcie.
+//Pouziva ctx->output; pri uz zaznamenanej chybe nic negeneruje.
 void generate_frame_enter(CodegenContext *ctx){
     if(ctx == NULL || ctx->error_code != 0){
         return;
@@ -17,7 +21,8 @@ void generate_frame_enter(CodegenContext *ctx){
 }
 
 
-//Ukonci ramiec funkcie
+//Vypise POPFRAME na ukoncenie lokalneho ramca funkcie a obnovenie ramca volajuceho.
+//Navratova hodnota na datovom zasobniku zostava zachovana.
 void generate_frame_leave(CodegenContext *ctx){
     if(ctx == NULL || ctx->error_code != 0){
         return;
@@ -28,7 +33,8 @@ void generate_frame_leave(CodegenContext *ctx){
 
 
 
-//Nacita parametre funkcie zo zasobnika
+//Prejde retazec parametrov param odzadu, vytvori ich LF premenne a odoberie argumenty zo zasobnika.
+//Pri parametri Double konvertuje hodnotu Int pomocou INT2FLOAT.
 static void generate_parameters_reverse(AST_NODE *param, CodegenContext *ctx){
     if(param == NULL || ctx == NULL || ctx->error_code != 0){
         return;
@@ -102,7 +108,8 @@ static void generate_parameters_reverse(AST_NODE *param, CodegenContext *ctx){
 }
 
 
-//Zisti navratovy typ zo zapisu funkcie
+//Prevedie uzol explicitnej anotacie navratoveho typu node na CodegenType.
+//Ak anotacia chyba alebo typ nie je znamy, vracia CG_TYPE_UNKNOWN.
 static CodegenType get_function_return_type(AST_NODE *node){
     if(node != NULL && node->type == NODE_LIST){
         return CG_TYPE_LIST;
@@ -134,6 +141,8 @@ static CodegenType get_function_return_type(AST_NODE *node){
 }
 
 
+//Vygeneruje expression ako navratovu hodnotu na datovy zasobnik.
+//Pri List[Double] docasne nastavi priznak konverzie prvkov a potom ho obnovi.
 static void generate_function_result(AST_NODE *expression, CodegenContext *ctx){
     int previous_force = ctx->force_list_double;
 
@@ -148,7 +157,8 @@ static void generate_function_result(AST_NODE *expression, CodegenContext *ctx){
 }
 
 
-//Vygeneruje telo funkcie s navratovou hodnotou
+//Prelozi telo body hodnotovej funkcie: vsetky prikazy pred poslednym bez vysledku a posledny ako navratovu hodnotu.
+//Podla expected_type vykona implicitnu konverziu Int na Double; explicitny return spracuje samostatne.
 static void generate_nonunit_body(AST_NODE *body, CodegenContext *ctx, CodegenType expected_type){
     if(body == NULL || ctx == NULL || ctx->error_code != 0){
         return;
@@ -267,7 +277,8 @@ static void generate_nonunit_body(AST_NODE *body, CodegenContext *ctx, CodegenTy
 }
 
 
-//Pripravi lokalne premenne funkcie
+//Rekurzivne prejde telo a rezervuje LF premenne pre vsetky var/val a iteratory for.
+//DEFVAR sa vypise pred telom funkcie, aby sa deklaracie neopakovali pri kazdej iteracii cyklu.
 static void collect_local_declarations(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code != 0){
         return;
@@ -317,12 +328,14 @@ static void collect_local_declarations(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+//Spusti predbezny prechod tela body, ktory vygeneruje lokalne DEFVAR pred samotnymi prikazmi.
 static void generate_local_declarations(AST_NODE *body, CodegenContext *ctx){
     collect_local_declarations(body, ctx);
 }
 
 
-//Odhadne navratovy typ podla posledneho prikazu
+//Ak funkcia nema anotaciu, zisti CodegenType posledneho prikazu alebo vyrazu v body.
+//Pri prikazoch bez hodnoty vracia CG_TYPE_UNIT; pri neznamom type CG_TYPE_UNKNOWN.
 static CodegenType infer_function_return_type(const AST_NODE *body, const CodegenContext *ctx){
     if(body == NULL){
         return CG_TYPE_UNKNOWN;
@@ -383,7 +396,8 @@ static CodegenType infer_function_return_type(const AST_NODE *body, const Codege
 }
 
 
-//Vygeneruje celu funkciu
+//Prelozi definiciu funkcie node vratane parametrov, lokalnych premennych, tela a navratovej hodnoty.
+//Pri @main vytvori vstupne navestie $$main a bezne volatelne navestie funkcie; po generovani obnovi kontext.
 void generate_function(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code != 0){
         return;
@@ -451,16 +465,14 @@ void generate_function(AST_NODE *node, CodegenContext *ctx){
     ctx->current_function_list_double = declare_type == CG_TYPE_LIST && ast_list_double;
 
     ctx->inside_function = 1;
-    ctx->current_is_main = is_main;
+    ctx->current_is_main = 0;
     ctx->current_return_type = declare_type;
 
     if(is_main){
-        fprintf(ctx->output, "LABEL $$main\n");
+        fprintf(ctx->output, "LABEL $$main\nCALL $%s\nPOPS GF@%%cg_tmp\nEXIT int@0\n",
+                function_definicion->token.attr.str_val);
     }
-
-    else{
-        fprintf(ctx->output, "LABEL $%s\n", function_definicion->token.attr.str_val);
-    }
+    fprintf(ctx->output, "LABEL $%s\n", function_definicion->token.attr.str_val);
 
     generate_frame_enter(ctx);
 
@@ -481,19 +493,13 @@ void generate_function(AST_NODE *node, CodegenContext *ctx){
     }
 
     if(ctx->error_code == 0){
-        if(!is_main && declare_type == CG_TYPE_UNIT){
+        if(declare_type == CG_TYPE_UNIT){
             fputs("PUSHS nil@nil\n", ctx->output);
         }
 
         generate_frame_leave(ctx);
 
-        if(is_main){
-            fprintf(ctx->output, "EXIT int@0\n");
-        }
-
-        else{
-            fprintf(ctx->output, "RETURN\n");
-        }
+        fprintf(ctx->output, "RETURN\n");
     }
 
     ctx->inside_function = old_inside_function;
@@ -505,7 +511,8 @@ void generate_function(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vygeneruje navrat z funkcie
+//Prelozi explicitny return node v aktualnej funkcii. Vysledok konvertuje na deklarovany typ, ak treba.
+//Pre Unit vyhodnotenu hodnotu zahodi a vrati nil@nil; ukonci ramec a vygeneruje RETURN.
 void generate_return(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code != 0){
         return;
