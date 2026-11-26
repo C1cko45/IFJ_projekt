@@ -13,11 +13,6 @@ void codegen_list_range_from_stack(CodegenContext *ctx, int inclusive);
 
 void codegen_generate_list_method_expression(AST_NODE *node, CodegenContext *ctx);
 
-
 #endif
 
-
-
-
-
-//FB0
+// FB0

@@ -6,8 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
-
 static void generate_program(AST_NODE *node, CodegenContext *ctx);
 static void generate_call(AST_NODE *node, CodegenContext *ctx);
 static void generate_while(AST_NODE *node, CodegenContext *ctx);
@@ -17,9 +15,8 @@ static void generate_for_list(AST_NODE *node, CodegenContext *ctx);
 static void generate_list_constructor(AST_NODE *node, CodegenContext *ctx);
 static void generate_list_index(AST_NODE *node, CodegenContext *ctx);
 
-
-
-struct CodegenBinding {
+struct CodegenBinding
+{
     const AST_NODE *identifier;
     const char *source_name;
     CodegenType type;
@@ -30,9 +27,10 @@ struct CodegenBinding {
     struct CodegenBinding *next;
 };
 
-
-static CodegenType codegen_element_type_from_datatype(DataType type){
-    switch(type){
+static CodegenType codegen_element_type_from_datatype(DataType type)
+{
+    switch (type)
+    {
         case LIST_INT:
             return CG_TYPE_INT;
 
@@ -53,14 +51,16 @@ static CodegenType codegen_element_type_from_datatype(DataType type){
     }
 }
 
-
-static CodegenType codegen_declared_list_item_type(const AST_NODE *identifier){
-    if(identifier == NULL || identifier->left_ch == NULL ||
-        identifier->left_ch->type != NODE_LIST || identifier->left_ch->left_ch == NULL){
-            return CG_TYPE_UNKNOWN;
+static CodegenType codegen_declared_list_item_type(const AST_NODE *identifier)
+{
+    if (identifier == NULL || identifier->left_ch == NULL || identifier->left_ch->type != NODE_LIST ||
+        identifier->left_ch->left_ch == NULL)
+    {
+        return CG_TYPE_UNKNOWN;
     }
 
-    switch(identifier->left_ch->left_ch->token.type){
+    switch (identifier->left_ch->left_ch->token.type)
+    {
         case KEYWORD_INT:
             return CG_TYPE_INT;
 
@@ -81,23 +81,27 @@ static CodegenType codegen_declared_list_item_type(const AST_NODE *identifier){
     }
 }
 
-
-static CodegenType codegen_declared_variable_type(const AST_NODE *identifier){
-    if(identifier == NULL || identifier->left_ch == NULL){
+static CodegenType codegen_declared_variable_type(const AST_NODE *identifier)
+{
+    if (identifier == NULL || identifier->left_ch == NULL)
+    {
         return CG_TYPE_UNKNOWN;
     }
 
     const AST_NODE *type = identifier->left_ch;
 
-    if(type->type == NODE_LIST){
+    if (type->type == NODE_LIST)
+    {
         return CG_TYPE_LIST;
     }
 
-    if(type->type != NODE_TOKEN_ONLY){
+    if (type->type != NODE_TOKEN_ONLY)
+    {
         return CG_TYPE_UNKNOWN;
     }
 
-    switch(type->token.type){
+    switch (type->token.type)
+    {
         case KEYWORD_INT:
             return CG_TYPE_INT;
 
@@ -118,14 +122,17 @@ static CodegenType codegen_declared_variable_type(const AST_NODE *identifier){
     }
 }
 
-
-static CodegenBinding *codegen_binding_for_declaration(const AST_NODE *identifier, const CodegenContext *ctx){
-    if(identifier == NULL || ctx == NULL){
+static CodegenBinding *codegen_binding_for_declaration(const AST_NODE *identifier, const CodegenContext *ctx)
+{
+    if (identifier == NULL || ctx == NULL)
+    {
         return NULL;
     }
 
-    for(CodegenBinding *binding = ctx->bindings; binding != NULL; binding = binding->next){
-        if(binding->identifier == identifier){
+    for (CodegenBinding *binding = ctx->bindings; binding != NULL; binding = binding->next)
+    {
+        if (binding->identifier == identifier)
+        {
             return binding;
         }
     }
@@ -133,45 +140,52 @@ static CodegenBinding *codegen_binding_for_declaration(const AST_NODE *identifie
     return NULL;
 }
 
-
-static CodegenBinding *codegen_active_binding(const AST_NODE *identifier, const CodegenContext *ctx){
-    if(identifier == NULL || ctx == NULL || identifier->type != NODE_TOKEN_ONLY ||
-        identifier->token.type != TOKEN_TYPE_IDENTIFIER || identifier->token.attr.str_val == NULL){
-            return NULL;
+static CodegenBinding *codegen_active_binding(const AST_NODE *identifier, const CodegenContext *ctx)
+{
+    if (identifier == NULL || ctx == NULL || identifier->type != NODE_TOKEN_ONLY ||
+        identifier->token.type != TOKEN_TYPE_IDENTIFIER || identifier->token.attr.str_val == NULL)
+    {
+        return NULL;
     }
 
     CodegenBinding *selected = NULL;
 
-    for(CodegenBinding *binding = ctx->bindings; binding != NULL; binding = binding->next){
-        if(binding->active && binding->source_name != NULL &&
+    for (CodegenBinding *binding = ctx->bindings; binding != NULL; binding = binding->next)
+    {
+        if (binding->active && binding->source_name != NULL &&
             strcmp(binding->source_name, identifier->token.attr.str_val) == 0 &&
-            (selected == NULL || binding->scope_depth > selected->scope_depth)){
-                selected = binding;
+            (selected == NULL || binding->scope_depth > selected->scope_depth))
+        {
+            selected = binding;
         }
     }
 
     return selected;
 }
 
-
-void codegen_reserve_variable(const AST_NODE *identifier, CodegenContext *ctx){
-    if(identifier == NULL || ctx == NULL || ctx->error_code != 0){
+void codegen_reserve_variable(const AST_NODE *identifier, CodegenContext *ctx)
+{
+    if (identifier == NULL || ctx == NULL || ctx->error_code != 0)
+    {
         return;
     }
 
-    if(codegen_binding_for_declaration(identifier, ctx) != NULL){
+    if (codegen_binding_for_declaration(identifier, ctx) != NULL)
+    {
         return;
     }
 
-    if(identifier->type != NODE_TOKEN_ONLY || identifier->token.type != TOKEN_TYPE_IDENTIFIER ||
-        identifier->token.attr.str_val == NULL){
-            ctx->error_code = 99;
-            return;
+    if (identifier->type != NODE_TOKEN_ONLY || identifier->token.type != TOKEN_TYPE_IDENTIFIER ||
+        identifier->token.attr.str_val == NULL)
+    {
+        ctx->error_code = 99;
+        return;
     }
 
     CodegenBinding *binding = calloc(1, sizeof(*binding));
 
-    if(binding == NULL){
+    if (binding == NULL)
+    {
         ctx->error_code = 99;
         return;
     }
@@ -185,17 +199,19 @@ void codegen_reserve_variable(const AST_NODE *identifier, CodegenContext *ctx){
     ctx->bindings = binding;
 }
 
-
-void codegen_declare_variable(const AST_NODE *identifier, CodegenContext *ctx){
+void codegen_declare_variable(const AST_NODE *identifier, CodegenContext *ctx)
+{
     codegen_reserve_variable(identifier, ctx);
 
-    if(ctx == NULL || ctx->error_code != 0){
+    if (ctx == NULL || ctx->error_code != 0)
+    {
         return;
     }
 
     CodegenBinding *binding = codegen_binding_for_declaration(identifier, ctx);
 
-    if(binding == NULL){
+    if (binding == NULL)
+    {
         ctx->error_code = 99;
         return;
     }
@@ -204,149 +220,180 @@ void codegen_declare_variable(const AST_NODE *identifier, CodegenContext *ctx){
     binding->scope_depth = ctx->scope_depth;
 }
 
-
-void codegen_set_variable_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type){
-    if(ctx == NULL || type == CG_TYPE_UNKNOWN){
+void codegen_set_variable_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type)
+{
+    if (ctx == NULL || type == CG_TYPE_UNKNOWN)
+    {
         return;
     }
 
     CodegenBinding *binding = codegen_binding_for_declaration(identifier, ctx);
 
-    if(binding != NULL){
+    if (binding != NULL)
+    {
         binding->type = type;
     }
 }
 
-
-CodegenType codegen_variable_type(const AST_NODE *identifier, const CodegenContext *ctx){
+CodegenType codegen_variable_type(const AST_NODE *identifier, const CodegenContext *ctx)
+{
     CodegenBinding *binding = codegen_active_binding(identifier, ctx);
 
-    if(binding == NULL){
+    if (binding == NULL)
+    {
         binding = codegen_binding_for_declaration(identifier, ctx);
     }
 
     return binding == NULL ? CG_TYPE_UNKNOWN : binding->type;
 }
 
-
-void codegen_set_list_item_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type){
-    if(ctx == NULL || type == CG_TYPE_UNKNOWN){
+void codegen_set_list_item_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type)
+{
+    if (ctx == NULL || type == CG_TYPE_UNKNOWN)
+    {
         return;
     }
 
     CodegenBinding *binding = codegen_binding_for_declaration(identifier, ctx);
 
-    if(binding != NULL){
+    if (binding != NULL)
+    {
         binding->list_item_type = type;
     }
 }
 
-
-CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenContext *ctx){
-    if(identifier == NULL || ctx == NULL){
+CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenContext *ctx)
+{
+    if (identifier == NULL || ctx == NULL)
+    {
         return CG_TYPE_UNKNOWN;
     }
 
     CodegenType declared = codegen_declared_list_item_type(identifier);
 
-    if(declared != CG_TYPE_UNKNOWN){
+    if (declared != CG_TYPE_UNKNOWN)
+    {
         return declared;
     }
 
-    if(identifier->type == NODE_TOKEN_ONLY && identifier->token.type == TOKEN_TYPE_IDENTIFIER){
+    if (identifier->type == NODE_TOKEN_ONLY && identifier->token.type == TOKEN_TYPE_IDENTIFIER)
+    {
         CodegenBinding *binding = codegen_active_binding(identifier, ctx);
 
-        if(binding == NULL){
+        if (binding == NULL)
+        {
             binding = codegen_binding_for_declaration(identifier, ctx);
         }
 
-        if(binding != NULL && binding->list_item_type != CG_TYPE_UNKNOWN){
+        if (binding != NULL && binding->list_item_type != CG_TYPE_UNKNOWN)
+        {
             return binding->list_item_type;
         }
     }
 
     const HTEntry *entry = NULL;
 
-    if(identifier->type == NODE_TOKEN_ONLY && identifier->token.type == TOKEN_TYPE_IDENTIFIER){
+    if (identifier->type == NODE_TOKEN_ONLY && identifier->token.type == TOKEN_TYPE_IDENTIFIER)
+    {
         entry = identifier->identifier_entry;
     }
 
-    if(identifier->type == NODE_CALL && identifier->left_ch != NULL &&
-       identifier->left_ch->type == NODE_TOKEN_ONLY && identifier->left_ch->token.type == TOKEN_TYPE_IDENTIFIER){
-            entry = identifier->left_ch->identifier_entry;
+    if (identifier->type == NODE_CALL && identifier->left_ch != NULL && identifier->left_ch->type == NODE_TOKEN_ONLY &&
+        identifier->left_ch->token.type == TOKEN_TYPE_IDENTIFIER)
+    {
+        entry = identifier->left_ch->identifier_entry;
     }
 
-    if(entry != NULL){
+    if (entry != NULL)
+    {
         DataType semantic_type = ANY;
 
-        if(entry->entry_type == VAR || entry->entry_type == VAL){
+        if (entry->entry_type == VAR || entry->entry_type == VAL)
+        {
             semantic_type = entry->entry_data.variable_data_type;
         }
 
-        else if(entry->entry_type == FUNCTION){
+        else if (entry->entry_type == FUNCTION)
+        {
             semantic_type = entry->entry_data.function.return_type;
         }
 
         CodegenType element_type = codegen_element_type_from_datatype(semantic_type);
 
-        if(element_type != CG_TYPE_UNKNOWN){
+        if (element_type != CG_TYPE_UNKNOWN)
+        {
             return element_type;
         }
     }
 
-    if(identifier->type == NODE_VALMEM && identifier->right_ch != NULL){
+    if (identifier->type == NODE_VALMEM && identifier->right_ch != NULL)
+    {
         const char *member = identifier->right_ch->token.attr.str_val;
 
-        if(member != NULL){
-            if(strcmp(member, "tail") == 0){
+        if (member != NULL)
+        {
+            if (strcmp(member, "tail") == 0)
+            {
                 return codegen_list_item_type(identifier->left_ch, ctx);
             }
 
-            if(strcmp(member, "toList") == 0){
+            if (strcmp(member, "toList") == 0)
+            {
                 return CG_TYPE_INT;
             }
         }
     }
 
-    if(identifier->type == NODE_CALL && identifier->left_ch != NULL){
+    if (identifier->type == NODE_CALL && identifier->left_ch != NULL)
+    {
         const AST_NODE *callee = identifier->left_ch;
 
-        if(callee->type == NODE_VALMEM && callee->right_ch != NULL){
+        if (callee->type == NODE_VALMEM && callee->right_ch != NULL)
+        {
             const AST_NODE *receiver = callee->left_ch;
             const char *method = callee->right_ch->token.attr.str_val;
 
-            if(method != NULL){
-                if(strcmp(method, "range") == 0 && receiver != NULL &&
-                    receiver->type == NODE_TOKEN_ONLY && receiver->token.type == KEYWORD_LIST){
-                        return CG_TYPE_INT;
+            if (method != NULL)
+            {
+                if (strcmp(method, "range") == 0 && receiver != NULL && receiver->type == NODE_TOKEN_ONLY &&
+                    receiver->token.type == KEYWORD_LIST)
+                {
+                    return CG_TYPE_INT;
                 }
 
-                if(strcmp(method, "take") == 0 || strcmp(method, "drop") == 0 || strcmp(method, "slice") == 0){
+                if (strcmp(method, "take") == 0 || strcmp(method, "drop") == 0 || strcmp(method, "slice") == 0)
+                {
                     return codegen_list_item_type(receiver, ctx);
                 }
             }
         }
 
-        if(callee->type == NODE_TOKEN_ONLY && callee->token.type == KEYWORD_LIST){
+        if (callee->type == NODE_TOKEN_ONLY && callee->token.type == KEYWORD_LIST)
+        {
             CodegenType item_type = CG_TYPE_UNKNOWN;
 
-            for(const AST_NODE *arg = identifier->right_ch; arg != NULL && arg->left_ch != NULL; arg = arg->right_ch){
+            for (const AST_NODE *arg = identifier->right_ch; arg != NULL && arg->left_ch != NULL; arg = arg->right_ch)
+            {
                 CodegenType current = codegen_expression_type(arg->left_ch, ctx);
 
-                if(current == CG_TYPE_UNKNOWN){
+                if (current == CG_TYPE_UNKNOWN)
+                {
                     return CG_TYPE_UNKNOWN;
                 }
 
-                if(item_type == CG_TYPE_UNKNOWN){
+                if (item_type == CG_TYPE_UNKNOWN)
+                {
                     item_type = current;
                 }
 
-                else if((item_type == CG_TYPE_INT && current == CG_TYPE_DOUBLE) ||
-                    (item_type == CG_TYPE_DOUBLE && current == CG_TYPE_INT)){
-                        item_type = CG_TYPE_DOUBLE;
+                else if ((item_type == CG_TYPE_INT && current == CG_TYPE_DOUBLE) ||
+                         (item_type == CG_TYPE_DOUBLE && current == CG_TYPE_INT))
+                {
+                    item_type = CG_TYPE_DOUBLE;
                 }
 
-                else if(item_type != current){
+                else if (item_type != current)
+                {
                     return CG_TYPE_UNKNOWN;
                 }
             }
@@ -355,7 +402,8 @@ CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenCont
         }
     }
 
-    if(identifier->type == NODE_TOKEN_ONLY && identifier->token.type == TOKEN_TYPE_CONCAT){
+    if (identifier->type == NODE_TOKEN_ONLY && identifier->token.type == TOKEN_TYPE_CONCAT)
+    {
         CodegenType left = codegen_list_item_type(identifier->left_ch, ctx);
         CodegenType right = codegen_list_item_type(identifier->right_ch, ctx);
         return left == right ? left : CG_TYPE_UNKNOWN;
@@ -364,23 +412,27 @@ CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenCont
     return CG_TYPE_UNKNOWN;
 }
 
-
-const char *codegen_variable_name(const AST_NODE *identifier, CodegenContext *ctx){
-    if(identifier == NULL || ctx == NULL){
+const char *codegen_variable_name(const AST_NODE *identifier, CodegenContext *ctx)
+{
+    if (identifier == NULL || ctx == NULL)
+    {
         return NULL;
     }
 
     CodegenBinding *binding = codegen_binding_for_declaration(identifier, ctx);
 
-    if(binding == NULL){
+    if (binding == NULL)
+    {
         binding = codegen_active_binding(identifier, ctx);
     }
 
-    if(binding != NULL){
+    if (binding != NULL)
+    {
         return binding->name;
     }
 
-    if(ctx->symbols != NULL && identifier->token.attr.str_val != NULL){
+    if (ctx->symbols != NULL && identifier->token.attr.str_val != NULL)
+    {
         return identifier->token.attr.str_val;
     }
 
@@ -388,21 +440,25 @@ const char *codegen_variable_name(const AST_NODE *identifier, CodegenContext *ct
     return NULL;
 }
 
-
-void codegen_enter_scope(CodegenContext *ctx){
-    if(ctx != NULL){
+void codegen_enter_scope(CodegenContext *ctx)
+{
+    if (ctx != NULL)
+    {
         ctx->scope_depth++;
     }
 }
 
-
-void codegen_leave_scope(CodegenContext *ctx){
-    if(ctx == NULL || ctx->scope_depth == 0){
+void codegen_leave_scope(CodegenContext *ctx)
+{
+    if (ctx == NULL || ctx->scope_depth == 0)
+    {
         return;
     }
 
-    for(CodegenBinding *binding = ctx->bindings; binding != NULL; binding = binding->next){
-        if(binding->active && binding->scope_depth == ctx->scope_depth){
+    for (CodegenBinding *binding = ctx->bindings; binding != NULL; binding = binding->next)
+    {
+        if (binding->active && binding->scope_depth == ctx->scope_depth)
+        {
             binding->active = 0;
         }
     }
@@ -410,13 +466,15 @@ void codegen_leave_scope(CodegenContext *ctx){
     ctx->scope_depth--;
 }
 
-
-void codegen_clear_bindings(CodegenContext *ctx){
-    if(ctx == NULL){
+void codegen_clear_bindings(CodegenContext *ctx)
+{
+    if (ctx == NULL)
+    {
         return;
     }
 
-    while(ctx->bindings != NULL){
+    while (ctx->bindings != NULL)
+    {
         CodegenBinding *next = ctx->bindings->next;
         free(ctx->bindings);
         ctx->bindings = next;
@@ -425,128 +483,137 @@ void codegen_clear_bindings(CodegenContext *ctx){
     ctx->scope_depth = 0;
 }
 
-
-static void codegen_emit_list_to_string_runtime(CodegenContext *ctx){
+static void codegen_emit_list_to_string_runtime(CodegenContext *ctx)
+{
     fputs("LABEL $$cg_list_to_str\n"
-        "CREATEFRAME\nPUSHFRAME\n"
-        "DEFVAR LF@%cg_a\n"
-        "DEFVAR LF@%cg_len\n"
-        "DEFVAR LF@%cg_i\n"
-        "DEFVAR LF@%cg_v\n"
-        "DEFVAR LF@%cg_ty\n"
-        "DEFVAR LF@%cg_s\n"
-        "DEFVAR LF@%cg_out\n"
-        "DEFVAR LF@%cg_cmp\n"
+          "CREATEFRAME\nPUSHFRAME\n"
+          "DEFVAR LF@%cg_a\n"
+          "DEFVAR LF@%cg_len\n"
+          "DEFVAR LF@%cg_i\n"
+          "DEFVAR LF@%cg_v\n"
+          "DEFVAR LF@%cg_ty\n"
+          "DEFVAR LF@%cg_s\n"
+          "DEFVAR LF@%cg_out\n"
+          "DEFVAR LF@%cg_cmp\n"
 
-        "POPS LF@%cg_a\n"
-        "ARRAYGET LF@%cg_len LF@%cg_a int@0\n"
-        "MOVE LF@%cg_out string@List(\n"
-        "MOVE LF@%cg_i int@1\n"
+          "POPS LF@%cg_a\n"
+          "ARRAYGET LF@%cg_len LF@%cg_a int@0\n"
+          "MOVE LF@%cg_out string@List(\n"
+          "MOVE LF@%cg_i int@1\n"
 
-        "LABEL $$cg_lst_loop\n"
-        "GT LF@%cg_cmp LF@%cg_i LF@%cg_len\n"
-        "JUMPIFEQ $$cg_lst_done LF@%cg_cmp bool@true\n"
+          "LABEL $$cg_lst_loop\n"
+          "GT LF@%cg_cmp LF@%cg_i LF@%cg_len\n"
+          "JUMPIFEQ $$cg_lst_done LF@%cg_cmp bool@true\n"
 
-        "JUMPIFEQ $$cg_lst_no_sep LF@%cg_i int@1\n"
-        "CONCAT LF@%cg_out LF@%cg_out string@,\\032\n"
-        "LABEL $$cg_lst_no_sep\n"
+          "JUMPIFEQ $$cg_lst_no_sep LF@%cg_i int@1\n"
+          "CONCAT LF@%cg_out LF@%cg_out string@,\\032\n"
+          "LABEL $$cg_lst_no_sep\n"
 
-        "ARRAYGET LF@%cg_v LF@%cg_a LF@%cg_i\n"
-        "TYPE LF@%cg_ty LF@%cg_v\n"
+          "ARRAYGET LF@%cg_v LF@%cg_a LF@%cg_i\n"
+          "TYPE LF@%cg_ty LF@%cg_v\n"
 
-        "JUMPIFEQ $$cg_lst_int LF@%cg_ty string@int\n"
-        "JUMPIFEQ $$cg_lst_float LF@%cg_ty string@float\n"
-        "JUMPIFEQ $$cg_lst_bool LF@%cg_ty string@bool\n"
-        "JUMPIFEQ $$cg_lst_nil LF@%cg_ty string@nil\n"
-        "JUMPIFEQ $$cg_lst_array LF@%cg_ty string@array\n"
+          "JUMPIFEQ $$cg_lst_int LF@%cg_ty string@int\n"
+          "JUMPIFEQ $$cg_lst_float LF@%cg_ty string@float\n"
+          "JUMPIFEQ $$cg_lst_bool LF@%cg_ty string@bool\n"
+          "JUMPIFEQ $$cg_lst_nil LF@%cg_ty string@nil\n"
+          "JUMPIFEQ $$cg_lst_array LF@%cg_ty string@array\n"
 
-        "MOVE LF@%cg_s LF@%cg_v\n"
-        "JUMP $$cg_lst_append\n"
+          "MOVE LF@%cg_s LF@%cg_v\n"
+          "JUMP $$cg_lst_append\n"
 
-        "LABEL $$cg_lst_int\n"
-        "INT2STR LF@%cg_s LF@%cg_v\n"
-        "JUMP $$cg_lst_append\n"
+          "LABEL $$cg_lst_int\n"
+          "INT2STR LF@%cg_s LF@%cg_v\n"
+          "JUMP $$cg_lst_append\n"
 
-        "LABEL $$cg_lst_float\n"
-        "FLOAT2STR LF@%cg_s LF@%cg_v\n"
-        "JUMP $$cg_lst_append\n"
+          "LABEL $$cg_lst_float\n"
+          "FLOAT2STR LF@%cg_s LF@%cg_v\n"
+          "JUMP $$cg_lst_append\n"
 
-        "LABEL $$cg_lst_bool\n"
-        "JUMPIFEQ $$cg_lst_false LF@%cg_v bool@false\n"
-        "MOVE LF@%cg_s string@true\n"
-        "JUMP $$cg_lst_append\n"
+          "LABEL $$cg_lst_bool\n"
+          "JUMPIFEQ $$cg_lst_false LF@%cg_v bool@false\n"
+          "MOVE LF@%cg_s string@true\n"
+          "JUMP $$cg_lst_append\n"
 
-        "LABEL $$cg_lst_false\n"
-        "MOVE LF@%cg_s string@false\n"
-        "JUMP $$cg_lst_append\n"
+          "LABEL $$cg_lst_false\n"
+          "MOVE LF@%cg_s string@false\n"
+          "JUMP $$cg_lst_append\n"
 
-        "LABEL $$cg_lst_nil\n"
-        "MOVE LF@%cg_s string@()\n"
-        "JUMP $$cg_lst_append\n"
+          "LABEL $$cg_lst_nil\n"
+          "MOVE LF@%cg_s string@()\n"
+          "JUMP $$cg_lst_append\n"
 
-        "LABEL $$cg_lst_array\n"
-        "PUSHS LF@%cg_v\n"
-        "CALL $$cg_list_to_str\n"
-        "POPS LF@%cg_s\n"
+          "LABEL $$cg_lst_array\n"
+          "PUSHS LF@%cg_v\n"
+          "CALL $$cg_list_to_str\n"
+          "POPS LF@%cg_s\n"
 
-        "LABEL $$cg_lst_append\n"
-        "CONCAT LF@%cg_out LF@%cg_out LF@%cg_s\n"
-        "ADD LF@%cg_i LF@%cg_i int@1\n"
-        "JUMP $$cg_lst_loop\n"
+          "LABEL $$cg_lst_append\n"
+          "CONCAT LF@%cg_out LF@%cg_out LF@%cg_s\n"
+          "ADD LF@%cg_i LF@%cg_i int@1\n"
+          "JUMP $$cg_lst_loop\n"
 
-        "LABEL $$cg_lst_done\n"
-        "CONCAT LF@%cg_out LF@%cg_out string@)\n"
-        "PUSHS LF@%cg_out\n"
-        "POPFRAME\n"
-        "RETURN\n", ctx->output);
+          "LABEL $$cg_lst_done\n"
+          "CONCAT LF@%cg_out LF@%cg_out string@)\n"
+          "PUSHS LF@%cg_out\n"
+          "POPFRAME\n"
+          "RETURN\n",
+          ctx->output);
 }
 
-
-void codegen_emit_header(CodegenContext *ctx){
-    if(ctx == NULL || ctx->output == NULL){
+void codegen_emit_header(CodegenContext *ctx)
+{
+    if (ctx == NULL || ctx->output == NULL)
+    {
         return;
     }
 
-    if(fputs(".IFJcode26\n"
-                "DEFVAR GF@%cg_tmp\n"
-                "DEFVAR GF@%cg_str_left\n"
-                "DEFVAR GF@%cg_str_right\n"
-                "JUMP $$main\n", ctx->output) == EOF){
+    if (fputs(".IFJcode26\n"
+              "DEFVAR GF@%cg_tmp\n"
+              "DEFVAR GF@%cg_str_left\n"
+              "DEFVAR GF@%cg_str_right\n"
+              "JUMP $$main\n",
+              ctx->output) == EOF)
+    {
         ctx->error_code = 99;
     }
 
-    if(ctx->error_code == 0){
+    if (ctx->error_code == 0)
+    {
         codegen_emit_list_to_string_runtime(ctx);
     }
 }
 
-
-void codegen_emit_label(CodegenContext *ctx, const char *label){
+void codegen_emit_label(CodegenContext *ctx, const char *label)
+{
     fprintf(ctx->output, "LABEL %s\n", label);
 }
 
-
-void codegen_emit_jump(CodegenContext *ctx, const char *label){
+void codegen_emit_jump(CodegenContext *ctx, const char *label)
+{
     fprintf(ctx->output, "JUMP %s\n", label);
 }
 
-
-int codegen_generate_ctx(AST_NODE *root, CodegenContext *ctx){
-    if(root == NULL || ctx == NULL || ctx->output == NULL){
+int codegen_generate_ctx(AST_NODE *root, CodegenContext *ctx)
+{
+    if (root == NULL || ctx == NULL || ctx->output == NULL)
+    {
         return 99;
     }
 
-    if(ctx->error_code != 0){
+    if (ctx->error_code != 0)
+    {
         return ctx->error_code;
     }
 
     codegen_emit_header(ctx);
 
-    if(ctx->error_code == 0){
-        codegen_generate_node(root ,ctx);
+    if (ctx->error_code == 0)
+    {
+        codegen_generate_node(root, ctx);
     }
 
-    if(ferror(ctx->output)){
+    if (ferror(ctx->output))
+    {
         ctx->error_code = 99;
     }
 
@@ -555,25 +622,27 @@ int codegen_generate_ctx(AST_NODE *root, CodegenContext *ctx){
     return ctx->error_code;
 }
 
-
-int codegen_generate(AST_NODE *root, FILE *output){
+int codegen_generate(AST_NODE *root, FILE *output)
+{
     CodegenContext ctx = {0};
     ctx.output = output;
 
     return codegen_generate_ctx(root, &ctx);
 }
 
-
-void codegen_generate_node(AST_NODE *node, CodegenContext *ctx){
-    if(node == NULL || ctx->error_code != 0){
+void codegen_generate_node(AST_NODE *node, CodegenContext *ctx)
+{
+    if (node == NULL || ctx->error_code != 0)
+    {
         return;
     }
 
-    switch(node->type){
+    switch (node->type)
+    {
         case NODE_PROGRAM:
             generate_program(node, ctx);
             break;
-    
+
         case NODE_MAIN:
         case NODE_FUNC_DEF:
             generate_function(node, ctx);
@@ -589,19 +658,24 @@ void codegen_generate_node(AST_NODE *node, CodegenContext *ctx){
             break;
 
         case NODE_TOKEN_ONLY:
-            if(node->token.type == KEYWORD_RETURN){
-                generate_return(node,ctx);
+            if (node->token.type == KEYWORD_RETURN)
+            {
+                generate_return(node, ctx);
             }
-            
-            else if(node->token.type == TOKEN_TYPE_ASSIGN){
+
+            else if (node->token.type == TOKEN_TYPE_ASSIGN)
+            {
                 generate_assignment(node->left_ch, node->right_ch, ctx);
             }
 
-            else{
+            else
+            {
                 generate_expression(node, ctx);
 
-                if(ctx->error_code == 0){
-                    if(fputs("POPS GF@%cg_tmp\n", ctx->output) == EOF){
+                if (ctx->error_code == 0)
+                {
+                    if (fputs("POPS GF@%cg_tmp\n", ctx->output) == EOF)
+                    {
                         ctx->error_code = 99;
                     }
                 }
@@ -619,7 +693,8 @@ void codegen_generate_node(AST_NODE *node, CodegenContext *ctx){
         case NODE_VALMEM:
             generate_expression(node, ctx);
 
-            if(ctx->error_code == 0){
+            if (ctx->error_code == 0)
+            {
                 fputs("POPS GF@%cg_tmp\n", ctx->output);
             }
             break;
@@ -634,44 +709,52 @@ void codegen_generate_node(AST_NODE *node, CodegenContext *ctx){
     }
 }
 
-
-static void generate_program(AST_NODE *node, CodegenContext *ctx){
-    if(node == NULL || ctx == NULL || ctx->error_code != 0){
+static void generate_program(AST_NODE *node, CodegenContext *ctx)
+{
+    if (node == NULL || ctx == NULL || ctx->error_code != 0)
+    {
         return;
     }
 
     codegen_generate_node(node->left_ch, ctx);
 
-    if(ctx->error_code != 0){
+    if (ctx->error_code != 0)
+    {
         return;
     }
 
-    if(node->right_ch != NULL){
+    if (node->right_ch != NULL)
+    {
         generate_program(node->right_ch, ctx);
     }
 }
 
-
-static int generate_call_arguments(AST_NODE *args, CodegenContext *ctx){
+static int generate_call_arguments(AST_NODE *args, CodegenContext *ctx)
+{
     int count = 0;
 
-    if(args == NULL){
+    if (args == NULL)
+    {
         return 0;
     }
 
-    if(args->type != NODE_ARGUMENT && args->type != NODE_PROGRAM){
+    if (args->type != NODE_ARGUMENT && args->type != NODE_PROGRAM)
+    {
         generate_expression(args, ctx);
         return 1;
     }
 
-    for(AST_NODE *arg = args; arg != NULL; arg = arg->right_ch){
-        if(arg->left_ch == NULL){
+    for (AST_NODE *arg = args; arg != NULL; arg = arg->right_ch)
+    {
+        if (arg->left_ch == NULL)
+        {
             break;
         }
 
         generate_expression(arg->left_ch, ctx);
 
-        if(ctx->error_code != 0){
+        if (ctx->error_code != 0)
+        {
             return -1;
         }
 
@@ -681,25 +764,29 @@ static int generate_call_arguments(AST_NODE *args, CodegenContext *ctx){
     return count;
 }
 
-
-static void generate_list_range_call(AST_NODE *node, CodegenContext *ctx){
+static void generate_list_range_call(AST_NODE *node, CodegenContext *ctx)
+{
     int count = 0;
 
-    for(AST_NODE *arg = node->right_ch; arg != NULL && arg->left_ch != NULL; arg = arg->right_ch){
+    for (AST_NODE *arg = node->right_ch; arg != NULL && arg->left_ch != NULL; arg = arg->right_ch)
+    {
         generate_expression(arg->left_ch, ctx);
 
-        if(ctx->error_code != 0){
+        if (ctx->error_code != 0)
+        {
             return;
         }
 
         count++;
     }
 
-    if(count == 2){
+    if (count == 2)
+    {
         fputs("PUSHS int@1\n", ctx->output);
     }
 
-    else if(count != 3){
+    else if (count != 3)
+    {
         ctx->error_code = 99;
         return;
     }
@@ -707,10 +794,12 @@ static void generate_list_range_call(AST_NODE *node, CodegenContext *ctx){
     codegen_list_range_from_stack(ctx, 0);
 }
 
-
-void codegen_generate_call_expression(AST_NODE *node, CodegenContext *ctx){
-    if(node == NULL || ctx == NULL || ctx->error_code != 0 || node->left_ch == NULL){
-        if(ctx != NULL){
+void codegen_generate_call_expression(AST_NODE *node, CodegenContext *ctx)
+{
+    if (node == NULL || ctx == NULL || ctx->error_code != 0 || node->left_ch == NULL)
+    {
+        if (ctx != NULL)
+        {
             ctx->error_code = 99;
         }
         return;
@@ -718,52 +807,62 @@ void codegen_generate_call_expression(AST_NODE *node, CodegenContext *ctx){
 
     AST_NODE *callee = node->left_ch;
 
-    if(callee->type == NODE_VALMEM && callee->right_ch != NULL &&
-        callee->right_ch->type == NODE_TOKEN_ONLY){
+    if (callee->type == NODE_VALMEM && callee->right_ch != NULL && callee->right_ch->type == NODE_TOKEN_ONLY)
+    {
         const char *method = callee->right_ch->token.attr.str_val;
 
-        if(method != NULL && (strcmp(method, "take") == 0 || strcmp(method, "drop") == 0 || strcmp(method, "slice") == 0)){
+        if (method != NULL &&
+            (strcmp(method, "take") == 0 || strcmp(method, "drop") == 0 || strcmp(method, "slice") == 0))
+        {
             codegen_generate_list_method_expression(node, ctx);
             return;
         }
 
-        if(method != NULL && strcmp(method, "range") == 0 && callee->left_ch != NULL &&
-            callee->left_ch->type == NODE_TOKEN_ONLY && callee->left_ch->token.type == KEYWORD_LIST){
-                generate_list_range_call(node, ctx);
-                return;
+        if (method != NULL && strcmp(method, "range") == 0 && callee->left_ch != NULL &&
+            callee->left_ch->type == NODE_TOKEN_ONLY && callee->left_ch->token.type == KEYWORD_LIST)
+        {
+            generate_list_range_call(node, ctx);
+            return;
         }
     }
 
-    if(callee->type == NODE_TOKEN_ONLY && callee->token.type == KEYWORD_LIST){
+    if (callee->type == NODE_TOKEN_ONLY && callee->token.type == KEYWORD_LIST)
+    {
         generate_list_constructor(node, ctx);
         return;
     }
 
-    if(callee->type != NODE_TOKEN_ONLY || callee->token.type != TOKEN_TYPE_IDENTIFIER ||
-        callee->token.attr.str_val == NULL){
-            ctx->error_code = 99;
-            return;
+    if (callee->type != NODE_TOKEN_ONLY || callee->token.type != TOKEN_TYPE_IDENTIFIER ||
+        callee->token.attr.str_val == NULL)
+    {
+        ctx->error_code = 99;
+        return;
     }
 
-    if(codegen_variable_type(callee, ctx) == CG_TYPE_LIST){
-            generate_list_index(node, ctx);
-            return;
+    if (codegen_variable_type(callee, ctx) == CG_TYPE_LIST)
+    {
+        generate_list_index(node, ctx);
+        return;
     }
 
     const char *name = callee->token.attr.str_val;
 
-    if(strcmp(name, "print") == 0){
+    if (strcmp(name, "print") == 0)
+    {
         AST_NODE *arg = node->right_ch;
 
-        if(arg != NULL && (arg->type == NODE_ARGUMENT || arg->type == NODE_PROGRAM)){
-            if(arg->right_ch != NULL){
+        if (arg != NULL && (arg->type == NODE_ARGUMENT || arg->type == NODE_PROGRAM))
+        {
+            if (arg->right_ch != NULL)
+            {
                 ctx->error_code = 99;
                 return;
             }
             arg = arg->left_ch;
         }
 
-        if(arg == NULL){
+        if (arg == NULL)
+        {
             ctx->error_code = 99;
             return;
         }
@@ -772,113 +871,130 @@ void codegen_generate_call_expression(AST_NODE *node, CodegenContext *ctx){
 
         generate_expression(arg, ctx);
 
-        if(ctx->error_code != 0){
+        if (ctx->error_code != 0)
+        {
             return;
         }
 
-        if(type == CG_TYPE_LIST){
+        if (type == CG_TYPE_LIST)
+        {
             fputs("CALL $$cg_list_to_str\n"
-                "POPS GF@%cg_tmp\n"
-                "WRITE GF@%cg_tmp\n", ctx->output);
+                  "POPS GF@%cg_tmp\n"
+                  "WRITE GF@%cg_tmp\n",
+                  ctx->output);
         }
 
-        else if(type == CG_TYPE_UNIT){
+        else if (type == CG_TYPE_UNIT)
+        {
             fputs("POPS GF@%cg_tmp\n"
-                "WRITE string@()\n", ctx->output);
+                  "WRITE string@()\n",
+                  ctx->output);
         }
 
-        else{
+        else
+        {
             fputs("POPS GF@%cg_tmp\n"
-                "WRITE GF@%cg_tmp\n", ctx->output);
+                  "WRITE GF@%cg_tmp\n",
+                  ctx->output);
         }
 
         fputs("PUSHS nil@nil\n", ctx->output);
         return;
     }
 
-    if(codegen_builtin_return_type(node) != CG_TYPE_UNKNOWN){
+    if (codegen_builtin_return_type(node) != CG_TYPE_UNKNOWN)
+    {
         codegen_generate_builtin_expression(node, ctx);
         return;
     }
 
     generate_call_arguments(node->right_ch, ctx);
 
-    if(ctx->error_code == 0){
+    if (ctx->error_code == 0)
+    {
         fprintf(ctx->output, "CALL $%s\n", name);
     }
 }
 
-
-static void generate_call(AST_NODE *node, CodegenContext *ctx){
+static void generate_call(AST_NODE *node, CodegenContext *ctx)
+{
     codegen_generate_call_expression(node, ctx);
 
-    if(ctx->error_code == 0){
+    if (ctx->error_code == 0)
+    {
         fputs("POPS GF@%cg_tmp\n", ctx->output);
     }
 }
 
-
-static const char *get_call_name(const AST_NODE *node){
-    if(node == NULL || node->type != NODE_CALL || node->left_ch == NULL ||
-        node->left_ch->type != NODE_TOKEN_ONLY || node->left_ch->token.type != TOKEN_TYPE_IDENTIFIER){
-            return NULL;
+static const char *get_call_name(const AST_NODE *node)
+{
+    if (node == NULL || node->type != NODE_CALL || node->left_ch == NULL || node->left_ch->type != NODE_TOKEN_ONLY ||
+        node->left_ch->token.type != TOKEN_TYPE_IDENTIFIER)
+    {
+        return NULL;
     }
 
     return node->left_ch->token.attr.str_val;
 }
 
-
-CodegenType codegen_builtin_return_type(const AST_NODE *node){
+CodegenType codegen_builtin_return_type(const AST_NODE *node)
+{
     const char *name = get_call_name(node);
 
-    if(name == NULL){
+    if (name == NULL)
+    {
         return CG_TYPE_UNKNOWN;
     }
 
-    if(strcmp(name, "readInt") == 0 ||
-        strcmp(name, "toInt") == 0 ||
-        strcmp(name, "strLength") == 0 ||
-        strcmp(name, "ord") == 0){
-            return CG_TYPE_INT;
+    if (strcmp(name, "readInt") == 0 || strcmp(name, "toInt") == 0 || strcmp(name, "strLength") == 0 ||
+        strcmp(name, "ord") == 0)
+    {
+        return CG_TYPE_INT;
     }
 
-    if(strcmp(name, "readDouble") == 0){
+    if (strcmp(name, "readDouble") == 0)
+    {
         return CG_TYPE_DOUBLE;
     }
 
-    if(strcmp(name, "readLine") == 0 ||
-        strcmp(name, "toStr") == 0 ||
-        strcmp(name, "chr") == 0 ||
-        strcmp(name, "subStr") == 0){
-            return CG_TYPE_STRING;
+    if (strcmp(name, "readLine") == 0 || strcmp(name, "toStr") == 0 || strcmp(name, "chr") == 0 ||
+        strcmp(name, "subStr") == 0)
+    {
+        return CG_TYPE_STRING;
     }
 
-    if(strcmp(name, "readBoolean") == 0){
+    if (strcmp(name, "readBoolean") == 0)
+    {
         return CG_TYPE_BOOL;
     }
 
     return CG_TYPE_UNKNOWN;
 }
 
-
-static int get_builtin_arguments(AST_NODE *args, AST_NODE **out, int expected){
+static int get_builtin_arguments(AST_NODE *args, AST_NODE **out, int expected)
+{
     int count = 0;
 
-    if(args == NULL){
+    if (args == NULL)
+    {
         return 0;
     }
 
-    if(args->type != NODE_ARGUMENT && args->type != NODE_PROGRAM){
+    if (args->type != NODE_ARGUMENT && args->type != NODE_PROGRAM)
+    {
         out[0] = args;
         return expected == 1;
     }
 
-    for(AST_NODE *arg = args; arg != NULL; arg = arg->right_ch){
-        if(arg->left_ch == NULL){
+    for (AST_NODE *arg = args; arg != NULL; arg = arg->right_ch)
+    {
+        if (arg->left_ch == NULL)
+        {
             break;
         }
 
-        if(count < expected){
+        if (count < expected)
+        {
             out[count] = arg->left_ch;
         }
 
@@ -888,82 +1004,82 @@ static int get_builtin_arguments(AST_NODE *args, AST_NODE **out, int expected){
     return count == expected;
 }
 
-
-static void emit_builtin_ord(CodegenContext *ctx){
+static void emit_builtin_ord(CodegenContext *ctx)
+{
     unsigned int id = ctx->label_counter++;
 
     fputs("CREATEFRAME\n"
-        "PUSHFRAME\n"
-        "DEFVAR LF@%cg_text\n"
-        "DEFVAR LF@%cg_index\n"
-        "DEFVAR LF@%cg_length\n"
-        "DEFVAR LF@%cg_result\n"
-        "DEFVAR LF@%cg_check\n"
-        "POPS LF@%cg_index\n"
-        "POPS LF@%cg_text\n"
-        "STRLEN LF@%cg_length LF@%cg_text\n"
-        "MOVE LF@%cg_result int@-1\n"
-        "LT LF@%cg_check LF@%cg_index int@0\n", ctx->output);
+          "PUSHFRAME\n"
+          "DEFVAR LF@%cg_text\n"
+          "DEFVAR LF@%cg_index\n"
+          "DEFVAR LF@%cg_length\n"
+          "DEFVAR LF@%cg_result\n"
+          "DEFVAR LF@%cg_check\n"
+          "POPS LF@%cg_index\n"
+          "POPS LF@%cg_text\n"
+          "STRLEN LF@%cg_length LF@%cg_text\n"
+          "MOVE LF@%cg_result int@-1\n"
+          "LT LF@%cg_check LF@%cg_index int@0\n",
+          ctx->output);
 
-    fprintf(ctx->output,
-        "JUMPIFEQ $$cg_ord_end_%u LF@%%cg_check bool@true\n", id);
+    fprintf(ctx->output, "JUMPIFEQ $$cg_ord_end_%u LF@%%cg_check bool@true\n", id);
 
-    fputs(
-        "LT LF@%cg_check LF@%cg_index LF@%cg_length\n", ctx->output);
+    fputs("LT LF@%cg_check LF@%cg_index LF@%cg_length\n", ctx->output);
 
-    fprintf(ctx->output,
-        "JUMPIFEQ $$cg_ord_end_%u LF@%%cg_check bool@false\n", id);
+    fprintf(ctx->output, "JUMPIFEQ $$cg_ord_end_%u LF@%%cg_check bool@false\n", id);
 
-    fputs(
-        "STRI2INT LF@%cg_result LF@%cg_text LF@%cg_index\n", ctx->output);
+    fputs("STRI2INT LF@%cg_result LF@%cg_text LF@%cg_index\n", ctx->output);
 
     fprintf(ctx->output, "LABEL $$cg_ord_end_%u\n", id);
 
     fputs("PUSHS LF@%cg_result\n"
-        "POPFRAME\n", ctx->output);
+          "POPFRAME\n",
+          ctx->output);
 }
 
-
-static void emit_builtin_substr(CodegenContext *ctx){
+static void emit_builtin_substr(CodegenContext *ctx)
+{
     unsigned int id = ctx->label_counter++;
 
     fputs("CREATEFRAME\n"
-        "PUSHFRAME\n"
-        "DEFVAR LF@%cg_text\n"
-        "DEFVAR LF@%cg_start\n"
-        "DEFVAR LF@%cg_end\n"
-        "DEFVAR LF@%cg_length\n"
-        "DEFVAR LF@%cg_index\n"
-        "DEFVAR LF@%cg_char\n"
-        "DEFVAR LF@%cg_result\n"
-        "DEFVAR LF@%cg_check\n"
-        "POPS LF@%cg_end\n"
-        "POPS LF@%cg_start\n"
-        "POPS LF@%cg_text\n"
-        "STRLEN LF@%cg_length LF@%cg_text\n", ctx->output);
+          "PUSHFRAME\n"
+          "DEFVAR LF@%cg_text\n"
+          "DEFVAR LF@%cg_start\n"
+          "DEFVAR LF@%cg_end\n"
+          "DEFVAR LF@%cg_length\n"
+          "DEFVAR LF@%cg_index\n"
+          "DEFVAR LF@%cg_char\n"
+          "DEFVAR LF@%cg_result\n"
+          "DEFVAR LF@%cg_check\n"
+          "POPS LF@%cg_end\n"
+          "POPS LF@%cg_start\n"
+          "POPS LF@%cg_text\n"
+          "STRLEN LF@%cg_length LF@%cg_text\n",
+          ctx->output);
 
     fputs("LT LF@%cg_check LF@%cg_start int@0\n", ctx->output);
-    
+
     fprintf(ctx->output, "JUMPIFEQ $$cg_sub_invalid_%u LF@%%cg_check bool@true\n", id);
 
     fputs("LT LF@%cg_check LF@%cg_end int@0\n", ctx->output);
-    
+
     fprintf(ctx->output, "JUMPIFEQ $$cg_sub_invalid_%u LF@%%cg_check bool@true\n", id);
 
     fputs("GT LF@%cg_check LF@%cg_start LF@%cg_end\n", ctx->output);
-   
+
     fprintf(ctx->output, "JUMPIFEQ $$cg_sub_invalid_%u LF@%%cg_check bool@true\n", id);
 
     fputs("LT LF@%cg_check LF@%cg_start LF@%cg_length\n", ctx->output);
-   
+
     fprintf(ctx->output, "JUMPIFEQ $$cg_sub_invalid_%u LF@%%cg_check bool@false\n", id);
 
     fputs("GT LF@%cg_check LF@%cg_end LF@%cg_length\n", ctx->output);
-    
+
     fprintf(ctx->output, "JUMPIFEQ $$cg_sub_invalid_%u LF@%%cg_check bool@true\n", id);
 
     fputs("MOVE LF@%cg_result string@\n"
-        "MOVE LF@%cg_index LF@%cg_start\n", ctx->output);
+          "MOVE LF@%cg_index LF@%cg_start\n",
+          ctx->output);
 
     fprintf(ctx->output, "LABEL $$cg_sub_loop_%u\n", id);
 
@@ -972,120 +1088,142 @@ static void emit_builtin_substr(CodegenContext *ctx){
     fprintf(ctx->output, "JUMPIFEQ $$cg_sub_finish_%u LF@%%cg_check bool@false\n", id);
 
     fputs("GETCHAR LF@%cg_char LF@%cg_text LF@%cg_index\n"
-        "CONCAT LF@%cg_result LF@%cg_result LF@%cg_char\n"
-        "ADD LF@%cg_index LF@%cg_index int@1\n", ctx->output);
+          "CONCAT LF@%cg_result LF@%cg_result LF@%cg_char\n"
+          "ADD LF@%cg_index LF@%cg_index int@1\n",
+          ctx->output);
 
-    fprintf(ctx->output, "JUMP $$cg_sub_loop_%u\n"
-                        "LABEL $$cg_sub_invalid_%u\n"
-                        "EXIT int@40\n"
-                        "LABEL $$cg_sub_finish_%u\n", id, id, id);
+    fprintf(ctx->output,
+            "JUMP $$cg_sub_loop_%u\n"
+            "LABEL $$cg_sub_invalid_%u\n"
+            "EXIT int@40\n"
+            "LABEL $$cg_sub_finish_%u\n",
+            id, id, id);
 
     fputs("PUSHS LF@%cg_result\n"
-        "POPFRAME\n", ctx->output);
+          "POPFRAME\n",
+          ctx->output);
 }
 
-
-void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
-    if(ctx == NULL || ctx->error_code != 0){
+void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx)
+{
+    if (ctx == NULL || ctx->error_code != 0)
+    {
         return;
     }
 
-    if(ctx->output == NULL || codegen_builtin_return_type(node) == CG_TYPE_UNKNOWN){
+    if (ctx->output == NULL || codegen_builtin_return_type(node) == CG_TYPE_UNKNOWN)
+    {
         ctx->error_code = 99;
         return;
     }
 
     const char *name = get_call_name(node);
 
-
     const char *read_type = NULL;
     const char *fallback = NULL;
 
-    if(strcmp(name, "readInt") == 0){
+    if (strcmp(name, "readInt") == 0)
+    {
         read_type = "int";
         fallback = "int@0";
     }
 
-    else if(strcmp(name, "readDouble") == 0){
+    else if (strcmp(name, "readDouble") == 0)
+    {
         read_type = "float";
         fallback = "float@0x0p+0";
     }
 
-    else if(strcmp(name, "readLine") == 0){
+    else if (strcmp(name, "readLine") == 0)
+    {
         read_type = "string";
         fallback = "string@";
     }
 
-    else if(strcmp(name, "readBoolean") == 0){
+    else if (strcmp(name, "readBoolean") == 0)
+    {
         read_type = "bool";
         fallback = "bool@false";
     }
 
-    if(read_type != NULL){
-        if(node->right_ch != NULL &&
-        !(node->right_ch->type == NODE_ARGUMENT && node->right_ch->left_ch == NULL)){
+    if (read_type != NULL)
+    {
+        if (node->right_ch != NULL && !(node->right_ch->type == NODE_ARGUMENT && node->right_ch->left_ch == NULL))
+        {
             ctx->error_code = 99;
             return;
         }
 
         unsigned int id = ctx->label_counter++;
 
-        fprintf(ctx->output, "READ GF@%%cg_tmp %s\n"
-                            "JUMPIFNEQ $$cg_read_ok_%u GF@%%cg_tmp nil@nil\n"
-                            "MOVE GF@%%cg_tmp %s\n"
-                            "LABEL $$cg_read_ok_%u\n"
-                            "PUSHS GF@%%cg_tmp\n", read_type, id, fallback, id);
-        
+        fprintf(ctx->output,
+                "READ GF@%%cg_tmp %s\n"
+                "JUMPIFNEQ $$cg_read_ok_%u GF@%%cg_tmp nil@nil\n"
+                "MOVE GF@%%cg_tmp %s\n"
+                "LABEL $$cg_read_ok_%u\n"
+                "PUSHS GF@%%cg_tmp\n",
+                read_type, id, fallback, id);
+
         return;
     }
 
-    if(strcmp(name, "ord") == 0 || strcmp(name, "subStr") == 0){
+    if (strcmp(name, "ord") == 0 || strcmp(name, "subStr") == 0)
+    {
         int is_ord = strcmp(name, "ord") == 0;
 
         int count = is_ord ? 2 : 3;
 
         AST_NODE *args[3] = {NULL, NULL, NULL};
 
-        if(!get_builtin_arguments(node->right_ch, args, count)){
+        if (!get_builtin_arguments(node->right_ch, args, count))
+        {
             ctx->error_code = 99;
             return;
         }
 
-        if(codegen_expression_type(args[0], ctx) != CG_TYPE_STRING){
+        if (codegen_expression_type(args[0], ctx) != CG_TYPE_STRING)
+        {
             ctx->error_code = 99;
             return;
         }
 
-        for(int i = 1; i < count; i++){
-            if(codegen_expression_type(args[i], ctx) != CG_TYPE_INT){
+        for (int i = 1; i < count; i++)
+        {
+            if (codegen_expression_type(args[i], ctx) != CG_TYPE_INT)
+            {
                 ctx->error_code = 99;
                 return;
             }
         }
 
-        for(int i = 0; i < count; i++){
+        for (int i = 0; i < count; i++)
+        {
             generate_expression(args[i], ctx);
 
-            if(ctx->error_code != 0){
+            if (ctx->error_code != 0)
+            {
                 return;
             }
         }
 
-        if(is_ord){
+        if (is_ord)
+        {
             emit_builtin_ord(ctx);
         }
-        else{
+        else
+        {
             emit_builtin_substr(ctx);
         }
 
         return;
     }
 
-
     AST_NODE *arg = node->right_ch;
 
-    if(arg != NULL && (arg->type == NODE_PROGRAM || arg->type == NODE_ARGUMENT)){
-        if(arg->left_ch == NULL || arg->right_ch != NULL){
+    if (arg != NULL && (arg->type == NODE_PROGRAM || arg->type == NODE_ARGUMENT))
+    {
+        if (arg->left_ch == NULL || arg->right_ch != NULL)
+        {
             ctx->error_code = 99;
             return;
         }
@@ -1093,42 +1231,50 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
         arg = arg->left_ch;
     }
 
-    if(arg == NULL){
+    if (arg == NULL)
+    {
         ctx->error_code = 99;
         return;
     }
 
     CodegenType type = codegen_expression_type(arg, ctx);
 
-    if(type == CG_TYPE_UNKNOWN || (strcmp(name, "toInt") == 0 && type != CG_TYPE_DOUBLE) ||
-        (strcmp(name, "strLength") == 0 && type != CG_TYPE_STRING) ||
-        (strcmp(name, "chr") == 0 && type != CG_TYPE_INT)){
-            ctx->error_code = 99;
-            return;
+    if (type == CG_TYPE_UNKNOWN || (strcmp(name, "toInt") == 0 && type != CG_TYPE_DOUBLE) ||
+        (strcmp(name, "strLength") == 0 && type != CG_TYPE_STRING) || (strcmp(name, "chr") == 0 && type != CG_TYPE_INT))
+    {
+        ctx->error_code = 99;
+        return;
     }
 
     generate_expression(arg, ctx);
 
-    if(ctx->error_code != 0){
+    if (ctx->error_code != 0)
+    {
         return;
     }
 
-    if(strcmp(name, "toInt") == 0){
+    if (strcmp(name, "toInt") == 0)
+    {
         fputs("FLOAT2INTS\n", ctx->output);
     }
 
-    else if(strcmp(name, "strLength") == 0){
+    else if (strcmp(name, "strLength") == 0)
+    {
         fputs("POPS GF@%cg_tmp\n"
-                "STRLEN GF@%cg_tmp GF@%cg_tmp\n"
-                "PUSHS GF@%cg_tmp\n", ctx->output);
+              "STRLEN GF@%cg_tmp GF@%cg_tmp\n"
+              "PUSHS GF@%cg_tmp\n",
+              ctx->output);
     }
 
-    else if(strcmp(name, "chr") == 0){
+    else if (strcmp(name, "chr") == 0)
+    {
         fputs("INT2CHARS\n", ctx->output);
     }
 
-    else if(strcmp(name, "toStr") == 0){
-        switch(type){
+    else if (strcmp(name, "toStr") == 0)
+    {
+        switch (type)
+        {
             case CG_TYPE_INT:
                 fputs("INT2STRS\n", ctx->output);
                 break;
@@ -1137,16 +1283,18 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
                 fputs("FLOAT2STRS\n", ctx->output);
                 break;
 
-            case CG_TYPE_BOOL:{
+            case CG_TYPE_BOOL: {
                 unsigned int id = ctx->label_counter++;
 
-                fprintf(ctx->output, "PUSHS bool@false\n"
-                                    "JUMPIFEQS $$cg_bool_false_%u\n"
-                                    "PUSHS string@true\n"
-                                    "JUMP $$cg_bool_end_%u\n"
-                                    "LABEL $$cg_bool_false_%u\n"
-                                    "PUSHS string@false\n"
-                                    "LABEL $$cg_bool_end_%u\n", id, id, id, id);
+                fprintf(ctx->output,
+                        "PUSHS bool@false\n"
+                        "JUMPIFEQS $$cg_bool_false_%u\n"
+                        "PUSHS string@true\n"
+                        "JUMP $$cg_bool_end_%u\n"
+                        "LABEL $$cg_bool_false_%u\n"
+                        "PUSHS string@false\n"
+                        "LABEL $$cg_bool_end_%u\n",
+                        id, id, id, id);
                 break;
             }
 
@@ -1156,7 +1304,8 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
 
             case CG_TYPE_UNIT:
                 fputs("POPS GF@%cg_tmp\n"
-                    "PUSHS string@()\n", ctx->output);
+                      "PUSHS string@()\n",
+                      ctx->output);
                 break;
 
             case CG_TYPE_LIST:
@@ -1164,20 +1313,21 @@ void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx){
                 break;
 
             default:
-                    ctx->error_code = 99;
-                    break;
-            
+                ctx->error_code = 99;
+                break;
         }
     }
 }
 
-
-static void generate_while(AST_NODE *node, CodegenContext *ctx){
-    if(ctx == NULL || ctx->error_code != 0){
+static void generate_while(AST_NODE *node, CodegenContext *ctx)
+{
+    if (ctx == NULL || ctx->error_code != 0)
+    {
         return;
     }
 
-    if(node == NULL || ctx->output == NULL || node->left_ch == NULL || node->right_ch == NULL){
+    if (node == NULL || ctx->output == NULL || node->left_ch == NULL || node->right_ch == NULL)
+    {
         ctx->error_code = 99;
         return;
     }
@@ -1191,7 +1341,8 @@ static void generate_while(AST_NODE *node, CodegenContext *ctx){
 
     generate_expression(condition, ctx);
 
-    if(ctx->error_code != 0){
+    if (ctx->error_code != 0)
+    {
         return;
     }
 
@@ -1202,23 +1353,25 @@ static void generate_while(AST_NODE *node, CodegenContext *ctx){
     codegen_generate_node(body, ctx);
     codegen_leave_scope(ctx);
 
-    if(ctx->error_code != 0){
+    if (ctx->error_code != 0)
+    {
         return;
     }
 
     fprintf(ctx->output, "JUMP $$while_start_%u\n", id);
     fprintf(ctx->output, "LABEL $$while_end_%u\n", id);
-
 }
 
-
-static void generate_if(AST_NODE *node, CodegenContext *ctx){
-    if(node == NULL || node->left_ch == NULL || node->left_ch->left_ch == NULL ||
-        node->left_ch->right_ch == NULL || ctx == NULL || ctx->error_code != 0){
-            if(ctx != NULL){
-                ctx->error_code = 99;
-            }
-            return;
+static void generate_if(AST_NODE *node, CodegenContext *ctx)
+{
+    if (node == NULL || node->left_ch == NULL || node->left_ch->left_ch == NULL || node->left_ch->right_ch == NULL ||
+        ctx == NULL || ctx->error_code != 0)
+    {
+        if (ctx != NULL)
+        {
+            ctx->error_code = 99;
+        }
+        return;
     }
 
     AST_NODE *pair = node->left_ch;
@@ -1226,28 +1379,36 @@ static void generate_if(AST_NODE *node, CodegenContext *ctx){
 
     generate_expression(pair->left_ch, ctx);
 
-    if(ctx->error_code != 0){
+    if (ctx->error_code != 0)
+    {
         return;
     }
 
-    fprintf(ctx->output, "PUSHS bool@false\n"
-                        "JUMPIFEQS $$if_else_%u\n", id);
+    fprintf(ctx->output,
+            "PUSHS bool@false\n"
+            "JUMPIFEQS $$if_else_%u\n",
+            id);
 
     codegen_enter_scope(ctx);
     codegen_generate_node(pair->right_ch, ctx);
     codegen_leave_scope(ctx);
 
-    if(ctx->error_code != 0){
+    if (ctx->error_code != 0)
+    {
         return;
     }
 
-    fprintf(ctx->output, "JUMP $$if_end_%u\n"
-                        "LABEL $$if_else_%u\n", id, id);
+    fprintf(ctx->output,
+            "JUMP $$if_end_%u\n"
+            "LABEL $$if_else_%u\n",
+            id, id);
 
-    if(node->right_ch != NULL){
+    if (node->right_ch != NULL)
+    {
         AST_NODE *branch = node->right_ch;
 
-        if(branch->type == NODE_ELSE){
+        if (branch->type == NODE_ELSE)
+        {
             branch = branch->left_ch;
         }
 
@@ -1259,15 +1420,16 @@ static void generate_if(AST_NODE *node, CodegenContext *ctx){
     fprintf(ctx->output, "LABEL $$if_end_%u\n", id);
 }
 
-
-static void generate_for_list(AST_NODE *node, CodegenContext *ctx){
+static void generate_for_list(AST_NODE *node, CodegenContext *ctx)
+{
     AST_NODE *iterator = node->left_ch;
     AST_NODE *source = iterator->left_ch->left_ch;
 
     codegen_enter_scope(ctx);
     const char *name = codegen_variable_name(iterator, ctx);
 
-    if(ctx->error_code != 0){
+    if (ctx->error_code != 0)
+    {
         return;
     }
 
@@ -1276,64 +1438,77 @@ static void generate_for_list(AST_NODE *node, CodegenContext *ctx){
 
     generate_expression(source, ctx);
 
-    if(ctx->error_code != 0){
+    if (ctx->error_code != 0)
+    {
         return;
     }
 
     codegen_declare_variable(iterator, ctx);
     codegen_set_variable_type(iterator, ctx, item_type);
 
-    fprintf(ctx->output,"POPS LF@%%cg_for_end_%s\n"
-                        "MOVE LF@%%cg_for_step_%s int@0\n"
-                        "LABEL $$cg_for_list_check_%u\n"
-                        "ARRAYGET GF@%%cg_tmp LF@%%cg_for_end_%s int@0\n"
-                        "LT GF@%%cg_tmp LF@%%cg_for_step_%s GF@%%cg_tmp\n"
-                        "JUMPIFEQ $$cg_for_list_end_%u GF@%%cg_tmp bool@false\n"
-                        "ADD GF@%%cg_tmp LF@%%cg_for_step_%s int@1\n"
-                        "ARRAYGET LF@%s LF@%%cg_for_end_%s GF@%%cg_tmp\n", name, name, id, name, name, id, name, name, name);
+    fprintf(ctx->output,
+            "POPS LF@%%cg_for_end_%s\n"
+            "MOVE LF@%%cg_for_step_%s int@0\n"
+            "LABEL $$cg_for_list_check_%u\n"
+            "ARRAYGET GF@%%cg_tmp LF@%%cg_for_end_%s int@0\n"
+            "LT GF@%%cg_tmp LF@%%cg_for_step_%s GF@%%cg_tmp\n"
+            "JUMPIFEQ $$cg_for_list_end_%u GF@%%cg_tmp bool@false\n"
+            "ADD GF@%%cg_tmp LF@%%cg_for_step_%s int@1\n"
+            "ARRAYGET LF@%s LF@%%cg_for_end_%s GF@%%cg_tmp\n",
+            name, name, id, name, name, id, name, name, name);
 
-    for(AST_NODE *guard = iterator->right_ch; guard != NULL; guard = guard->right_ch){
+    for (AST_NODE *guard = iterator->right_ch; guard != NULL; guard = guard->right_ch)
+    {
 
         generate_expression(guard->left_ch, ctx);
 
-        if(ctx->error_code != 0){
+        if (ctx->error_code != 0)
+        {
             return;
         }
 
-        fprintf(ctx->output, "PUSHS bool@false\n"
-                            "JUMPIFEQS $$cg_for_list_next_%u\n", id);
+        fprintf(ctx->output,
+                "PUSHS bool@false\n"
+                "JUMPIFEQS $$cg_for_list_next_%u\n",
+                id);
     }
 
     codegen_generate_node(node->right_ch, ctx);
 
-    if(ctx->error_code != 0){
+    if (ctx->error_code != 0)
+    {
         return;
     }
 
-    fprintf(ctx->output, "LABEL $$cg_for_list_next_%u\n"
-                        "ADD LF@%%cg_for_step_%s LF@%%cg_for_step_%s int@1\n"
-                        "JUMP $$cg_for_list_check_%u\n"
-                        "LABEL $$cg_for_list_end_%u\n", id, name, name, id, id);
+    fprintf(ctx->output,
+            "LABEL $$cg_for_list_next_%u\n"
+            "ADD LF@%%cg_for_step_%s LF@%%cg_for_step_%s int@1\n"
+            "JUMP $$cg_for_list_check_%u\n"
+            "LABEL $$cg_for_list_end_%u\n",
+            id, name, name, id, id);
 
     codegen_leave_scope(ctx);
 }
 
-
-static void generate_list_index(AST_NODE *node, CodegenContext *ctx){
-    if(node->right_ch == NULL || node->right_ch->left_ch == NULL || node->right_ch->right_ch != NULL){
+static void generate_list_index(AST_NODE *node, CodegenContext *ctx)
+{
+    if (node->right_ch == NULL || node->right_ch->left_ch == NULL || node->right_ch->right_ch != NULL)
+    {
         ctx->error_code = 99;
         return;
     }
 
     const char *name = codegen_variable_name(node->left_ch, ctx);
 
-    if(ctx->error_code != 0){
+    if (ctx->error_code != 0)
+    {
         return;
     }
 
     generate_expression(node->right_ch->left_ch, ctx);
 
-    if(ctx->error_code != 0){
+    if (ctx->error_code != 0)
+    {
         return;
     }
 
@@ -1342,60 +1517,73 @@ static void generate_list_index(AST_NODE *node, CodegenContext *ctx){
     unsigned int id = ctx->label_counter++;
 
     fputs("CREATEFRAME\n"
-        "PUSHFRAME\n"
-        "DEFVAR LF@%cg_list\n"
-        "DEFVAR LF@%cg_index\n"
-        "DEFVAR LF@%cg_len\n"
-        "DEFVAR LF@%cg_value\n"
-        "DEFVAR LF@%cg_test\n"
+          "PUSHFRAME\n"
+          "DEFVAR LF@%cg_list\n"
+          "DEFVAR LF@%cg_index\n"
+          "DEFVAR LF@%cg_len\n"
+          "DEFVAR LF@%cg_value\n"
+          "DEFVAR LF@%cg_test\n"
 
-        "POPS LF@%cg_list\n"
-        "POPS LF@%cg_index\n"
+          "POPS LF@%cg_list\n"
+          "POPS LF@%cg_index\n"
 
-        "ARRAYGET LF@%cg_len LF@%cg_list int@0\n"
-        "LT LF@%cg_test LF@%cg_index int@0\n", ctx->output);
+          "ARRAYGET LF@%cg_len LF@%cg_list int@0\n"
+          "LT LF@%cg_test LF@%cg_index int@0\n",
+          ctx->output);
 
-    fprintf(ctx->output, "JUMPIFEQ $$cg_list_index_bad_%u "
-                        "LF@%%cg_test bool@true\n", id);
+    fprintf(ctx->output,
+            "JUMPIFEQ $$cg_list_index_bad_%u "
+            "LF@%%cg_test bool@true\n",
+            id);
 
     fputs("LT LF@%cg_test LF@%cg_index LF@%cg_len\n", ctx->output);
 
-    fprintf(ctx->output, "JUMPIFEQ $$cg_list_index_bad_%u "
-                        "LF@%%cg_test bool@false\n", id);
+    fprintf(ctx->output,
+            "JUMPIFEQ $$cg_list_index_bad_%u "
+            "LF@%%cg_test bool@false\n",
+            id);
 
     fputs("ADD LF@%cg_index LF@%cg_index int@1\n"
-        "ARRAYGET LF@%cg_value LF@%cg_list LF@%cg_index\n"
-        "PUSHS LF@%cg_value\n"
-        "POPFRAME\n", ctx->output);
+          "ARRAYGET LF@%cg_value LF@%cg_list LF@%cg_index\n"
+          "PUSHS LF@%cg_value\n"
+          "POPFRAME\n",
+          ctx->output);
 
-    fprintf(ctx->output, "JUMP $$cg_list_index_end_%u\n"
-                        "LABEL $$cg_list_index_bad_%u\n"
-                        "EXIT int@40\n"
-                        "LABEL $$cg_list_index_end_%u\n", id, id, id);
+    fprintf(ctx->output,
+            "JUMP $$cg_list_index_end_%u\n"
+            "LABEL $$cg_list_index_bad_%u\n"
+            "EXIT int@40\n"
+            "LABEL $$cg_list_index_end_%u\n",
+            id, id, id);
 }
 
-
-static void generate_list_constructor(AST_NODE *node, CodegenContext *ctx){
+static void generate_list_constructor(AST_NODE *node, CodegenContext *ctx)
+{
     size_t count = 0;
     int needs_double = ctx->force_list_double;
     ctx->force_list_double = 0;
 
-    for(AST_NODE *arg = node->right_ch; arg != NULL && arg->left_ch != NULL; arg = arg->right_ch){
-        if(codegen_expression_type(arg->left_ch, ctx) == CG_TYPE_DOUBLE){
+    for (AST_NODE *arg = node->right_ch; arg != NULL && arg->left_ch != NULL; arg = arg->right_ch)
+    {
+        if (codegen_expression_type(arg->left_ch, ctx) == CG_TYPE_DOUBLE)
+        {
             needs_double = 1;
         }
     }
 
-    for(AST_NODE *arg = node->right_ch; arg != NULL && arg->left_ch != NULL; arg = arg->right_ch){
+    for (AST_NODE *arg = node->right_ch; arg != NULL && arg->left_ch != NULL; arg = arg->right_ch)
+    {
         CodegenType type = codegen_expression_type(arg->left_ch, ctx);
 
         generate_expression(arg->left_ch, ctx);
 
-        if(ctx->error_code != 0){
+        if (ctx->error_code != 0)
+        {
             return;
         }
 
-        if(needs_double && type == CG_TYPE_INT){
+        if (needs_double && type == CG_TYPE_INT)
+        {
             fputs("INT2FLOATS\n", ctx->output);
         }
 
@@ -1403,29 +1591,37 @@ static void generate_list_constructor(AST_NODE *node, CodegenContext *ctx){
     }
 
     fputs("CREATEFRAME\n"
-        "PUSHFRAME\n"
-        "DEFVAR LF@%cg_list\n"
-        "DEFVAR LF@%cg_item\n", ctx->output);
+          "PUSHFRAME\n"
+          "DEFVAR LF@%cg_list\n"
+          "DEFVAR LF@%cg_item\n",
+          ctx->output);
 
-    fprintf(ctx->output, "NEWARRAY LF@%%cg_list int@%zu\n"
-                        "ARRAYSET LF@%%cg_list int@0 int@%zu\n", count + 1, count);
+    fprintf(ctx->output,
+            "NEWARRAY LF@%%cg_list int@%zu\n"
+            "ARRAYSET LF@%%cg_list int@0 int@%zu\n",
+            count + 1, count);
 
-    for(size_t i = count; i > 0; i--){
-        fprintf(ctx->output, "POPS LF@%%cg_item\n"
-                            "ARRAYSET LF@%%cg_list int@%zu LF@%%cg_item\n", i);
+    for (size_t i = count; i > 0; i--)
+    {
+        fprintf(ctx->output,
+                "POPS LF@%%cg_item\n"
+                "ARRAYSET LF@%%cg_list int@%zu LF@%%cg_item\n",
+                i);
     }
 
     fputs("PUSHS LF@%cg_list\n"
-        "POPFRAME\n", ctx->output);
+          "POPFRAME\n",
+          ctx->output);
 }
 
-
-static void generate_for(AST_NODE *node, CodegenContext *ctx){
+static void generate_for(AST_NODE *node, CodegenContext *ctx)
+{
     AST_NODE *iterator = node->left_ch;
     AST_NODE *limit = iterator->left_ch;
     AST_NODE *range = limit->left_ch;
 
-    if(range->token.type != KEYWORD_TO && range->token.type != KEYWORD_UNTIL){
+    if (range->token.type != KEYWORD_TO && range->token.type != KEYWORD_UNTIL)
+    {
         generate_for_list(node, ctx);
         return;
     }
@@ -1449,56 +1645,66 @@ static void generate_for(AST_NODE *node, CodegenContext *ctx){
 
     fprintf(ctx->output, "POPS LF@%%cg_for_end_%s\n", name);
 
-    if(step != NULL){
+    if (step != NULL)
+    {
         generate_expression(step, ctx);
         fprintf(ctx->output, "POPS LF@%%cg_for_step_%s\n", name);
     }
 
-    else{
+    else
+    {
         fprintf(ctx->output, "MOVE LF@%%cg_for_step_%s int@1\n", name);
     }
 
-    
-    fprintf(ctx->output, "JUMPIFNEQ $$for_valid_%u LF@%%cg_for_step_%s int@0\n"
-                        "EXIT int@40\n"
-                        "LABEL $$for_valid_%u\n", id, name, id);
+    fprintf(ctx->output,
+            "JUMPIFNEQ $$for_valid_%u LF@%%cg_for_step_%s int@0\n"
+            "EXIT int@40\n"
+            "LABEL $$for_valid_%u\n",
+            id, name, id);
 
     codegen_declare_variable(iterator, ctx);
     codegen_set_variable_type(iterator, ctx, CG_TYPE_INT);
 
-    fprintf(ctx->output, "LABEL $$for_check_%u\n"
-                        "LT GF@%%cg_tmp LF@%%cg_for_step_%s int@0\n"
-                        "JUMPIFEQ $$for_negative_%u GF@%%cg_tmp bool@true\n", id, name, id);
+    fprintf(ctx->output,
+            "LABEL $$for_check_%u\n"
+            "LT GF@%%cg_tmp LF@%%cg_for_step_%s int@0\n"
+            "JUMPIFEQ $$for_negative_%u GF@%%cg_tmp bool@true\n",
+            id, name, id);
 
-    fprintf(ctx->output, "%s GF@%%cg_tmp LF@%s LF@%%cg_for_end_%s\n"
-                        "JUMPIFEQ $$for_end_%u GF@%%cg_tmp bool@%s\n"
-                        "JUMP $$for_guards_%u\n", until ? "LT" : "GT", name, name, id, until ? "false" : "true", id);
+    fprintf(ctx->output,
+            "%s GF@%%cg_tmp LF@%s LF@%%cg_for_end_%s\n"
+            "JUMPIFEQ $$for_end_%u GF@%%cg_tmp bool@%s\n"
+            "JUMP $$for_guards_%u\n",
+            until ? "LT" : "GT", name, name, id, until ? "false" : "true", id);
 
     fprintf(ctx->output, "LABEL $$for_negative_%u\n", id);
 
-    fprintf(ctx->output, "%s GF@%%cg_tmp LF@%s LF@%%cg_for_end_%s\n"
-                        "JUMPIFEQ $$for_end_%u GF@%%cg_tmp bool@%s\n"
-                        "LABEL $$for_guards_%u\n", until ? "GT" : "LT", name, name, id, until ? "false" : "true", id);
+    fprintf(ctx->output,
+            "%s GF@%%cg_tmp LF@%s LF@%%cg_for_end_%s\n"
+            "JUMPIFEQ $$for_end_%u GF@%%cg_tmp bool@%s\n"
+            "LABEL $$for_guards_%u\n",
+            until ? "GT" : "LT", name, name, id, until ? "false" : "true", id);
 
-    for(AST_NODE *guard = iterator->right_ch; guard != NULL; guard = guard->right_ch){
+    for (AST_NODE *guard = iterator->right_ch; guard != NULL; guard = guard->right_ch)
+    {
         generate_expression(guard->left_ch, ctx);
 
-        fprintf(ctx->output, "PUSHS bool@false\n"
-                            "JUMPIFEQS $$for_next_%u\n", id);
+        fprintf(ctx->output,
+                "PUSHS bool@false\n"
+                "JUMPIFEQS $$for_next_%u\n",
+                id);
     }
 
     codegen_generate_node(node->right_ch, ctx);
 
-    fprintf(ctx->output, "LABEL $$for_next_%u\n"
-                        "ADD LF@%s LF@%s LF@%%cg_for_step_%s\n"
-                        "JUMP $$for_check_%u\n"
-                        "LABEL $$for_end_%u\n", id, name, name, name, id, id);
+    fprintf(ctx->output,
+            "LABEL $$for_next_%u\n"
+            "ADD LF@%s LF@%s LF@%%cg_for_step_%s\n"
+            "JUMP $$for_check_%u\n"
+            "LABEL $$for_end_%u\n",
+            id, name, name, name, id, id);
 
     codegen_leave_scope(ctx);
 }
 
-
-
-
-
-//FB0
+// FB0
