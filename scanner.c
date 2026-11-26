@@ -790,6 +790,12 @@ static Token get_token_internal(void)
             {
                 space_counter++;
             }
+            //pridane
+            else if(character == '\t')
+            {
+                token.type = TOKEN_ERROR_LEX;
+                return token;
+            }
             else if (character == '\n')
             {
                 space_counter = 0;

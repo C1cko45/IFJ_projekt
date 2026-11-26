@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include "scanner.h"
 
+#include <string.h>
+
 /* ============================================================
    1. Praca s tokenmi (peek / next) a chybove hlasenie
    ============================================================ */
@@ -768,6 +770,8 @@ AST_NODE* function_list(void){
 
 // prolog: skontroluje povinny prolog "import meno.*" ukonceny EOL (pred nim mozu byt prazdne riadky a komentare)
 //! Volana z: program()
+
+/*
 bool prolog(void){
     Token current_token = next();
     while(current_token.type == TOKEN_TYPE_EOL){ current_token = next(); }   // pred prologom mozu byt komentare a prazdne riadky
@@ -788,9 +792,45 @@ bool prolog(void){
 
     return true;
 }
+*/
+bool prolog(void)
+{
+    Token current_token = next();
+
+    while (current_token.type == TOKEN_TYPE_EOL)
+        current_token = next();
+
+    if (current_token.type != KEYWORD_IMPORT)
+        return false;
+
+    current_token = next();
+
+    if (current_token.type != TOKEN_TYPE_IDENTIFIER)
+        return false;
+
+    bool valid_import = strcmp(current_token.attr.str_val, "ifj26") == 0;
+    token_free(&current_token);
+
+    if (!valid_import)
+        return false;
+
+    if (next().type != TOKEN_TYPE_DOT)
+        return false;
+
+    if (next().type != TOKEN_TYPE_MUL)
+        return false;
+
+    if (next().type != TOKEN_TYPE_EOL)
+        return false;
+
+    return true;
+}
+
 
  // program: vstupna funkcia parsera - prolog a potom zoznam definicii funkcii, vracia koren AST
 //! Volana z: main.c: main
+
+/*
 AST_NODE* program(void){
     AST_NODE* root = ast_create_node_type(NODE_PROGRAM);
     ast_root = root;
@@ -828,5 +868,50 @@ AST_NODE* program(void){
         }
         
     }
+    return root;
+}
+*/
+
+AST_NODE *program(void)
+{
+    AST_NODE *root = ast_create_node_type(NODE_PROGRAM);
+    ast_root = root;
+
+    if (!prolog())
+        parser_error_exit(2, "Syntakticka chyba: chybny prolog 'import ifj26.*'");
+
+    while (peek().type == TOKEN_TYPE_EOL)
+        next();
+
+    if (peek().type == TOKEN_TYPE_EOF)
+        parser_error_exit(2, "Syntakticka chyba: po prologu chyba definicia funkcie");
+
+    AST_NODE *last_program_node = root;
+
+    while (peek().type != TOKEN_TYPE_EOF)
+    {
+        TokenType type = peek().type;
+
+        if (type != TOKEN_TYPE_AT_MAIN && type != KEYWORD_DEF)
+            parser_error_exit(2, "Syntakticka chyba: ocakavana definicia funkcie");
+
+        AST_NODE *function_node = function_list();
+        ast_add_parent(last_program_node, function_node, 0);
+
+        while (peek().type == TOKEN_TYPE_EOL)
+            next();
+
+        if (peek().type == TOKEN_TYPE_EOF)
+            break;
+
+        type = peek().type;
+        if (type != TOKEN_TYPE_AT_MAIN && type != KEYWORD_DEF)
+            parser_error_exit(2, "Syntakticka chyba: ocakavana dalsia definicia funkcie");
+
+        AST_NODE *next_program = ast_create_node_type(NODE_PROGRAM);
+        ast_add_parent(last_program_node, next_program, 1);
+        last_program_node = next_program;
+    }
+
     return root;
 }
