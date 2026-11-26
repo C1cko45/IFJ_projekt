@@ -121,8 +121,13 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
                 else if (program_node->left_ch->type == NODE_IF)
                 {
                     AST_NODE *if_node = program_node->left_ch;
+                    bool else_found = false;
+
                     while (if_node != NULL)
                     {
+                        if (if_node->type == NODE_ELSE)
+                            else_found = true;
+
                         bool return_found = false;
                         AST_NODE *body_program_node = NULL;
                         if (if_node->left_ch->type == NODE_PODMIENKA)
@@ -148,6 +153,14 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
                         }
 
                         if_node = if_node->right_ch;
+                    }
+
+                    if (!else_found)
+                    {
+                        fprintf(
+                            stderr,
+                            "functionDef() -- if-statement as last statement doesn't return value in all branches\n");
+                        compilerError(ERROR_TYPE);
                     }
                 }
             }
