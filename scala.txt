@@ -57,5 +57,3 @@ def ruined(value: Int, conversion: Double) =
     if 5 > 3 then
         5.0
 
-    // TODO: This should return semantic error, because Double->Int not possible
-    return 5.0 + 5
