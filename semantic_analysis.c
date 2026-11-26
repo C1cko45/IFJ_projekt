@@ -1484,6 +1484,10 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
             return forStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
         //
         case NODE_IF:
+            // If if-structure has if-branch and else-branch only -> if-expression
+            if (program_node->left_ch->right_ch != NULL && program_node->left_ch->right_ch->type == NODE_ELSE)
+                return ifExpr(program_node->left_ch, function_entry, sym_table);
+
             return ifStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
         //
         case NODE_VALMEM:
