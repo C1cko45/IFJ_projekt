@@ -44,6 +44,7 @@ typedef struct{
 
     unsigned int variable_counter;
     CodegenBinding *bindings;
+    unsigned int scope_depth;
 
     int force_list_double;
     int current_function_list_double;
@@ -57,8 +58,10 @@ CodegenType codegen_from_semantic_type(DataType type);
 void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx);
 void codegen_generate_call_expression(AST_NODE *node, CodegenContext *ctx);
 
+//Spusti generovanie celeho programu
 int codegen_generate(AST_NODE *root, FILE *output);
 int codegen_generate_ctx(AST_NODE *root, CodegenContext *ctx);
+//Spracuje jeden uzol AST
 void codegen_generate_node(AST_NODE *node, CodegenContext *ctx);
 
 
@@ -69,6 +72,14 @@ void codegen_emit_jump(CodegenContext *ctx, const char *label);
 void generate_return(AST_NODE *node, CodegenContext *ctx);
 
 const char *codegen_variable_name(const AST_NODE *identifier, CodegenContext *ctx);
+void codegen_reserve_variable(const AST_NODE *identifier, CodegenContext *ctx);
+void codegen_declare_variable(const AST_NODE *identifier, CodegenContext *ctx);
+void codegen_set_variable_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type);
+CodegenType codegen_variable_type(const AST_NODE *identifier, const CodegenContext *ctx);
+//Zacne novy blok premennych
+void codegen_enter_scope(CodegenContext *ctx);
+void codegen_leave_scope(CodegenContext *ctx);
+void codegen_clear_bindings(CodegenContext *ctx);
 
 CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenContext *ctx);
 
