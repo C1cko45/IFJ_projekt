@@ -30,11 +30,12 @@ static void allocateParams(size_t param_count, DataType **param_ptr);
 static DataType getTermType(AST_NODE *term_node, SymTable *sym_table);
 static void annotateAST(AST_NODE *identifier_node, HTEntry *sym_table_entry, HTEntryType entry_type);
 
-static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
 static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table);
 static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table);
 static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table);
 static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table);
+static DataType valmemExpr(AST_NODE *valmem_node, SymTable *sym_table);
+static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
 
 static DataType checkRangeFunc(AST_NODE *func_node, SymTable *sym_table);
 
@@ -521,7 +522,7 @@ static DataType variableDef(AST_NODE *def_node, HTEntry *function_entry, SymTabl
     if (isEntry(def_node->left_ch->token.attr.str_val, VAR, &sym_table->scopes[sym_table->current]))
     {
         fprintf(stderr, "variableDef() -- variable already defined\n");
-        compilerError(ERROR_TYPE);
+        compilerError(ERROR_REDEF);
     }
 
     // Get right side expression/function call return value type
@@ -657,18 +658,33 @@ static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table)
     if (expr_node == NULL || sym_table == NULL)
     {
         fprintf(stderr, "exprStatement() -- at least one argument is invalid\n");
-        compilerError(ERROR_TYPE);
+        compilerError(ERROR_INTERNAL);
     }
 
+    // VALMEM expression
+    if (expr_node->type == NODE_VALMEM)
+        return valmemExpr(expr_node, sym_table);
+
+    HTEntry *var_entry = NULL;
     switch (expr_node->token.type)
     {
         // Term
+        case TOKEN_TYPE_IDENTIFIER:
+            var_entry = getIdentifier(expr_node->token.attr.str_val, VAR, sym_table);
+            if (var_entry == NULL)
+            {
+                fprintf(stderr, "exprStatement() -- Expression contains undefined variable\n");
+                compilerError(ERROR_UNDEF);
+                exit(ERROR_UNDEF);
+            }
+            // Annotate the identifier AST_NODE with symtable info for codegen
+            annotateAST(expr_node, var_entry, var_entry->entry_type);
         case TOKEN_TYPE_INT:
         case TOKEN_TYPE_DOUBLE:
         case TOKEN_TYPE_STRING:
         case TOKEN_TYPE_UNIT:
         case TOKEN_TYPE_BOOL:
-        case TOKEN_TYPE_IDENTIFIER:
+        case KEYWORD_LIST:
             return getTermType(expr_node, sym_table);
 
         // Arithmetic operator
@@ -694,14 +710,137 @@ static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table)
         case TOKEN_TYPE_NEQ:
             return compareExpr(expr_node, sym_table);
 
-            // TODO: ADD VALMEM expressions
-            // TODO: ADD LISTS expressions -- Doesn't work in parser anyway...
-
         default:
             fprintf(stderr, "exprStatement() -- Expression of unsupported type\n");
             compilerError(ERROR_INTERNAL);
             exit(ERROR_INTERNAL);
     }
+}
+
+/*
+ * Processes VALMEM expressions
+ * Left-side is expression of any other kind, right-side must be VALMEM supported non-parametric builtin function
+ *
+ * Mainly a helper function for exprStatement(), from where it's called on the operator node
+ * Should not be called on its own
+ */
+static DataType valmemExpr(AST_NODE *valmem_node, SymTable *sym_table)
+{
+    // Argument error-handling
+    if (valmem_node == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "valmemStatement() -- at least one argument is invalid\n");
+        compilerError(ERROR_INTERNAL);
+    }
+
+    DataType left_operand;
+    HTEntry *function_entry = NULL, *var_entry = NULL;
+    switch (valmem_node->type)
+    {
+        case NODE_VALMEM:
+            if (valmem_node->left_ch->type == NODE_VALMEM)
+                left_operand = valmemExpr(valmem_node->left_ch, sym_table);
+
+            // Process left side of VALMEM, get its data type
+            switch (valmem_node->left_ch->token.type)
+            {
+                // Term
+                case TOKEN_TYPE_IDENTIFIER:
+                    var_entry = getIdentifier(valmem_node->left_ch->token.attr.str_val, VAR, sym_table);
+                    if (var_entry == NULL)
+                    {
+                        fprintf(stderr, "valmemExpr() -- VALMEM method called on undefined variable\n");
+                        compilerError(ERROR_UNDEF);
+                    }
+                    // Annotate the identifier AST_NODE with symtable info for codegen
+                    annotateAST(valmem_node->left_ch, var_entry, var_entry->entry_type);
+                case TOKEN_TYPE_INT:
+                case TOKEN_TYPE_DOUBLE:
+                case TOKEN_TYPE_STRING:
+                case TOKEN_TYPE_UNIT:
+                case TOKEN_TYPE_BOOL:
+                case KEYWORD_LIST:
+                    left_operand = getTermType(valmem_node->left_ch, sym_table);
+
+                // Arithmetic operator
+                case TOKEN_TYPE_PLUS:
+                case TOKEN_TYPE_MINUS:
+                case TOKEN_TYPE_MUL:
+                case TOKEN_TYPE_DIV:
+                    left_operand = arithmExpr(valmem_node->left_ch, sym_table);
+
+                // Logical operator
+                case TOKEN_TYPE_AND:
+                case TOKEN_TYPE_OR:
+                case TOKEN_TYPE_NOT:
+                    left_operand = boolExpr(valmem_node->left_ch, sym_table);
+
+                // Relational operator
+                case TOKEN_TYPE_GT:
+                case TOKEN_TYPE_LT:
+                case TOKEN_TYPE_LTE:
+                case TOKEN_TYPE_GTE:
+                    left_operand = relatExpr(valmem_node->left_ch, sym_table);
+                case TOKEN_TYPE_EQ:
+                case TOKEN_TYPE_NEQ:
+                    left_operand = compareExpr(valmem_node->left_ch, sym_table);
+
+                default:
+                    fprintf(stderr, "valmemExpr() -- VALMEM method called on expression of unsupported type\n");
+                    compilerError(ERROR_INTERNAL);
+            }
+
+            function_entry = getIdentifier(valmem_node->right_ch->token.attr.str_val, FUNCTION, sym_table);
+            if (function_entry == NULL)
+            {
+                fprintf(stderr, "valmemExpr() -- Called method doesn't exist\n");
+                compilerError(ERROR_UNDEF);
+            }
+            break;
+
+        default:
+            fprintf(stderr, "valmemExpr() -- Expression of unsupported type\n");
+            compilerError(ERROR_INTERNAL);
+    }
+
+    // toString
+    if (strcmp("toString", function_entry->identifier) == 0)
+        return STRING;
+    // toInt
+    if (strcmp("toInt", function_entry->identifier) == 0)
+    {
+        if (left_operand != DOUBLE)
+        {
+            fprintf(stderr, "valmemExpr() -- Method 'toInt' called on expression of unsupported data type\n");
+            compilerError(ERROR_TYPE);
+        }
+        return INT;
+    }
+    // floor
+    if (strcmp("floor", function_entry->identifier) == 0)
+    {
+        if (left_operand != DOUBLE)
+        {
+            fprintf(stderr, "valmemExpr() -- Method 'floor' called on expression of unsupported data type\n");
+            compilerError(ERROR_TYPE);
+        }
+        return DOUBLE;
+    }
+    // length
+    if (strcmp("length", function_entry->identifier) == 0)
+    {
+        if (left_operand != STRING)
+        {
+            fprintf(stderr, "valmemExpr() -- Method 'length' called on expression of unsupported data type\n");
+            compilerError(ERROR_TYPE);
+        }
+        return INT;
+    }
+
+    // VALMEM method is not supported calling it this way
+    fprintf(stderr, "valmemExpr() -- VALMEM method called is unsupported\n");
+    compilerError(ERROR_OTHER);
+    exit(ERROR_OTHER);
 }
 
 /*
@@ -721,6 +860,9 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
         fprintf(stderr, "arithmExpr() -- at least one argument is invalid\n");
         compilerError(ERROR_TYPE);
     }
+
+    if (arithm_node->type == NODE_VALMEM)
+        return valmemExpr(arithm_node, sym_table);
 
     DataType left_operand, right_operand;
     HTEntry *id_entry = NULL;
@@ -892,6 +1034,9 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
         compilerError(ERROR_TYPE);
     }
 
+    if (relat_node->type == NODE_VALMEM)
+        return valmemExpr(relat_node, sym_table);
+
     DataType left_operand, right_operand;
     HTEntry *id_entry = NULL;
     switch (relat_node->token.type)
@@ -983,6 +1128,9 @@ static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table)
         fprintf(stderr, "compareExpr() -- at least one argument is invalid\n");
         compilerError(ERROR_TYPE);
     }
+
+    if (neq_node->type == NODE_VALMEM)
+        return valmemExpr(neq_node, sym_table);
 
     DataType left_operand, right_operand;
     HTEntry *id_entry = NULL;
