@@ -10,17 +10,17 @@
    1. Praca s tokenmi (peek / next) a chybove hlasenie
    ============================================================ */
 
-// pridanie funkcie peek a next na pracu s tokenom
-//peek nacita token ale nspotrebuje ho
-//next spotrebuje uz nacitany token alebo nacita novy
+// peek a next: praca s tokenmi s lookahead jedneho tokenu
+//   peek nacita token, ale nespotrebuje ho
+//   next spotrebuje uz nacitany token alebo nacita novy
 
 static Token saved_token;
 static bool has_saved = false;
 static AST_NODE *ast_root = NULL;   // koren AST, aby ho parser_error_exit vedel uvolnit
 
 // peek: nacita dalsi token zo scannera, ale nespotrebuje ho (dalsi peek/next vrati ten isty)
-//! Volana z: get_type(), parser_get_list(), parameter_list(), var_def(), val_def(), call_f(), if_statement(),
-//!     statement(), function_body_block(), function_body(), function_def(), program(), psa.c: parse_expression
+//   pri lexikalnej chybe (TOKEN_ERROR_LEX) ukonci program s kodom 1
+//! Volana z: takmer vsetkych funkcii parsera a z psa.c
 Token peek(void){
     if(!has_saved){
         has_saved = true;
@@ -31,9 +31,8 @@ Token peek(void){
 }
 
 // next: spotrebuje a vrati token (ulozeny z peek, inak novy zo scannera)
-//! Volana z: get_type(), parser_get_list(), parameter_list(), var_def(), val_def(), call_f(), if_statement(),
-//!     while_loop(), statement(), function_body_block(), function_body(), function_def(), function_list(), prolog(),
-//!     program(), psa.c: parse_expression
+//   pri lexikalnej chybe (TOKEN_ERROR_LEX) ukonci program s kodom 1
+//! Volana z: takmer vsetkych funkcii parsera a z psa.c
 Token next(void){
     Token t;
     if(has_saved){
@@ -48,9 +47,8 @@ Token next(void){
 }
 
 // parser_error_exit: vypise chybu na stderr a ukonci program s danym navratovym kodom
-//! Volana z: get_type(), parser_get_list(), parameter_list(), var_def(), val_def(), call_f(), if_statement(),
-//!     while_loop(), statement(), function_body_block(), function_def(), function_list(), program(), psa.c: viac
-//!     funkcii
+//   (uvolni nespotrebovany token a cast AST pripojenu na koren)
+//! Volana z: vsetkych funkcii parsera a z psa.c pri chybe
 void parser_error_exit(int error_code, const char *message){
     fprintf(stderr, "Chyba (%d): %s\n",error_code,message);
     if(has_saved){ token_free(&saved_token); has_saved = false; }   // nespotrebovany token
@@ -136,7 +134,7 @@ AST_NODE* parameter_list(){
         current_token = next();
         if(current_token.type == TOKEN_TYPE_COMMA){
              
-            if(peek().type == TOKEN_TYPE_RPAREN && !scanner_newline_before_token()){parser_error_exit(2, "Syntakticka chyba v parametroch funkcie: ciarka pred ')'");}
+            if(peek().type == TOKEN_TYPE_RPAREN){parser_error_exit(2, "Syntakticka chyba v parametroch funkcie: ciarka pred ')'");}
             temp = parameter_list();
             ast_add_parent(last_program_node,temp,1);
             
@@ -157,30 +155,6 @@ AST_NODE* parameter_list(){
    3. Definicie premennych a priradenie
    ============================================================ */
 
-
-//! Volana z: var_def(), val_def(), var_assign(), statement() (return)
-static AST_NODE* value_or_if(void){
-    if(peek().type == KEYWORD_IF){
-        next();
-        return if_statement();
-    }
-    return parse_expression();
-}
-
-//  ends_with_if: true, ak prikaz konci if-vyrazom - jeho posledna vetva uz spotrebovala koniec riadku
-//! Volana z: statement()
-static bool ends_with_if(AST_NODE* node){
-    if(node == NULL){ return false; }
-    if(node->type == NODE_VAR_DEF || node->type == NODE_VAL_DEF ||
-       (node->type == NODE_TOKEN_ONLY && node->token.type == TOKEN_TYPE_ASSIGN)){
-        return node->right_ch != NULL && node->right_ch->type == NODE_IF;
-    }
-    if(node->type == NODE_TOKEN_ONLY && node->token.type == KEYWORD_RETURN){
-        return node->left_ch != NULL && node->left_ch->type == NODE_IF;
-    }
-    return false;
-}
-
 // var_def: spracuje definiciu premennej "var meno [: typ] = vyraz" (vyraz cez precedencnu analyzu)
 //! Volana z: statement()
 AST_NODE* var_def(){
@@ -198,7 +172,7 @@ AST_NODE* var_def(){
     current_token = next();
     switch (current_token.type){
     case TOKEN_TYPE_ASSIGN:
-        temp = value_or_if();        
+        temp = parse_expression();
         ast_add_parent(root,temp,1);
         break;
     case TOKEN_TYPE_COLON:
@@ -209,7 +183,7 @@ AST_NODE* var_def(){
 
         current_token = next();
         if(current_token.type != TOKEN_TYPE_ASSIGN){parser_error_exit(2, "Syntakticka chyba v definicii var: za typom ocakavane '='");}
-        temp = value_or_if();        
+        temp = parse_expression();
         ast_add_parent(root,temp,1);
         break;
         
@@ -240,7 +214,7 @@ AST_NODE* val_def(){
     current_token = next();
     switch (current_token.type){
     case TOKEN_TYPE_ASSIGN:
-        temp = value_or_if();        
+        temp = parse_expression();
         ast_add_parent(root,temp,1);
         break;
     case TOKEN_TYPE_COLON:
@@ -251,7 +225,7 @@ AST_NODE* val_def(){
 
         current_token = next();
         if(current_token.type != TOKEN_TYPE_ASSIGN){parser_error_exit(2, "Syntakticka chyba v definicii val: za typom ocakavane '='");}
-        temp = value_or_if();        
+        temp = parse_expression();
         ast_add_parent(root,temp,1);
         break;
     default:
@@ -268,27 +242,19 @@ AST_NODE* var_assign(Token first, Token second){
     AST_NODE* root = ast_create_node(second);
     AST_NODE* temp = ast_create_node(first);
     ast_add_parent(root, temp, 0);
-    temp = value_or_if();        
+    temp = parse_expression();
     ast_add_parent(root, temp, 1);
     return root;
 }
 
-// call_f: volanie funkcie "meno(...)" ako samostatny prikaz (meno aj '(' su uz spotrebovane)
-//! Volana z: statement()
+// call_f: volanie funkcie "meno(...)" (meno aj '(' su uz spotrebovane) - spracuje argumenty az po ')' a vrati NODE_CALL
+//   (lavy = nazov funkcie, pravy = retaz NODE_ARGUMENT; argument je v lavom potomkovi, dalsi NODE_ARGUMENT v pravom)
+//! Volana z: statement(), psa.c: parse_expression (volanie vo vnutri vyrazu - tam sa lavy potomok nahradi
+//!     volanym objektom, napr. NODE_VALMEM pri metode zoznamu)
 AST_NODE* call_f(Token first, Token second){
     if((first.type == TOKEN_TYPE_IDENTIFIER || first.type == KEYWORD_LIST) && second.type == TOKEN_TYPE_LPAREN){
-        return call_with_callee(ast_create_node(first));
-    }
-    return NULL;
-}
-
-
-//   volany objekt moze byt identifikator, List alebo NODE_VALMEM (metoda zoznamu, List.range)
-//! Volana z: call_f(), psa.c: apply_call (volanie vo vnutri vyrazu)
-AST_NODE* call_with_callee(AST_NODE* callee){
-    {
         AST_NODE* root = ast_create_node_type(NODE_CALL);
-        ast_add_parent(root, callee, 0);  //pridanie volaneho objektu
+        ast_add_parent(root, ast_create_node(first), 0);  //pridanie nazvu funkcie
         AST_NODE* argument;
         AST_NODE* temp = ast_create_node_type(NODE_ARGUMENT);
         ast_add_parent(root, temp, 1);  //pridanie vetve argumenty
@@ -330,9 +296,6 @@ AST_NODE* call_with_callee(AST_NODE* callee){
                     ast_add_parent(temp, temp2, 1 );
                     temp = temp2;
                     continue;
-                }else if(scanner_newline_before_token()){   
-                    next();
-                    return root;
                 }else{
                     parser_error_exit(2,"Syntakticka chyba vo volani funkcie: ciarka pred ')'" );
                 }
@@ -343,14 +306,17 @@ AST_NODE* call_with_callee(AST_NODE* callee){
 
         }
     }
+    return NULL;
 }
 
 /* ============================================================
    4. Riadiace struktury
    ============================================================ */
 
-// if_statement: podmienka if / else
-//! Volana z: sama seba (rekurzia), statement()
+// if_statement: "if podmienka then telo [else telo | else if ...]" (klucove slovo if je uz spotrebovane)
+//   NODE_IF: lavy = NODE_PODMIENKA (lavy = podmienka, pravy = telo then), pravy = NODE_ELSE (lavy = telo else)
+//   alebo pri "else if" priamo dalsi NODE_IF; telo je vzdy retaz NODE_PROGRAM
+//! Volana z: sama seba (else if), statement(), psa.c: parse_expression (if-vyraz)
 AST_NODE* if_statement(){
     AST_NODE* root = ast_create_node_type(NODE_IF);
     AST_NODE* podmienka = ast_create_node_type(NODE_PODMIENKA);
@@ -426,7 +392,7 @@ AST_NODE* if_statement(){
     return root;
 }
 
-// while_loop: cyklus while
+// while_loop: "while podmienka do telo" -> NODE_WHILE (lavy = podmienka, pravy = telo)
 //! Volana z: statement()
 AST_NODE* while_loop(){
     AST_NODE* root = ast_create_node_type(NODE_WHILE);
@@ -439,7 +405,9 @@ AST_NODE* while_loop(){
     return root;
 }
 
-// for_loop: cyklus for
+// for_loop: cyklus for (CONTROL) s jednoriadkovou aj viacriadkovou hlavickou a strazami
+//   NODE_FOR: lavy = premenna (lavy = NODE_LIMIT, pravy = retaz NODE_PODMIENKA so strazami), pravy = telo
+//   NODE_LIMIT: lavy = uzol to/until (lavy = od, pravy = do) alebo zdroj (zoznam), pravy = krok (by)
 //! Volana z: statement()
 AST_NODE* for_loop(){
     AST_NODE* root = ast_create_node_type(NODE_FOR);
@@ -550,8 +518,10 @@ AST_NODE* for_loop(){
    5. Prikazy a bloky kodu
    ============================================================ */
 
-// statement: spracuje jeden prikaz podla prveho tokenu a skonci kontrolou ukoncenia EOL
-//! Volana z: function_body_block()
+// statement: spracuje jeden prikaz podla prveho tokenu a skontroluje jeho ukoncenie (EOL alebo ';')
+//   ukoncenie sa nekontroluje za if/while/for (konci blokom alebo ho skontroloval vnoreny prikaz),
+//   za if-vyrazom a pred else (jednoriadkova vetva then, else pokracuje na tom istom riadku)
+//! Volana z: function_body_block(), function_body()
 AST_NODE* statement(){
     Token current_token = peek();
     AST_NODE* root = NULL;
@@ -589,8 +559,6 @@ AST_NODE* statement(){
                     root = parse_expression_from(current_token);
                     break;
             }
-
-            //var_assign + call_f
             break;
         }
         case KEYWORD_FOR:
@@ -602,7 +570,7 @@ AST_NODE* statement(){
             root = ast_create_node(next());
             
             if(peek().type != TOKEN_TYPE_EOL && peek().type != TOKEN_TYPE_SEMICOLON && peek().type != KEYWORD_ELSE){
-                AST_NODE* temp = value_or_if();      
+                AST_NODE* temp = parse_expression();
                 ast_add_parent(root,temp,0);
             }
             
@@ -611,14 +579,28 @@ AST_NODE* statement(){
 
             break;
         
+        case TOKEN_TYPE_PLUS:
+            // logicky riadok nemoze zacinat operatorom (zadanie 1.2), napr. pokracovanie "+ 2" na novom riadku.
+            // Ostatne binarne operatory na zaciatku odmietne uz PSA; unarne '-' a '!' su povolene (napr. -x ako navratova hodnota).
+            parser_error_exit(2, "Syntakticka chyba: logicky riadok nemoze zacinat operatorom");
+            break;
         default:
             root = parse_expression();
             break;
-        }    
-    if(current_token.type == KEYWORD_WHILE || current_token.type == KEYWORD_IF || current_token.type == KEYWORD_FOR ||
-        ends_with_if(root)){   
+        }
+    // prikaz konciaci if-vyrazom (val x = if ..., x = if ..., return if ...): posledna vetva if uz spotrebovala koniec riadku
+    AST_NODE* value = NULL;
+    if(root != NULL && (root->type == NODE_VAR_DEF || root->type == NODE_VAL_DEF ||
+                        (root->type == NODE_TOKEN_ONLY && root->token.type == TOKEN_TYPE_ASSIGN))){
+        value = root->right_ch;
+    }else if(root != NULL && root->type == NODE_TOKEN_ONLY && root->token.type == KEYWORD_RETURN){
+        value = root->left_ch;
+    }
 
-    }else if(peek().type != KEYWORD_ELSE){   
+    if(current_token.type == KEYWORD_WHILE || current_token.type == KEYWORD_IF || current_token.type == KEYWORD_FOR ||
+        (value != NULL && value->type == NODE_IF)){
+
+    }else if(peek().type != KEYWORD_ELSE){
         current_token = next();
         if(current_token.type != TOKEN_TYPE_EOL && current_token.type != TOKEN_TYPE_SEMICOLON){
             parser_error_exit(2, "Syntakticka chyba: za prikazom ocakavany koniec riadku alebo ';'");
@@ -676,8 +658,9 @@ AST_NODE* function_body_block(){
     return root;
 }
 
-// function_body: telo funkcie - bud blok (za EOL) alebo jediny vyraz
-//! Volana z: if_statement(), while_loop(), function_list()
+// function_body: telo funkcie, vetvy if/else alebo cyklu - bud odsadeny blok (za EOL),
+//   alebo jeden prikaz na tom istom riadku; v oboch pripadoch vracia retaz NODE_PROGRAM
+//! Volana z: if_statement(), while_loop(), for_loop(), function_list()
 AST_NODE* function_body(){
     AST_NODE* root = NULL;
     Token current_token = peek();
@@ -717,7 +700,7 @@ AST_NODE* function_def(){
     temp = parameter_list();
     ast_add_parent(last_program_node,temp,1);
 
-    //TOKEN_TYPE_RPAREN kontorluje funkcia parameter_list() sama v sebe
+    //TOKEN_TYPE_RPAREN kontroluje funkcia parameter_list() sama v sebe
     current_token = next();
     if(current_token.type == TOKEN_TYPE_COLON){
         current_token = peek();
@@ -783,7 +766,7 @@ AST_NODE* function_list(){
    7. Cely program
    ============================================================ */
 
-// prolog: skontroluje povinny prolog "import meno.*" ukonceny EOL
+// prolog: skontroluje povinny prolog "import meno.*" ukonceny EOL (pred nim mozu byt prazdne riadky a komentare)
 //! Volana z: program()
 bool prolog(){
     Token current_token = next();
