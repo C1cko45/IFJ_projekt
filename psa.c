@@ -310,10 +310,26 @@ void reduce(void){
 // parse_expression: precedencna syntakticka analyza vyrazu od aktualneho tokenu po prvy ukoncovaci token
 //   (EOL, ';', then, do, else, if, ',', ')' bez parovej '(' ...); ukoncovaci token nespotrebuje, vrati koren AST vyrazu
 AST_NODE* parse_expression(void){
-    if(peek().type == KEYWORD_IF){      // if-vyraz (CONTROL), napr. val y = if x < 0 then 0 - x else x
+    if(peek().type == KEYWORD_IF){
         next();
-        return if_statement();
+
+        AST_NODE *if_expr = if_statement();
+
+    // Pri if-vyraze musi existovat koncova vetva else.
+    // Prejdeme aj pripadne vetvy else if.
+        AST_NODE *branch = if_expr->right_ch;
+
+        while(branch != NULL && branch->type == NODE_IF){
+            branch = branch->right_ch;
+        }
+
+        if(branch == NULL || branch->type != NODE_ELSE){
+            parser_error_exit(6, "If-vyraz musi obsahovat vetvu else");
+        }
+
+        return if_expr;
     }
+    
     stack_count = 0;
     paren_count = 0;
     insert((STACK_ITEM){.idx = P_DOLLAR});
