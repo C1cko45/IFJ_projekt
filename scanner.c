@@ -1,3 +1,12 @@
+/*
+* Implementácia prekladača pre jazyk IFJ26.
+*
+* Lexikálny analyzátor - konečný automat, generuje tokeny.
+*
+* Autor:   Deák Dominik    
+* Login:   xdeakdo00
+*/
+
 #include "dstring.h"
 #include "stack.h"
 #include "token.h"
@@ -552,12 +561,10 @@ static Token get_token_internal(void)
                 return token;
             }
             break;
-        // TODO: OPRAVIT
         case STATE_ZERO:
             if (character == '.')
             {
                 actual_state = STATE_DIGIT_DOT;
-                // dstring_add_char(&string, '.');
                 break;
             }
             else if (character == 'e' || character == 'E')
@@ -659,7 +666,6 @@ static Token get_token_internal(void)
                 return token;
             }
             break;
-        // TODO:
         case STATE_DOUBLE:
             if (character >= '0' && character <= '9')
             {
@@ -846,7 +852,7 @@ static Token get_token_internal(void)
     }
 }
 
-// obal nad get_token_internal.
+// obal nad get_token_internal, kontroluje ukoncenie prikazov EOL, aby program nespadol.
 Token scanner_get_next_token(void) {
     static TokenType last_type = TOKEN_TYPE_EOL;
     static bool has_pending = false;
