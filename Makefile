@@ -2,10 +2,9 @@ CC = gcc
 CLANG = clang
 
 CFLAGS = -std=c99 -Wall -Wextra -Wpedantic
-CLANGFLAGS = -std=c99 -Wall -Wextra -Werror -Wpedantic -g -O0 -fsanitize=unsigned-integer-overflow,address,undefined \
-			 -fno-omit-frame-pointer
+CLANGFLAGS = -std=c99 -Wall -Wextra -Werror -Wpedantic -g -O0
 
-MAIN_SRC = main.c
+MAIN_SRC = test_main.c
 
 SCANNER_SRCS = scanner.c dstring.c stack.c token.c
 PARSER_SRCS = ast.c parser.c psa.c 

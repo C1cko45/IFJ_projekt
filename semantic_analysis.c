@@ -41,6 +41,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table);
 
 static void functionDef(AST_NODE *function_node, SymTable *sym_table);
 static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
+static DataType valmemList(AST_NODE *valmem_node, SymTable *sym_table);
 static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, SymTable *sym_table);
 
 static DataType variableDef(AST_NODE *def_node, HTEntry *function_entry, SymTable *sym_table);
@@ -100,6 +101,10 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
             // Evaluate return value and compare its type with function return type
             DataType retval_type = programStatement(program_node, function_entry, sym_table);
 
+            // If function return type Double and return value Int -> implicit conversion Int->Double
+            if (*func_ret_type == DOUBLE && retval_type == INT)
+                retval_type = DOUBLE;
+
             // If function's explicit return type isn't UNIT -> match return value type and function signature
             if (*func_ret_type != UNIT && *func_ret_type != NIL)
             {
@@ -119,12 +124,20 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
                     while (if_node != NULL)
                     {
                         bool return_found = false;
-                        AST_NODE *body_program_node = if_node->left_ch->right_ch;
+                        AST_NODE *body_program_node = NULL;
+                        if (if_node->left_ch->type == NODE_PODMIENKA)
+                            body_program_node = if_node->left_ch->right_ch;
+                        else
+                            body_program_node = if_node->left_ch;
                         while (!return_found && body_program_node != NULL)
                         {
                             // If found return statement in branch block, correct and continue checking another branch
                             if (body_program_node->left_ch->token.type == KEYWORD_RETURN)
+                            {
                                 return_found = true;
+                                break;
+                            }
+
                             body_program_node = body_program_node->right_ch;
                         }
 
@@ -243,6 +256,136 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     return func_ret_type;
 }
 
+static DataType valmemList(AST_NODE *valmem_node, SymTable *sym_table)
+{
+    // Argument error-handling
+    if (valmem_node == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "valmemList() -- at least one argument is invalid\n");
+        compilerError(ERROR_INTERNAL);
+    }
+
+    AST_NODE *call_node = valmem_node->left_ch;
+
+    // Get function entry
+    HTEntry *function_entry = getIdentifier(call_node->left_ch->right_ch->token.attr.str_val, FUNCTION, sym_table);
+    if (function_entry == NULL)
+    {
+        fprintf(stderr, "valmemList() -- List method called is undefined\n");
+        compilerError(ERROR_UNDEF);
+    }
+
+    size_t arg_count = countParams(call_node->right_ch);
+    AST_NODE *arg_node = NULL;
+
+    // Verify function called is supported List method
+
+    // toString
+    if (strcmp("toString", function_entry->identifier) == 0)
+    {
+        if (arg_count != 1)
+        {
+            fprintf(stderr, "valmemList() -- List toString method has wrong number of arguments\n");
+            compilerError(ERROR_TYPE);
+        }
+
+        DataType list_type = getTermType(call_node->right_ch->left_ch, sym_table);
+        arg_node = call_node->right_ch;
+        DataType arg_type;
+
+        while (arg_node != NULL && arg_node->left_ch != NULL)
+        {
+            arg_type = getTermType(arg_node->left_ch, sym_table);
+            if (arg_type != list_type)
+            {
+                fprintf(stderr, "valmemList() -- List toString method called on unsupported type expression\n");
+                compilerError(ERROR_PARAM);
+            }
+
+            arg_node = arg_node->right_ch;
+        }
+
+        return STRING;
+    }
+
+    // TODO: FINISH
+    // drop
+    if (strcmp("drop", function_entry->identifier) == 0)
+    {
+        if (arg_count != 1)
+        {
+            fprintf(stderr, "valmemList() -- List drop method has wrong number of arguments\n");
+            compilerError(ERROR_TYPE);
+        }
+
+        DataType list_type = getTermType(call_node->right_ch->left_ch, sym_table);
+        arg_node = call_node->right_ch;
+        DataType arg_type;
+
+        while (arg_node != NULL && arg_node->left_ch != NULL)
+        {
+            arg_type = getTermType(arg_node->left_ch, sym_table);
+            if (arg_type != list_type)
+            {
+                fprintf(stderr, "valmemList() -- List toString method called on unsupported type expression\n");
+                compilerError(ERROR_PARAM);
+            }
+
+            arg_node = arg_node->right_ch;
+        }
+
+        return LIST_ANY;
+    }
+
+    // take
+    if (strcmp("take", function_entry->identifier) == 0)
+    {
+        fprintf(stderr, "valmemExpr() -- Method 'floor' called on expression of unsupported data type\n");
+        compilerError(ERROR_TYPE);
+        return DOUBLE;
+    }
+
+    // slice
+    if (strcmp("slice", function_entry->identifier) == 0)
+    {
+        fprintf(stderr, "valmemExpr() -- Method 'length' called on expression of unsupported data type\n");
+        compilerError(ERROR_TYPE);
+    }
+
+    // head
+    if (strcmp("slice", function_entry->identifier) == 0)
+    {
+        fprintf(stderr, "valmemExpr() -- Method 'length' called on expression of unsupported data type\n");
+        compilerError(ERROR_TYPE);
+    }
+
+    // tail
+    if (strcmp("slice", function_entry->identifier) == 0)
+    {
+        fprintf(stderr, "valmemExpr() -- Method 'length' called on expression of unsupported data type\n");
+        compilerError(ERROR_TYPE);
+    }
+
+    // range(start, end)
+    if (strcmp("slice", function_entry->identifier) == 0)
+    {
+        fprintf(stderr, "valmemExpr() -- Method 'length' called on expression of unsupported data type\n");
+        compilerError(ERROR_TYPE);
+    }
+
+    // range(start, end, step)
+    if (strcmp("slice", function_entry->identifier) == 0)
+    {
+        fprintf(stderr, "valmemExpr() -- Method 'length' called on expression of unsupported data type\n");
+        compilerError(ERROR_TYPE);
+    }
+
+    // VALMEM method is not supported calling it this way
+    fprintf(stderr, "valmemList() -- List method called is unsupported\n");
+    compilerError(ERROR_OTHER);
+    exit(ERROR_OTHER);
+}
+
 /*
  * Semantic checks for return statement
  *
@@ -252,11 +395,6 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
 static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, SymTable *sym_table)
 {
     DataType func_ret_type = function_entry->entry_data.function.return_type;
-    // if function signature has explicit return type Unit, function returns Unit no matter what
-    // Doesn't check for type compatibility in that case
-    if (func_ret_type == UNIT)
-        return UNIT;
-
     // Return statement inside function with no explicit return type is ERROR_TYPE
     if (func_ret_type == NIL)
     {
@@ -265,7 +403,7 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
     }
 
     // empty return allowed only in functions that have explicit return type Unit, which in this case it doesn't
-    if (ret_node->left_ch == NULL)
+    if (ret_node->left_ch == NULL && func_ret_type == UNIT)
     {
         fprintf(stderr, "returnStatement() -- return statement inside function with no explicit return type Unit\n");
         compilerError(ERROR_TYPE);
@@ -277,23 +415,38 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
     if (ret_node->left_ch->type == NODE_CALL)
     {
         retval_type = functionCall(ret_node->left_ch, sym_table);
+        // If function return type Double and return value type Int -> implicit conversion Int->Double
+        if (func_ret_type == DOUBLE && retval_type == INT)
+        {
+            return DOUBLE;
+        }
         if (retval_type != func_ret_type)
         {
             fprintf(stderr, "returnStatement() -- return statement's value type doesn't match function signature\n");
             compilerError(ERROR_TYPE);
         }
-
-        return retval_type;
     }
-
-    // return-statement with expression (or wrong nodes -- handled in expr() function)
-    // check type compatibility with function signature
-    retval_type = exprStatement(ret_node->left_ch, sym_table);
-    if (retval_type != func_ret_type)
+    else
     {
-        fprintf(stderr, "returnStatement() -- return value type doesn't match function signature\n");
-        compilerError(ERROR_TYPE);
+        // return-statement with expression (or wrong nodes -- handled in expr() function)
+        // check type compatibility with function signature
+        retval_type = exprStatement(ret_node->left_ch, sym_table);
+        // If function return type Double and return value type Int -> implicit conversion Int->Double
+        if (func_ret_type == DOUBLE && retval_type == INT)
+        {
+            return DOUBLE;
+        }
+        if (retval_type != func_ret_type)
+        {
+            fprintf(stderr, "returnStatement() -- return value type doesn't match function signature\n");
+            compilerError(ERROR_TYPE);
+        }
     }
+
+    // if function signature has explicit return type Unit, function returns Unit no matter what
+    // Doesn't check for type compatibility in that case
+    if (func_ret_type == UNIT)
+        return UNIT;
 
     return retval_type;
 }
@@ -494,6 +647,14 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
         }
     }
 
+    pushScope(sym_table);
+    // push generator's control variable into the new scope
+    HTEntry ctrl_var = {.state = BUSY,
+                        .entry_type = VAL,
+                        .entry_data.variable_data_type = INT,
+                        .identifier = for_node->left_ch->token.attr.str_val};
+    createIdentifier(&ctrl_var, sym_table);
+
     // Evaluate every guard (if-expression condition)
     AST_NODE *cond_node = for_node->left_ch->right_ch;
     while (cond_node != NULL)
@@ -505,14 +666,6 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
         }
         cond_node = cond_node->right_ch;
     }
-
-    pushScope(sym_table);
-    // push generator's control variable into the new scope
-    HTEntry ctrl_var = {.state = BUSY,
-                        .entry_type = VAL,
-                        .entry_data.variable_data_type = INT,
-                        .identifier = for_node->left_ch->token.attr.str_val};
-    createIdentifier(&ctrl_var, sym_table);
 
     // Process for-statement block
     AST_NODE *program_node = for_node->right_ch;
@@ -1221,6 +1374,13 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
         compilerError(ERROR_TYPE);
     }
 
+    // if-expression must have if-branch and else-branch, otherwise error
+    if (if_node->right_ch == NULL || if_node->right_ch->type != NODE_ELSE)
+    {
+        fprintf(stderr, "ifExpr() -- if-expression missing mandatory else-branch\n");
+        compilerError(ERROR_TYPE);
+    }
+
     // Process if-branch's block
     pushScope(sym_table);
 
@@ -1309,8 +1469,10 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
     switch (program_node->left_ch->type)
     {
         case NODE_CALL:
-            return functionCall(program_node->left_ch, sym_table); // returns function's return type (per IFJ26 rules)
-        //
+            if (program_node->left_ch->left_ch->token.type == TOKEN_TYPE_IDENTIFIER)
+                return functionCall(program_node->left_ch, sym_table);
+            // else List valmem call
+            return valmemList(program_node->left_ch, sym_table);
         case NODE_VAR_DEF:
         case NODE_VAL_DEF:
             return variableDef(program_node->left_ch, function_entry, sym_table); // returns UNIT

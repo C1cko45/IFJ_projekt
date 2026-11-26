@@ -1,10 +1,8 @@
 import ifj26.*
 
 @main
-def runFoo(): Unit =
-    //val empty: List[Int] = (1, 2)
-    ()
-
-def valmem(): Int =
-    var x: Int = 5.0.floor.toInt
-    5
+def runFoo(): Unit = 
+    if 5 > 3 then
+        print(i)
+    else
+        print(0)
