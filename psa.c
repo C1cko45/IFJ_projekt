@@ -185,7 +185,7 @@ static int stack_top_position(void){
 }
 // reduce: aplikuje pravidlo podla najvyssieho terminalu a vytvori uzol AST:
 //   E -> i | E op E | E.id (NODE_VALMEM) | (E) | () (literal Unit) | unarny_op E
-void reduce(){
+void reduce(void){
     int index = stack_top_position();
     if(index < 0){parser_error_exit(99, "Interna chyba PSA: redukcia na prazdnom zasobniku");}
     AST_NODE* temp = NULL;
@@ -263,7 +263,7 @@ void reduce(){
 
 // parse_expression: precedencna syntakticka analyza vyrazu od aktualneho tokenu po prvy ukoncovaci token
 //   (EOL, ';', then, do, else, if, ',', ')' bez parovej '(' ...); ukoncovaci token nespotrebuje, vrati koren AST vyrazu
-AST_NODE* parse_expression(){
+AST_NODE* parse_expression(void){
     if(peek().type == KEYWORD_IF){      // if-vyraz (CONTROL), napr. val y = if x < 0 then 0 - x else x
         next();
         return if_statement();

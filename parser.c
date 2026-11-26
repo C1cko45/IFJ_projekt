@@ -63,7 +63,7 @@ void parser_error_exit(int error_code, const char *message){
 
 // get_type: spracuje typ (String, Double, Int, Unit, Boolean, List[...]) a vrati jeho uzol
 //! Volana z: parser_get_list(), parameter_list(), var_def(), val_def(), function_def()
-AST_NODE* get_type( ){
+AST_NODE* get_type(void){
     AST_NODE* temp = NULL;
     switch(peek().type){
         case KEYWORD_STRING:
@@ -92,7 +92,7 @@ AST_NODE* get_type( ){
 
 // parser_get_list: spracuje zapis List[typ] a vrati uzol NODE_LIST (typ prvku v lavom potomkovi)
 //! Volana z: get_type()
-AST_NODE* parser_get_list(){
+AST_NODE* parser_get_list(void){
     AST_NODE* list_node = ast_create_node_type(NODE_LIST);
     Token current_token = next();                 // spotrebuje klucove slovo List
     if(current_token.type != KEYWORD_LIST){parser_error_exit(2,"Syntakticka chyba v type List: ocakavane klucove slovo List");}
@@ -113,7 +113,7 @@ AST_NODE* parser_get_list(){
 
 // parameter_list: rekurzivne spracuje zoznam parametrov "meno: typ, ..." az po pravu zatvorku
 //! Volana z: sama seba (rekurzia), function_def()
-AST_NODE* parameter_list(){
+AST_NODE* parameter_list(void){
     
     AST_NODE* root = NULL;
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
@@ -157,7 +157,7 @@ AST_NODE* parameter_list(){
 
 // var_def: spracuje definiciu premennej "var meno [: typ] = vyraz" (vyraz cez precedencnu analyzu)
 //! Volana z: statement()
-AST_NODE* var_def(){
+AST_NODE* var_def(void){
     AST_NODE* root = NULL;
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
     AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
@@ -199,7 +199,7 @@ AST_NODE* var_def(){
  
 // val_def: spracuje definiciu konstanty "val meno [: typ] = vyraz" (rovnaka struktura ako var_def)
 //! Volana z: statement()
-AST_NODE* val_def(){
+AST_NODE* val_def(void){
     AST_NODE* root = NULL;
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
     AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
@@ -317,7 +317,7 @@ AST_NODE* call_f(Token first, Token second){
 //   NODE_IF: lavy = NODE_PODMIENKA (lavy = podmienka, pravy = telo then), pravy = NODE_ELSE (lavy = telo else)
 //   alebo pri "else if" priamo dalsi NODE_IF; telo je vzdy retaz NODE_PROGRAM
 //! Volana z: sama seba (else if), statement(), psa.c: parse_expression (if-vyraz)
-AST_NODE* if_statement(){
+AST_NODE* if_statement(void){
     AST_NODE* root = ast_create_node_type(NODE_IF);
     AST_NODE* podmienka = ast_create_node_type(NODE_PODMIENKA);
     AST_NODE* root_temp = root;
@@ -394,7 +394,7 @@ AST_NODE* if_statement(){
 
 // while_loop: "while podmienka do telo" -> NODE_WHILE (lavy = podmienka, pravy = telo)
 //! Volana z: statement()
-AST_NODE* while_loop(){
+AST_NODE* while_loop(void){
     AST_NODE* root = ast_create_node_type(NODE_WHILE);
     AST_NODE* temp = parse_expression();
     ast_add_parent(root, temp, 0);
@@ -409,7 +409,7 @@ AST_NODE* while_loop(){
 //   NODE_FOR: lavy = premenna (lavy = NODE_LIMIT, pravy = retaz NODE_PODMIENKA so strazami), pravy = telo
 //   NODE_LIMIT: lavy = uzol to/until (lavy = od, pravy = do) alebo zdroj (zoznam), pravy = krok (by)
 //! Volana z: statement()
-AST_NODE* for_loop(){
+AST_NODE* for_loop(void){
     AST_NODE* root = ast_create_node_type(NODE_FOR);
     AST_NODE* temp;
     AST_NODE* limit_typ;
@@ -522,7 +522,7 @@ AST_NODE* for_loop(){
 //   ukoncenie sa nekontroluje za if/while/for (konci blokom alebo ho skontroloval vnoreny prikaz),
 //   za if-vyrazom a pred else (jednoriadkova vetva then, else pokracuje na tom istom riadku)
 //! Volana z: function_body_block(), function_body()
-AST_NODE* statement(){
+AST_NODE* statement(void){
     Token current_token = peek();
     AST_NODE* root = NULL;
     switch (current_token.type){
@@ -612,7 +612,7 @@ AST_NODE* statement(){
 
 // function_body_block: blok prikazov medzi INDENT a DEDENT, prikazy su zretazene cez NODE_PROGRAM
 //! Volana z: function_body()
-AST_NODE* function_body_block(){
+AST_NODE* function_body_block(void){
     //vytvorime prvy node program bloku
     AST_NODE* root = ast_create_node_type(NODE_PROGRAM);
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
@@ -661,7 +661,7 @@ AST_NODE* function_body_block(){
 // function_body: telo funkcie, vetvy if/else alebo cyklu - bud odsadeny blok (za EOL),
 //   alebo jeden prikaz na tom istom riadku; v oboch pripadoch vracia retaz NODE_PROGRAM
 //! Volana z: if_statement(), while_loop(), for_loop(), function_list()
-AST_NODE* function_body(){
+AST_NODE* function_body(void){
     AST_NODE* root = NULL;
     Token current_token = peek();
     if(current_token.type == TOKEN_TYPE_EOL){
@@ -682,7 +682,7 @@ AST_NODE* function_body(){
 
 // function_def: hlavicka funkcie "meno(parametre) [: typ] =" (bez tela)
 //! Volana z: function_list()
-AST_NODE* function_def(){
+AST_NODE* function_def(void){
     AST_NODE* root = NULL;
     Token current_token = next();
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
@@ -716,7 +716,7 @@ AST_NODE* function_def(){
 
 // function_list: jedna definicia funkcie ([@main] def ...) = hlavicka + telo
 //! Volana z: program()
-AST_NODE* function_list(){
+AST_NODE* function_list(void){
     AST_NODE* root = NULL;
     Token current_token = next();
     AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pointre na uzly ktore treba pripojit na koren
@@ -768,7 +768,7 @@ AST_NODE* function_list(){
 
 // prolog: skontroluje povinny prolog "import meno.*" ukonceny EOL (pred nim mozu byt prazdne riadky a komentare)
 //! Volana z: program()
-bool prolog(){
+bool prolog(void){
     Token current_token = next();
     while(current_token.type == TOKEN_TYPE_EOL){ current_token = next(); }   // pred prologom mozu byt komentare a prazdne riadky
     if (current_token.type != KEYWORD_IMPORT) return false;
@@ -791,7 +791,7 @@ bool prolog(){
 
  // program: vstupna funkcia parsera - prolog a potom zoznam definicii funkcii, vracia koren AST
 //! Volana z: main.c: main
-AST_NODE* program(){
+AST_NODE* program(void){
     AST_NODE* root = ast_create_node_type(NODE_PROGRAM);
     ast_root = root;
     if (prolog() == false){

@@ -5,7 +5,7 @@
 
 // TODO: dopisat ostatne suboru *.h
 
-int main()
+int main(void)
 {
     AST_NODE *strom = program();
 
