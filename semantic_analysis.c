@@ -673,6 +673,7 @@ static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table)
             }
             // Annotate the identifier AST_NODE with symtable info for codegen
             annotateAST(expr_node, var_entry, var_entry->entry_type);
+            return getTermType(expr_node, sym_table);
         case TOKEN_TYPE_INT:
         case TOKEN_TYPE_DOUBLE:
         case TOKEN_TYPE_STRING:
@@ -748,6 +749,8 @@ static DataType valmemExpr(AST_NODE *valmem_node, SymTable *sym_table)
                     }
                     // Annotate the identifier AST_NODE with symtable info for codegen
                     annotateAST(valmem_node->left_ch, var_entry, var_entry->entry_type);
+                    left_operand = getTermType(valmem_node->left_ch, sym_table);
+                    break;
                 case TOKEN_TYPE_INT:
                 case TOKEN_TYPE_DOUBLE:
                 case TOKEN_TYPE_STRING:
@@ -899,6 +902,10 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
             if (arithm_node->right_ch == NULL) // if '-' is unary operator, else processed below
                 // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
                 return arithmExpr(arithm_node->left_ch, sym_table);
+
+            left_operand = arithmExpr(arithm_node->left_ch, sym_table);
+            right_operand = arithmExpr(arithm_node->right_ch, sym_table);
+            break;
         case TOKEN_TYPE_PLUS:
         case TOKEN_TYPE_MUL:
         case TOKEN_TYPE_DIV:
@@ -1069,6 +1076,8 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
             if (relat_node->right_ch == NULL) // if '-' is unary operator, else processed below
                 // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
                 return arithmExpr(relat_node->left_ch, sym_table);
+
+            return arithmExpr(relat_node, sym_table);
         case TOKEN_TYPE_PLUS:
         case TOKEN_TYPE_MUL:
         case TOKEN_TYPE_DIV:
@@ -1160,6 +1169,8 @@ static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table)
             if (neq_node->right_ch == NULL) // if '-' is unary operator, else processed below
                 // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
                 return arithmExpr(neq_node->left_ch, sym_table);
+
+            return arithmExpr(neq_node, sym_table);
         case TOKEN_TYPE_PLUS:
         case TOKEN_TYPE_MUL:
         case TOKEN_TYPE_DIV:
@@ -1377,6 +1388,7 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
                 default:
                     break;
             }
+            break;
 
         default:
             fprintf(stderr, "programStatement() -- Function contains statement of unsupported type\n");
