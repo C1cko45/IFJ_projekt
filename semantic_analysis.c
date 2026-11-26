@@ -261,7 +261,7 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
     if (func_ret_type == NIL)
     {
         fprintf(stderr, "returnStatement() -- return statement inside function with no explicit return type\n");
-        compilerError(ERROR_TYPE);
+        compilerError(ERROR_OTHER);
     }
 
     // empty return allowed only in functions that have explicit return type Unit, which in this case it doesn't
@@ -420,7 +420,7 @@ static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, Sy
     if (cond_expr == NULL)
     {
         fprintf(stderr, "whileStatement() -- while-condition doesn't exist\n");
-        compilerError(ERROR_TYPE);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Evaluate the condition first
@@ -459,18 +459,6 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
         compilerError(ERROR_INTERNAL);
     }
 
-    /*
-     * First pushScope() and then push the generator's new control variable into it (as immutable)
-     * (The generator's control variable on the left is a new control variable that is pushed)
-     * (the right side can be an int literal/int variable/list[Int] literal/list[Int] variable)
-     * Must check what type of generator (3 types):
-     *      from to to
-     *      from to to by step --> step must not be 0 (statically can check only if step is int interal)
-     *      from until until
-     * Generator can contain only int literals/variables (no implicit conversion)
-     * Then run expr() checks on guards (if-expressions)
-     */
-
     // Also if variables -> must resolve in sym_table and then annotateAST
     if (for_node->left_ch == NULL || for_node->left_ch->left_ch == NULL)
     {
@@ -479,8 +467,9 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
     }
 
     // Check that for-loop's generator contains only expressions of type Int
-    DataType from_type = exprStatement(for_node->left_ch->left_ch->left_ch->left_ch, sym_table);
-    DataType to_type = exprStatement(for_node->left_ch->left_ch->left_ch->right_ch, sym_table);
+    AST_NODE *limit_node = for_node->left_ch->left_ch;
+    DataType from_type = exprStatement(limit_node->left_ch->left_ch, sym_table);
+    DataType to_type = exprStatement(limit_node->left_ch->right_ch, sym_table);
     if (from_type != INT || to_type != INT)
     {
         fprintf(stderr, "forStatement() -- for-loop generator bounds contain non-integer expression\n");
@@ -489,13 +478,19 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
 
     DataType step_type;
     // If step exists, check
-    if (for_node->left_ch->left_ch->right_ch != NULL)
+    if (limit_node->right_ch != NULL)
     {
-        step_type = exprStatement(for_node->left_ch->left_ch->right_ch, sym_table);
+        step_type = exprStatement(limit_node->right_ch, sym_table);
         if (step_type != INT)
         {
             fprintf(stderr, "forStatement() -- for-loop generator step contains non-integer expression\n");
             compilerError(ERROR_TYPE);
+        }
+
+        if (limit_node->right_ch->token.type == TOKEN_TYPE_INT && limit_node->right_ch->token.attr.int_val == 0)
+        {
+            fprintf(stderr, "forStatement() -- for-loop generator step is 0\n");
+            compilerError(ERROR_OTHER);
         }
     }
 
@@ -1261,21 +1256,21 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
     // Argument error-handling
     if (if_node == NULL || function_entry == NULL || sym_table == NULL)
     {
-        fprintf(stderr, "ifStatement() -- at least one argument is invalid\n");
+        fprintf(stderr, "ifExpr() -- at least one argument is invalid\n");
         compilerError(ERROR_INTERNAL);
     }
 
     AST_NODE *cond_node = if_node->left_ch;
     if (cond_node == NULL)
     {
-        fprintf(stderr, "ifStatement() -- AST condition node is invalid\n");
+        fprintf(stderr, "ifExpr() -- AST condition node is invalid\n");
         compilerError(ERROR_INTERNAL);
     }
 
     // Evaluate the condition first
     if (exprStatement(cond_node->left_ch, sym_table) != BOOLEAN)
     {
-        fprintf(stderr, "ifStatement() -- condition expression is not boolean\n");
+        fprintf(stderr, "ifExpr() -- condition expression is not boolean\n");
         compilerError(ERROR_TYPE);
     }
 
@@ -1309,7 +1304,7 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
     // Process mandatory else-branch
     pushScope(sym_table);
 
-    AST_NODE *else_program_node = if_node->right_ch;
+    AST_NODE *else_program_node = if_node->right_ch->left_ch;
     DataType else_ret_type = NIL;
     while (else_program_node != NULL)
     {
