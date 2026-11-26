@@ -100,21 +100,49 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
             // Evaluate return value and compare its type with function return type
             DataType retval_type = programStatement(program_node, function_entry, sym_table);
 
-            // If function signature doesn't have explicit return type (and function has no return statements)
-            // -> Function return type inferred from its last statement
-            // Checks for explicit return type when function contains return statements -> see returnStatement()
-            if (*func_ret_type == NIL)
+            // If function's explicit return type isn't UNIT -> match return value type and function signature
+            if (*func_ret_type != UNIT && *func_ret_type != NIL)
+            {
+                // And also last statement if-statement --> special checks, see language spec
+                if (program_node->left_ch->type != NODE_IF)
+                {
+                    if (retval_type != *func_ret_type)
+                    {
+                        fprintf(stderr, "functionDef() -- return value type doesn't match function signature\n");
+                        compilerError(ERROR_TYPE);
+                    }
+                }
+                // If if-statement last, and explicit return type not UNIT, check if every branch has return statement
+                else if (program_node->left_ch->type == NODE_IF)
+                {
+                    AST_NODE *if_node = program_node->left_ch;
+                    while (if_node != NULL)
+                    {
+                        bool return_found = false;
+                        AST_NODE *body_program_node = if_node->left_ch->right_ch;
+                        while (!return_found && body_program_node != NULL)
+                        {
+                            // If found return statement in branch block, correct and continue checking another branch
+                            if (body_program_node->left_ch->token.type == KEYWORD_RETURN)
+                                return_found = true;
+                            body_program_node = body_program_node->right_ch;
+                        }
+
+                        if (!return_found)
+                        {
+                            fprintf(stderr, "functionDef() -- not all if-branches have return statement\n");
+                            compilerError(ERROR_TYPE);
+                        }
+
+                        if_node = if_node->right_ch;
+                    }
+                }
+            }
+            // Function signature has no explicit return type
+            else if (*func_ret_type == NIL)
                 *func_ret_type = retval_type;
 
             // If function def has explicit return type UNIT -> returns UNIT no matter what (return values discarded)
-            if (*func_ret_type != UNIT)
-            {
-                if (retval_type != *func_ret_type)
-                {
-                    fprintf(stderr, "functionDef() -- return value type doesn't match function signature\n");
-                    compilerError(ERROR_TYPE);
-                }
-            }
         }
         else
             programStatement(program_node, function_entry, sym_table);
@@ -168,9 +196,10 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     // Check argument types -- can only be literals and identifiers (Should be guaranteed by syntactic analysis)
     // Handles possible Int->Double implicit conversion
     DataType arg_type;
-    for (size_t index = 0; arg_count > 0; ++index, --arg_count)
+    AST_NODE *arg_node = call_node->right_ch;
+    for (size_t index = 0; index < arg_count; ++index)
     {
-        arg_type = getTermType(call_node->right_ch->left_ch, sym_table);
+        arg_type = getTermType(arg_node->left_ch, sym_table);
         if (arg_type == NIL)
         {
             fprintf(stderr, "functionCall() -- function argument of indeterminate type\n");
@@ -189,7 +218,10 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
 
         // Handle case of implicit conversion Int->Double
         if (arg_type == INT && function_entry->entry_data.function.parameters[index] == DOUBLE)
+        {
+            arg_node = arg_node->right_ch;
             continue;
+        }
 
         if (arg_type != function_entry->entry_data.function.parameters[index])
         {
@@ -197,7 +229,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
             compilerError(ERROR_PARAM);
         }
 
-        call_node = call_node->right_ch;
+        arg_node = arg_node->right_ch;
     }
 
     // If all is correct, annotate AST node with sym_table info for codegen
@@ -229,7 +261,7 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
     if (func_ret_type == NIL)
     {
         fprintf(stderr, "returnStatement() -- return statement inside function with no explicit return type\n");
-        compilerError(ERROR_TYPE);
+        compilerError(ERROR_OTHER);
     }
 
     // empty return allowed only in functions that have explicit return type Unit, which in this case it doesn't
@@ -388,7 +420,7 @@ static DataType whileStatement(AST_NODE *while_node, HTEntry *function_entry, Sy
     if (cond_expr == NULL)
     {
         fprintf(stderr, "whileStatement() -- while-condition doesn't exist\n");
-        compilerError(ERROR_TYPE);
+        compilerError(ERROR_INTERNAL);
     }
 
     // Evaluate the condition first
@@ -427,18 +459,6 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
         compilerError(ERROR_INTERNAL);
     }
 
-    /*
-     * First pushScope() and then push the generator's new control variable into it (as immutable)
-     * (The generator's control variable on the left is a new control variable that is pushed)
-     * (the right side can be an int literal/int variable/list[Int] literal/list[Int] variable)
-     * Must check what type of generator (3 types):
-     *      from to to
-     *      from to to by step --> step must not be 0 (statically can check only if step is int interal)
-     *      from until until
-     * Generator can contain only int literals/variables (no implicit conversion)
-     * Then run expr() checks on guards (if-expressions)
-     */
-
     // Also if variables -> must resolve in sym_table and then annotateAST
     if (for_node->left_ch == NULL || for_node->left_ch->left_ch == NULL)
     {
@@ -447,14 +467,31 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
     }
 
     // Check that for-loop's generator contains only expressions of type Int
-    DataType from_type = exprStatement(for_node->left_ch->left_ch->left_ch->left_ch, sym_table);
-    DataType to_type = exprStatement(for_node->left_ch->left_ch->left_ch->right_ch, sym_table);
-    DataType step_type = exprStatement(for_node->left_ch->left_ch->right_ch, sym_table);
-
-    if (from_type != INT || to_type != INT || step_type != INT)
+    AST_NODE *limit_node = for_node->left_ch->left_ch;
+    DataType from_type = exprStatement(limit_node->left_ch->left_ch, sym_table);
+    DataType to_type = exprStatement(limit_node->left_ch->right_ch, sym_table);
+    if (from_type != INT || to_type != INT)
     {
-        fprintf(stderr, "forStatement() -- for-loop generator bounds/step contains non-integer expression\n");
+        fprintf(stderr, "forStatement() -- for-loop generator bounds contain non-integer expression\n");
         compilerError(ERROR_TYPE);
+    }
+
+    DataType step_type;
+    // If step exists, check
+    if (limit_node->right_ch != NULL)
+    {
+        step_type = exprStatement(limit_node->right_ch, sym_table);
+        if (step_type != INT)
+        {
+            fprintf(stderr, "forStatement() -- for-loop generator step contains non-integer expression\n");
+            compilerError(ERROR_TYPE);
+        }
+
+        if (limit_node->right_ch->token.type == TOKEN_TYPE_INT && limit_node->right_ch->token.attr.int_val == 0)
+        {
+            fprintf(stderr, "forStatement() -- for-loop generator step is 0\n");
+            compilerError(ERROR_OTHER);
+        }
     }
 
     // Evaluate every guard (if-expression condition)
@@ -673,6 +710,7 @@ static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table)
             }
             // Annotate the identifier AST_NODE with symtable info for codegen
             annotateAST(expr_node, var_entry, var_entry->entry_type);
+            return getTermType(expr_node, sym_table);
         case TOKEN_TYPE_INT:
         case TOKEN_TYPE_DOUBLE:
         case TOKEN_TYPE_STRING:
@@ -748,6 +786,8 @@ static DataType valmemExpr(AST_NODE *valmem_node, SymTable *sym_table)
                     }
                     // Annotate the identifier AST_NODE with symtable info for codegen
                     annotateAST(valmem_node->left_ch, var_entry, var_entry->entry_type);
+                    left_operand = getTermType(valmem_node->left_ch, sym_table);
+                    break;
                 case TOKEN_TYPE_INT:
                 case TOKEN_TYPE_DOUBLE:
                 case TOKEN_TYPE_STRING:
@@ -899,6 +939,9 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
             if (arithm_node->right_ch == NULL) // if '-' is unary operator, else processed below
                 // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
                 return arithmExpr(arithm_node->left_ch, sym_table);
+            left_operand = arithmExpr(arithm_node->left_ch, sym_table);
+            right_operand = arithmExpr(arithm_node->right_ch, sym_table);
+            break;
         case TOKEN_TYPE_PLUS:
         case TOKEN_TYPE_MUL:
         case TOKEN_TYPE_DIV:
@@ -1069,6 +1112,7 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
             if (relat_node->right_ch == NULL) // if '-' is unary operator, else processed below
                 // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
                 return arithmExpr(relat_node->left_ch, sym_table);
+            return arithmExpr(relat_node, sym_table);
         case TOKEN_TYPE_PLUS:
         case TOKEN_TYPE_MUL:
         case TOKEN_TYPE_DIV:
@@ -1160,6 +1204,7 @@ static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table)
             if (neq_node->right_ch == NULL) // if '-' is unary operator, else processed below
                 // arithmExpr() here guaranteed to either return a supported arithm expression return type or it errors
                 return arithmExpr(neq_node->left_ch, sym_table);
+            return arithmExpr(neq_node, sym_table);
         case TOKEN_TYPE_PLUS:
         case TOKEN_TYPE_MUL:
         case TOKEN_TYPE_DIV:
@@ -1211,21 +1256,21 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
     // Argument error-handling
     if (if_node == NULL || function_entry == NULL || sym_table == NULL)
     {
-        fprintf(stderr, "ifStatement() -- at least one argument is invalid\n");
+        fprintf(stderr, "ifExpr() -- at least one argument is invalid\n");
         compilerError(ERROR_INTERNAL);
     }
 
     AST_NODE *cond_node = if_node->left_ch;
     if (cond_node == NULL)
     {
-        fprintf(stderr, "ifStatement() -- AST condition node is invalid\n");
+        fprintf(stderr, "ifExpr() -- AST condition node is invalid\n");
         compilerError(ERROR_INTERNAL);
     }
 
     // Evaluate the condition first
     if (exprStatement(cond_node->left_ch, sym_table) != BOOLEAN)
     {
-        fprintf(stderr, "ifStatement() -- condition expression is not boolean\n");
+        fprintf(stderr, "ifExpr() -- condition expression is not boolean\n");
         compilerError(ERROR_TYPE);
     }
 
@@ -1259,7 +1304,7 @@ static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym
     // Process mandatory else-branch
     pushScope(sym_table);
 
-    AST_NODE *else_program_node = if_node->right_ch;
+    AST_NODE *else_program_node = if_node->right_ch->left_ch;
     DataType else_ret_type = NIL;
     while (else_program_node != NULL)
     {
@@ -1377,6 +1422,7 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
                 default:
                     break;
             }
+            break;
 
         default:
             fprintf(stderr, "programStatement() -- Function contains statement of unsupported type\n");
@@ -1506,6 +1552,24 @@ static DataType getParamType(AST_NODE *type_node)
     }
 
     // passed argument node might be type literal or variable
+    if (type_node->type == NODE_LIST)
+        switch (type_node->left_ch->token.type)
+        {
+            case KEYWORD_STRING:
+                return LIST_STRING;
+            case KEYWORD_DOUBLE:
+                return LIST_DOUBLE;
+            case KEYWORD_INT:
+                return LIST_INT;
+            case KEYWORD_BOOLEAN:
+                return LIST_BOOLEAN;
+            case KEYWORD_UNIT:
+                return LIST_UNIT;
+            // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
+            //     return LIST_ANY;
+            default:;
+        }
+
     switch (type_node->token.type)
     {
         case KEYWORD_STRING:
@@ -1518,23 +1582,6 @@ static DataType getParamType(AST_NODE *type_node)
             return BOOLEAN;
         case KEYWORD_UNIT:
             return UNIT;
-        case KEYWORD_LIST:
-            switch (type_node->left_ch->token.type)
-            {
-                case KEYWORD_STRING:
-                    return LIST_STRING;
-                case KEYWORD_DOUBLE:
-                    return LIST_DOUBLE;
-                case KEYWORD_INT:
-                    return LIST_INT;
-                case KEYWORD_BOOLEAN:
-                    return LIST_BOOLEAN;
-                case KEYWORD_UNIT:
-                    return LIST_UNIT;
-                // case KEYWORD_ANY: -- Seems unsupported by the lexer and parser
-                //     return LIST_ANY;
-                default:;
-            }
         default:
             fprintf(stderr, "getParamType() -- returning NIL?\n");
             return NIL;
