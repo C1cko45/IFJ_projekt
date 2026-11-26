@@ -40,7 +40,7 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table);
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static void functionDef(AST_NODE *function_node, SymTable *sym_table);
-static DataType functionCall(AST_NODE *call_node, SymTable *sym_table);
+static DataType functionCall(AST_NODE *call_node, HTEntry *function_entry, SymTable *sym_table);
 static DataType valmemList(AST_NODE *valmem_node, SymTable *sym_table);
 static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, SymTable *sym_table);
 
@@ -155,6 +155,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
                         if_node = if_node->right_ch;
                     }
 
+                    // Mandatory else-branch when non-Unit explicit function return type and if-statement as last
                     if (!else_found)
                     {
                         fprintf(
@@ -187,7 +188,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
  * Annotate ASTNode with info for codegen
  * Returns function's return value type
  */
-static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
+static DataType functionCall(AST_NODE *call_node, HTEntry *function_entry, SymTable *sym_table)
 {
     // Argument error-handling
     if (sym_table == NULL || call_node == NULL)
@@ -197,11 +198,22 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     }
 
     // Check for call to undefined function
-    HTEntry *function_entry = getIdentifier(call_node->left_ch->token.attr.str_val, FUNCTION, sym_table);
-    if (function_entry == NULL)
+    HTEntry *call_entry = getIdentifier(call_node->left_ch->token.attr.str_val, FUNCTION, sym_table);
+    if (call_entry == NULL)
     {
         fprintf(stderr, "functionCall() -- call to undefined function\n");
         compilerError(ERROR_UNDEF);
+    }
+
+    // Check whether this function call is recursion
+    if (strcmp(call_entry->identifier, function_entry->identifier) == 0)
+    {
+        // If so, check for mandatory function signature return type
+        if (function_entry->entry_data.function.return_type == NIL)
+        {
+            fprintf(stderr, "functionCall() -- recursively called function has no explicit return type\n");
+            compilerError(ERROR_TYPE);
+        }
     }
 
     // Get function call's argument count
@@ -213,7 +225,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
         return checkRangeFunc(call_node, sym_table);
 
     // Check argument count matches function def's parameter count
-    if (arg_count != function_entry->entry_data.function.param_count)
+    if (arg_count != call_entry->entry_data.function.param_count)
     {
         fprintf(stderr, "functionCall() -- argument count doesn't match function signature\n");
         compilerError(ERROR_PARAM);
@@ -233,23 +245,23 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
         }
 
         // if function parameter has type Any, it aceppts any argument type
-        if (function_entry->entry_data.function.parameters[index] == ANY)
+        if (call_entry->entry_data.function.parameters[index] == ANY)
             continue;
 
         // if function parameter has type List[Any], it aceppts any argument type List[T]
-        if (function_entry->entry_data.function.parameters[index] == LIST_ANY)
+        if (call_entry->entry_data.function.parameters[index] == LIST_ANY)
             if (arg_type == LIST_INT || arg_type == LIST_DOUBLE || arg_type == LIST_STRING ||
                 arg_type == LIST_BOOLEAN || arg_type == LIST_UNIT)
                 continue;
 
         // Handle case of implicit conversion Int->Double
-        if (arg_type == INT && function_entry->entry_data.function.parameters[index] == DOUBLE)
+        if (arg_type == INT && call_entry->entry_data.function.parameters[index] == DOUBLE)
         {
             arg_node = arg_node->right_ch;
             continue;
         }
 
-        if (arg_type != function_entry->entry_data.function.parameters[index])
+        if (arg_type != call_entry->entry_data.function.parameters[index])
         {
             fprintf(stderr, "functionCall() -- function argument of incompatible type\n");
             compilerError(ERROR_PARAM);
@@ -259,9 +271,9 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     }
 
     // If all is correct, annotate AST node with sym_table info for codegen
-    annotateAST(call_node->left_ch, function_entry, FUNCTION);
+    annotateAST(call_node->left_ch, call_entry, FUNCTION);
 
-    DataType func_ret_type = function_entry->entry_data.function.return_type;
+    DataType func_ret_type = call_entry->entry_data.function.return_type;
     // If function signature has explicit return type UNIT -> returns UNIT (any other return value discarded)
     if (func_ret_type == UNIT)
         return UNIT;
@@ -416,10 +428,16 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
     }
 
     // empty return allowed only in functions that have explicit return type Unit, which in this case it doesn't
-    if (ret_node->left_ch == NULL && func_ret_type == UNIT)
+    if (ret_node->left_ch == NULL)
     {
-        fprintf(stderr, "returnStatement() -- return statement inside function with no explicit return type Unit\n");
-        compilerError(ERROR_TYPE);
+        if (func_ret_type != UNIT)
+        {
+            fprintf(stderr,
+                    "returnStatement() -- return statement inside function with no explicit return type Unit\n");
+            compilerError(ERROR_TYPE);
+        }
+
+        return UNIT;
     }
 
     DataType retval_type;
@@ -427,7 +445,7 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
     // check type compatibility with function signature
     if (ret_node->left_ch->type == NODE_CALL)
     {
-        retval_type = functionCall(ret_node->left_ch, sym_table);
+        retval_type = functionCall(ret_node->left_ch, function_entry, sym_table);
         // If function return type Double and return value type Int -> implicit conversion Int->Double
         if (func_ret_type == DOUBLE && retval_type == INT)
         {
@@ -727,7 +745,7 @@ static DataType variableDef(AST_NODE *def_node, HTEntry *function_entry, SymTabl
     AST_NODE *rvalue_node = def_node->right_ch;
     // if right side is function call
     if (rvalue_node->type == NODE_CALL)
-        rvalue_ret_type = functionCall(rvalue_node, sym_table);
+        rvalue_ret_type = functionCall(rvalue_node, function_entry, sym_table);
     else if (rvalue_node->type == NODE_IF)
         rvalue_ret_type = ifExpr(rvalue_node, function_entry, sym_table);
     else
@@ -810,7 +828,7 @@ static DataType assignStatement(AST_NODE *assign_node, HTEntry *function_entry, 
     AST_NODE *rvalue_node = assign_node->right_ch;
     // if right side is function call
     if (rvalue_node->type == NODE_CALL)
-        rvalue_ret_type = functionCall(rvalue_node, sym_table);
+        rvalue_ret_type = functionCall(rvalue_node, function_entry, sym_table);
     else if (rvalue_node->type == NODE_IF)
         rvalue_ret_type = ifExpr(rvalue_node, function_entry, sym_table);
     else
@@ -1328,8 +1346,8 @@ static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table)
         case TOKEN_TYPE_LTE:
         case TOKEN_TYPE_GT:
         case TOKEN_TYPE_GTE:
-            return relatExpr(neq_node->left_ch, sym_table);
-            return relatExpr(neq_node->right_ch, sym_table);
+            left_operand = relatExpr(neq_node->left_ch, sym_table);
+            right_operand = relatExpr(neq_node->right_ch, sym_table);
 
         case TOKEN_TYPE_EQ:
         case TOKEN_TYPE_NEQ:
@@ -1483,7 +1501,7 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
     {
         case NODE_CALL:
             if (program_node->left_ch->left_ch->token.type == TOKEN_TYPE_IDENTIFIER)
-                return functionCall(program_node->left_ch, sym_table);
+                return functionCall(program_node->left_ch, function_entry, sym_table);
             // else List valmem call
             return valmemList(program_node->left_ch, sym_table);
         case NODE_VAR_DEF:
