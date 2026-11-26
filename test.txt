@@ -1,7 +1,8 @@
 import ifj26.*
 
 @main
-def runFoo(): Unit = 
-    val lst = List.range(1, 10)
-    val x = lst(2)
+def runFoo(): Unit =
+    return 42
 
+def sign(x: Int): String =
+    "string"
