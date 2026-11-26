@@ -30,7 +30,7 @@ all: build
 build: $(EXEC)
 
 debug: $(SRCS)
-	$(CLANG) $(CLANGFLAGS) $(SRCS) -o $(EXEC_PRINT)
+	$(CLANG) $(CLANGFLAGS) $(SRCS) -o $(EXEC)
 
 print: $(SRCS_PRINT)
 	$(CLANG) $(CLANGFLAGS) $(SRCS_PRINT) -o $(EXEC)
