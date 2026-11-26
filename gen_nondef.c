@@ -1,3 +1,5 @@
+// TODO: header
+
 #include "gen_nondef.h"
 #include <stdio.h>
 #include <string.h>
@@ -12,6 +14,8 @@ void codegen_list_range_from_stack(CodegenContext *ctx, int inclusive);
 static void generate_if_expression(AST_NODE *node, CodegenContext *ctx);
 
 
+//Pre token type vypise zasobnikovu instrukciu ADDS, SUBS alebo MULS.
+//Operandy uz musia byt na zasobniku; nepodporovany operator nastavi chybu 99.
 static void generate_operator(TokenType type, CodegenContext *ctx){
     switch(type){
         case TOKEN_TYPE_PLUS:
@@ -33,7 +37,8 @@ static void generate_operator(TokenType type, CodegenContext *ctx){
 }
 
 
-//Vlozi jednoduchu hodnotu na zasobnik
+//Prevedie literal node na konstantu IFJcode26 a vlozi ju pomocou PUSHS na zasobnik.
+//Unit reprezentuje nil@nil, Double hexadecimalny zapis a retazec sa escapuje samostatne.
 static void generate_literal(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code != 0){
         return;
@@ -67,7 +72,8 @@ static void generate_literal(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Prevedie typ zo semantiky na typ generatora
+//Prevedie semanticky DataType type na interny CodegenType generatora.
+//Neznamy alebo zastupny typ vracia ako CG_TYPE_UNKNOWN.
 CodegenType codegen_from_semantic_type(DataType type){
     switch(type){
         case INT:
@@ -102,10 +108,13 @@ CodegenType codegen_from_semantic_type(DataType type){
 }
 
 
+//Urci typ posledneho prikazu alebo vyrazu vetvy body podmienenej konstrukcie.
+//Prikazy bez vyslednej hodnoty maju typ Unit; explicitny return vracia neznamy typ.
 static CodegenType control_branch_type(const AST_NODE *body, const CodegenContext *ctx){
-    while(body->type == NODE_PROGRAM){
+    while(body != NULL && body->type == NODE_PROGRAM){
         body = body->right_ch != NULL ? body->right_ch : body->left_ch;
     }
+    if(body == NULL) return CG_TYPE_UNKNOWN;
 
     if(body->type == NODE_CALL || body->type == NODE_VALMEM || body->type == NODE_IF){
         return get_expression_type(body, ctx);
@@ -123,7 +132,8 @@ static CodegenType control_branch_type(const AST_NODE *body, const CodegenContex
 }
 
 
-//Zisti vysledny typ vyrazu
+//Rekurzivne zisti vysledny CodegenType vyrazu node bez vypisovania instrukcii.
+//Pouziva semanticke anotacie AST, typy premennych a pravidla implicitnej konverzie Int na Double.
 static CodegenType get_expression_type(const AST_NODE *node, const CodegenContext *ctx){
     if(node == NULL || ctx == NULL){
         return CG_TYPE_UNKNOWN;
@@ -254,15 +264,18 @@ static CodegenType get_expression_type(const AST_NODE *node, const CodegenContex
             return CG_TYPE_UNIT;
 
         case TOKEN_TYPE_IDENTIFIER: {
-            CodegenType bound_type = codegen_variable_type(node, ctx);
-
-            if(bound_type != CG_TYPE_UNKNOWN){
-                return bound_type;
-            }
-
+             //Anotacia zo semantiky urcuje typ konkretnej deklaracie aj mimo jej aktivneho scope.
             if(node->identifier_entry != NULL &&
                 (node->identifier_entry->entry_type == VAR || node->identifier_entry->entry_type == VAL)){
-                    return codegen_from_semantic_type(node->identifier_entry->entry_data.variable_data_type);
+                    CodegenType semantic_type = codegen_from_semantic_type(node->identifier_entry->entry_data.variable_data_type);
+                    if(semantic_type != CG_TYPE_UNKNOWN){
+                        return semantic_type;
+                    }
+            }
+
+            CodegenType bound_type = codegen_variable_type(node, ctx);
+            if(bound_type != CG_TYPE_UNKNOWN){
+                return bound_type;
             }
 
             if(node->token.attr.str_val == NULL || ctx->symbols == NULL){
@@ -355,11 +368,14 @@ static CodegenType get_expression_type(const AST_NODE *node, const CodegenContex
 }
 
 
+//Verejne rozhranie generatora na zistenie typu vyrazu node; vracia CodegenType bez generovania kodu.
 CodegenType codegen_expression_type(const AST_NODE *node, const CodegenContext *ctx){
     return get_expression_type(node, ctx);
 }
 
 
+//Vrati typ deklaracie identifier z bindingu alebo explicitnej anotacie v AST.
+//Ak typ este nie je znamy, vracia CG_TYPE_UNKNOWN.
 static CodegenType get_declared_type(const AST_NODE *identifier, const CodegenContext *ctx){
     if(identifier == NULL){
         return CG_TYPE_UNKNOWN;
@@ -407,7 +423,33 @@ static CodegenType get_declared_type(const AST_NODE *identifier, const CodegenCo
 }
 
 
-//Vygeneruje vypocet s cislami
+//IFJ26 Int ma 32 bitov, cielovy int 64 bitov; vysledok vratime do 32-bitoveho rozsahu.
+//Vygeneruje normalizaciu celociselnej hodnoty na vrchole datoveho zasobnika na signed 32-bit Int.
+//Pouzije zvysok po deleni 2^32 a korekciu znamienka; vysledok ulozi spat na zasobnik.
+static void normalize_int32(CodegenContext *ctx){
+    unsigned int id = ctx->label_counter++;
+    fputs("POPS GF@%cg_tmp\n"
+          "GT GF@%cg_str_left GF@%cg_tmp int@2147483647\n", ctx->output);
+    fprintf(ctx->output, "JUMPIFEQ $$cg_i32_wrap_%u GF@%%cg_str_left bool@true\n", id);
+    fputs("LT GF@%cg_str_left GF@%cg_tmp int@-2147483648\n", ctx->output);
+    fprintf(ctx->output, "JUMPIFEQ $$cg_i32_done_%u GF@%%cg_str_left bool@false\n"
+                        "LABEL $$cg_i32_wrap_%u\n", id, id);
+    fputs("IDIV GF@%cg_str_left GF@%cg_tmp int@4294967296\n"
+          "MUL GF@%cg_str_left GF@%cg_str_left int@4294967296\n"
+          "SUB GF@%cg_tmp GF@%cg_tmp GF@%cg_str_left\n"
+          "GT GF@%cg_str_left GF@%cg_tmp int@2147483647\n", ctx->output);
+    fprintf(ctx->output, "JUMPIFEQ $$cg_i32_low_%u GF@%%cg_str_left bool@false\n", id);
+    fputs("SUB GF@%cg_tmp GF@%cg_tmp int@4294967296\n", ctx->output);
+    fprintf(ctx->output, "LABEL $$cg_i32_low_%u\n", id);
+    fputs("LT GF@%cg_str_left GF@%cg_tmp int@-2147483648\n", ctx->output);
+    fprintf(ctx->output, "JUMPIFEQ $$cg_i32_done_%u GF@%%cg_str_left bool@false\n", id);
+    fputs("ADD GF@%cg_tmp GF@%cg_tmp int@4294967296\n", ctx->output);
+    fprintf(ctx->output, "LABEL $$cg_i32_done_%u\n", id);
+    fputs("PUSHS GF@%cg_tmp\n", ctx->output);
+}
+
+//Prelozi unarne a binarne aritmeticke operacie node, vratane + pre dva retazce.
+//Operandy vyhodnoti zlava doprava, zmiesane ciselne typy zjednoti na Double; vysledok ponecha na zasobniku.
 static void generate_numeric_operation(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code != 0){
         return;
@@ -429,17 +471,14 @@ static void generate_numeric_operation(AST_NODE *node, CodegenContext *ctx){
         }
 
         if(node->token.type == TOKEN_TYPE_MINUS){
-            fputs("POPS GF@%cg_tmp\n", ctx->output);
-
             if(type == CG_TYPE_INT){
-                fputs("PUSHS int@0\n", ctx->output);
+                fputs("PUSHS int@-1\nMULS\n", ctx->output);
+                normalize_int32(ctx);
             }
-
             else{
-                fputs("PUSHS float@0x0p+0\n", ctx->output);
+                //Nasobenie -1 spravne otoci znamienko nuly podla IEEE 754 (0 - 0 nie).
+                fputs("PUSHS float@-0x1p+0\nMULS\n", ctx->output);
             }
-
-            fputs("PUSHS GF@%cg_tmp\nSUBS\n", ctx->output);
         }
 
         return;
@@ -510,10 +549,15 @@ static void generate_numeric_operation(AST_NODE *node, CodegenContext *ctx){
     else{
         generate_operator(node->token.type, ctx);
     }
+
+    if(left_type == CG_TYPE_INT && right_type == CG_TYPE_INT && ctx->error_code == 0){
+        normalize_int32(ctx);
+    }
 }
 
 
-//Vygeneruje porovnanie dvoch hodnot
+//Prelozi relacny operator node, pripadne rozsiri Int na Double pred porovnanim.
+//Vysledok typu bool ostava na zasobniku; zlozene porovnania sklada z instrukcii EQ/LT/GT a NOT.
 static void generate_comparison(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code != 0){
         return;
@@ -596,7 +640,7 @@ static void generate_comparison(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vlozi hodnotu premennej na zasobnik
+//Vyhlada interne LF meno identifikatora node a vlozi jeho aktualnu hodnotu na datovy zasobnik.
 static void generate_variable(AST_NODE *node, CodegenContext *ctx){
     if(ctx == NULL || ctx->error_code != 0){
         return;
@@ -623,7 +667,8 @@ static void generate_variable(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vypise retazec v tvare pre IFJcode26
+//Vypise PUSHS string@ pre retazcovy literal node v syntaxi IFJcode26.
+//Riadiace znaky, medzery, # a spatne lomky zapise pomocou ciselnych escape sekvencii.
 static void generate_string_literal(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code != 0){
         return;
@@ -654,7 +699,8 @@ static void generate_string_literal(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vygeneruje logicke operacie
+//Prelozi logicky operator !, && alebo || (BOOLTHEN) a ponecha vysledok bool na zasobniku.
+//Binarny operator vyhodnocuje zlava doprava skratovo, teda pravy operand len ak je potrebny.
 static void generate_boolean_operation(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code != 0){
         return;
@@ -702,7 +748,8 @@ static void generate_boolean_operation(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vygeneruje pristup k vlastnosti hodnoty
+//Prelozi pristup node k clenovi hodnoty (VALMEM): toString, length, toInt alebo floor.
+//Najprv vyhodnoti prijimac, vysledok necha na zasobniku; obsahuje aj vetvy pre LISTS.
 static void generate_valmem_expression(AST_NODE *node, CodegenContext *ctx){
     const char *member = node->right_ch->token.attr.str_val;
 
@@ -778,17 +825,23 @@ static void generate_valmem_expression(AST_NODE *node, CodegenContext *ctx){
     else if(strcmp(member, "floor") == 0){
         unsigned int id = ctx->label_counter++;
 
+        //Konecne hodnoty binary64 s |x| >= 2^52 uz nemaju nenulovu desatinnu cast.
+        //Zachovame znamienko nuly a vyhneme sa FLOAT2INT mimo rozsahu celeho cisla.
         fputs("POPS GF@%cg_tmp\n"
-            "PUSHS GF@%cg_tmp\n"
-            "FLOAT2INTS\n"
-            "INT2FLOATS\n"
-            "POPS GF@%cg_str_left\n"
-            "LT GF@%cg_str_right GF@%cg_tmp GF@%cg_str_left\n", ctx->output);
-
+              "MOVE GF@%cg_str_left GF@%cg_tmp\n"
+              "LT GF@%cg_str_right GF@%cg_tmp float@0x1p+52\n", ctx->output);
+        fprintf(ctx->output, "JUMPIFEQ $$cg_floor_end_%u GF@%%cg_str_right bool@false\n", id);
+        fputs("GT GF@%cg_str_right GF@%cg_tmp float@-0x1p+52\n", ctx->output);
+        fprintf(ctx->output, "JUMPIFEQ $$cg_floor_end_%u GF@%%cg_str_right bool@false\n"
+                            "JUMPIFEQ $$cg_floor_end_%u GF@%%cg_tmp float@0x0p+0\n", id, id);
+        fputs("PUSHS GF@%cg_tmp\n"
+              "FLOAT2INTS\n"
+              "INT2FLOATS\n"
+              "POPS GF@%cg_str_left\n"
+              "LT GF@%cg_str_right GF@%cg_tmp GF@%cg_str_left\n", ctx->output);
         fprintf(ctx->output, "JUMPIFEQ $$cg_floor_end_%u GF@%%cg_str_right bool@false\n"
                             "SUB GF@%%cg_str_left GF@%%cg_str_left float@0x1p+0\n"
                             "LABEL $$cg_floor_end_%u\n", id, id);
-
         fputs("PUSHS GF@%cg_str_left\n", ctx->output);
     }
 
@@ -798,7 +851,8 @@ static void generate_valmem_expression(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Spoji dva zoznamy
+//Prelozi operator ++ nad dvoma zoznamami a vytvori nove pole s ich prvkami v povodnom poradi.
+//Dlzka sa ulozi na index 0; referencia vysledku zostane na zasobniku. (LISTS)
 static void generate_list_concat(AST_NODE *node, CodegenContext *ctx){
     unsigned int id = ctx->label_counter++;
 
@@ -862,7 +916,8 @@ static void generate_list_concat(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Ziska prvy prvok alebo zvysok zoznamu
+//Podla tail vrati prvy prvok alebo novy zoznam bez prveho prvku z node.
+//Vysledok je na zasobniku; prazdny vstup vyvola chybu 40. (LISTS)
 static void generate_list_head_tail(AST_NODE *node, CodegenContext *ctx, int tail){
     unsigned int id = ctx->label_counter++;
 
@@ -922,7 +977,8 @@ static void generate_list_head_tail(AST_NODE *node, CodegenContext *ctx, int tai
 }
 
 
-//Vytvori vybranu cast zoznamu
+//Odobere zo zasobnika zoznam a hranice; mode 1 = take, 2 = drop, 3 = slice.
+//Oreze indexy na platny rozsah, vytvori nove pole a vlozi jeho referenciu na zasobnik. (LISTS)
 static void emit_list_slice_from_stack(CodegenContext *ctx, int mode){
     unsigned int id = ctx->label_counter++;
 
@@ -1036,7 +1092,8 @@ static void emit_list_slice_from_stack(CodegenContext *ctx, int mode){
 }
 
 
-//Vygeneruje metody zoznamov
+//Rozlisi metodu take/drop/slice z volania node a vyhodnoti prijimac aj argumenty.
+//Vytvorenie vysledneho zoznamu deleguje na emit_list_slice_from_stack. (LISTS)
 void codegen_generate_list_method_expression(AST_NODE *node, CodegenContext *ctx){
     AST_NODE *access = node->left_ch;
 
@@ -1064,7 +1121,8 @@ void codegen_generate_list_method_expression(AST_NODE *node, CodegenContext *ctx
 }
 
 
-//Vytvori zoznam cisel z rozsahu
+//Odobere start, koniec a krok zo zasobnika a vytvori zoznam cisel z rozsahu.
+//inclusive urcuje zahrnutie konca; najprv spocita prvky, potom vyplni pole. (LISTS)
 void codegen_list_range_from_stack(CodegenContext *ctx, int inclusive){
     unsigned int id = ctx->label_counter++;
 
@@ -1138,7 +1196,8 @@ void codegen_list_range_from_stack(CodegenContext *ctx, int inclusive){
 }
 
 
-//Vygeneruje vyraz a vlozi vysledok na zasobnik
+//Prelozi vyraz node podla druhu uzla alebo tokenu na instrukcie IFJcode26.
+//Pri uspechu zanecha na datovom zasobniku jednu vyslednu hodnotu.
 void generate_expression(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || ctx == NULL || ctx->error_code !=0){
         return;
@@ -1212,6 +1271,8 @@ void generate_expression(AST_NODE *node, CodegenContext *ctx){
 }
 
 
+//Prelozi vetvu body pouzitu ako hodnotu: predosle prikazy zahodia vysledok, posledny ho ponecha.
+//Pri vetve bez hodnoty vlozi nil@nil (okrem return); Int pripadne konvertuje na result_type Double.
 static void generate_control_branch_value(AST_NODE *body, CodegenType result_type, CodegenContext *ctx){
     if(body == NULL){
         ctx->error_code = 99;
@@ -1271,7 +1332,8 @@ static void generate_control_branch_value(AST_NODE *body, CodegenType result_typ
 }
 
 
-//Vygeneruje if, ktory vracia hodnotu
+//Prelozi if ako vyraz (CONTROL): podmienka rozhodne, ktora z dvoch vetiev sa vykona.
+//Vetvy maju vlastne scope; vykonana vetva ponecha hodnotu so spolocnym vyslednym typom na zasobniku.
 static void generate_if_expression(AST_NODE *node, CodegenContext *ctx){
     if(node == NULL || node->left_ch == NULL || node->right_ch == NULL){
         ctx->error_code = 99;
@@ -1332,7 +1394,8 @@ static void generate_if_expression(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vygeneruje vytvorenie a naplnenie premennej
+//Inicializuje var/val node v predpripravenej LF premennej; urci deklarovany alebo odvodeny typ.
+//Inicializator sa vyhodnoti pred aktivaciou novej deklaracie, aby shadowing neprekryl povodnu premennu predcasne.
 void generate_definition(AST_NODE *node, CodegenContext *ctx){
     if(ctx == NULL){
         return;
@@ -1368,7 +1431,8 @@ void generate_definition(AST_NODE *node, CodegenContext *ctx){
             return;
     }
 
-    codegen_declare_variable(identifier, ctx);
+    //Rezervujeme meno premennej; binding aktivujeme az po vyhodnoteni inicializatora.
+    codegen_reserve_variable(identifier, ctx);
 
     const char *name = codegen_variable_name(identifier, ctx);
 
@@ -1419,8 +1483,13 @@ void generate_definition(AST_NODE *node, CodegenContext *ctx){
         return;
     }
 
-    CodegenType declare_type = get_declared_type(identifier, ctx);
+    //Typ inicializatora zistime v povodnom scope, kym nova deklaracia neprekryje staru.
     CodegenType expression_type = get_expression_type(expression, ctx);
+    codegen_declare_variable(identifier, ctx);
+    if(ctx->error_code != 0){
+        return;
+    }
+    CodegenType declare_type = get_declared_type(identifier, ctx);
 
     if(declare_type == CG_TYPE_UNKNOWN){
         declare_type = expression_type;
@@ -1446,7 +1515,8 @@ void generate_definition(AST_NODE *node, CodegenContext *ctx){
 }
 
 
-//Vygeneruje priradenie novej hodnoty
+//Vyhodnoti expression a priradi vysledok do uz existujucej LF premennej identifier.
+//Pri cielovom type Double konvertuje Int; kontrolu menitelnosti zabezpecuje semanticka analyza.
 void generate_assignment(AST_NODE *identifier, AST_NODE *expression, CodegenContext *ctx){
     if(ctx == NULL){
         return;
@@ -1517,7 +1587,6 @@ void generate_assignment(AST_NODE *identifier, AST_NODE *expression, CodegenCont
 
     fprintf(ctx->output, "POPS LF@%s\n", name);
 }
-
 
 
 

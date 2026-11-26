@@ -1,6 +1,9 @@
 #include "psa.h"
 #include <stddef.h>
 #include <stdio.h>
+
+#include <string.h>
+#include <stdbool.h>
 #define STACK_MAX 256
 // AI-generated (Claude) - prompt: "vytvor mi 2d pole s mojou hotovou precedencnou tabulkou"
 // Prepis rucne vyplnenej tabulky autora (hodnoty su jeho, AI ich len previedla do kodu).
@@ -212,11 +215,47 @@ void reduce(void){
                 stack[index-1].idx != P_EXPR || stack[index+1].idx != P_EXPR){
                 parser_error_exit(2, "Syntakticka chyba vo vyraze: binarnemu operatoru chyba operand");
             }
+            
             if(stack[index].idx == P_DOT){
-                temp = ast_create_node_type(NODE_VALMEM);   // clen hodnoty: lavy = prijemca, pravy = nazov clena
+                AST_NODE *member = stack[index+1].node;
+
+    // Za bodkou musi byt nazov clena
+                if(member == NULL || member->type != NODE_TOKEN_ONLY || member->token.type != TOKEN_TYPE_IDENTIFIER || member->token.attr.str_val == NULL){
+                    parser_error_exit(2, "Syntakticka chyba: za '.' sa ocakava nazov clena");
+                }
+
+                const char *name = member->token.attr.str_val;
+
+    // Cleny bez zatvoriek
+                bool no_args = strcmp(name, "head") == 0 ||
+                            strcmp(name, "tail") == 0 ||
+                            strcmp(name, "toString") == 0 ||
+                            strcmp(name, "toInt") == 0 ||
+                            strcmp(name, "floor") == 0 ||
+                            strcmp(name, "length") == 0 ||
+                            strcmp(name, "toList") == 0;
+
+    // Metody vyzadujuce zatvorky
+                bool needs_args = strcmp(name, "drop") == 0 ||
+                                strcmp(name, "take") == 0 ||
+                                strcmp(name, "slice") == 0 ||
+                                strcmp(name, "range") == 0;
+
+                bool has_parens = peek().type == TOKEN_TYPE_LPAREN;
+
+                if(no_args && has_parens){
+                    parser_error_exit(2, "Syntakticka chyba: bezparametricky clen nesmie mat zatvorky");
+                }
+
+                if(needs_args && !has_parens){
+                    parser_error_exit(2, "Syntakticka chyba: metoda vyzaduje zatvorky");
+                }
+
+                temp = ast_create_node_type(NODE_VALMEM);
             }else{
                 temp = ast_create_node(stack[index].token);
             }
+
             ast_add_parent(temp, stack[index-1].node, 0);
             ast_add_parent(temp, stack[index+1].node, 1);
             stack_pop();
@@ -264,10 +303,26 @@ void reduce(void){
 // parse_expression: precedencna syntakticka analyza vyrazu od aktualneho tokenu po prvy ukoncovaci token
 //   (EOL, ';', then, do, else, if, ',', ')' bez parovej '(' ...); ukoncovaci token nespotrebuje, vrati koren AST vyrazu
 AST_NODE* parse_expression(void){
-    if(peek().type == KEYWORD_IF){      // if-vyraz (CONTROL), napr. val y = if x < 0 then 0 - x else x
+    if(peek().type == KEYWORD_IF){
         next();
-        return if_statement();
+
+        AST_NODE *if_expr = if_statement();
+
+    // Pri if-vyraze musi existovat koncova vetva else.
+    // Prejdeme aj pripadne vetvy else if.
+        AST_NODE *branch = if_expr->right_ch;
+
+        while(branch != NULL && branch->type == NODE_IF){
+            branch = branch->right_ch;
+        }
+
+        if(branch == NULL || branch->type != NODE_ELSE){
+            parser_error_exit(6, "If-vyraz musi obsahovat vetvu else");
+        }
+
+        return if_expr;
     }
+    
     stack_count = 0;
     paren_count = 0;
     insert((STACK_ITEM){.idx = P_DOLLAR});
