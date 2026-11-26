@@ -1,6 +1,9 @@
 #include "psa.h"
 #include <stddef.h>
 #include <stdio.h>
+
+#include <string.h>
+#include <stdbool.h>
 #define STACK_MAX 256
 // AI-generated (Claude) - prompt: "vytvor mi 2d pole s mojou hotovou precedencnou tabulkou"
 // Prepis rucne vyplnenej tabulky autora (hodnoty su jeho, AI ich len previedla do kodu).
@@ -212,11 +215,54 @@ void reduce(void){
                 stack[index-1].idx != P_EXPR || stack[index+1].idx != P_EXPR){
                 parser_error_exit(2, "Syntakticka chyba vo vyraze: binarnemu operatoru chyba operand");
             }
+
+            /*
             if(stack[index].idx == P_DOT){
                 temp = ast_create_node_type(NODE_VALMEM);   // clen hodnoty: lavy = prijemca, pravy = nazov clena
             }else{
                 temp = ast_create_node(stack[index].token);
             }
+            */
+            if(stack[index].idx == P_DOT){
+                AST_NODE *member = stack[index+1].node;
+
+    // Za bodkou musi byt nazov clena
+                if(member == NULL || member->type != NODE_TOKEN_ONLY || member->token.type != TOKEN_TYPE_IDENTIFIER || member->token.attr.str_val == NULL){
+                    parser_error_exit(2, "Syntakticka chyba: za '.' sa ocakava nazov clena");
+                }
+
+                const char *name = member->token.attr.str_val;
+
+    // Cleny bez zatvoriek
+                bool no_args = strcmp(name, "head") == 0 ||
+                            strcmp(name, "tail") == 0 ||
+                            strcmp(name, "toString") == 0 ||
+                            strcmp(name, "toInt") == 0 ||
+                            strcmp(name, "floor") == 0 ||
+                            strcmp(name, "length") == 0 ||
+                            strcmp(name, "toList") == 0;
+
+    // Metody vyzadujuce zatvorky
+                bool needs_args = strcmp(name, "drop") == 0 ||
+                                strcmp(name, "take") == 0 ||
+                                strcmp(name, "slice") == 0 ||
+                                strcmp(name, "range") == 0;
+
+                bool has_parens = peek().type == TOKEN_TYPE_LPAREN;
+
+                if(no_args && has_parens){
+                    parser_error_exit(2, "Syntakticka chyba: bezparametricky clen nesmie mat zatvorky");
+                }
+
+                if(needs_args && !has_parens){
+                    parser_error_exit(2, "Syntakticka chyba: metoda vyzaduje zatvorky");
+                }
+
+                temp = ast_create_node_type(NODE_VALMEM);
+            }else{
+                temp = ast_create_node(stack[index].token);
+            }
+
             ast_add_parent(temp, stack[index-1].node, 0);
             ast_add_parent(temp, stack[index+1].node, 1);
             stack_pop();
