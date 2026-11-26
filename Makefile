@@ -2,7 +2,8 @@ CC = gcc
 CLANG = clang
 
 CFLAGS = -std=c99 -Wall -Wextra -Wpedantic
-CLANGFLAGS = -std=c99 -Wall -Wextra -Werror -Wpedantic -g -O0
+CLANGFLAGS = -std=c99 -g -O0 -Wall -Wextra -Werror -Wuninitialized -Wsometimes-uninitialized -Wpedantic \
+			 -fsanitize=address,undefined -fno-omit-frame-pointer
 
 MAIN_SRC = main.c
 
