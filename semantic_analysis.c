@@ -502,14 +502,20 @@ static DataType forStatement(AST_NODE *for_node, HTEntry *function_entry, SymTab
     // Check that for-loop's generator contains only expressions of type Int
     DataType from_type = exprStatement(for_node->left_ch->left_ch->left_ch->left_ch, sym_table);
     DataType to_type = exprStatement(for_node->left_ch->left_ch->left_ch->right_ch, sym_table);
+    if (from_type != INT || to_type != INT)
+    {
+        fprintf(stderr, "forStatement() -- for-loop generator bound from contains non-integer expression\n");
+        compilerError(ERROR_TYPE);
+    }
     DataType step_type;
     if (for_node->left_ch->left_ch->right_ch != NULL)
-        step_type = exprStatement(for_node->left_ch->left_ch->right_ch, sym_table);
-
-    if (from_type != INT || to_type != INT || step_type != INT)
     {
-        fprintf(stderr, "forStatement() -- for-loop generator bounds/step contains non-integer expression\n");
-        compilerError(ERROR_TYPE);
+        step_type = exprStatement(for_node->left_ch->left_ch->right_ch, sym_table);
+        if (step_type != INT)
+        {
+            fprintf(stderr, "forStatement() -- for-loop generator bounds/step contains non-integer expression\n");
+            compilerError(ERROR_TYPE);
+        }
     }
 
     // Evaluate every guard (if-expression condition)
