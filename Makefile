@@ -1,8 +1,9 @@
 CC = gcc
+CLANG = clang
 
 CFLAGS = -std=c99 -Wall -Wextra -Wpedantic
-
-CLANG = clang
+CLANGFLAGS = -std=c99 -Wall -Wextra -Werror -Wpedantic -g -O0 -fsanitize=unsigned-integer-overflow,address,undefined \
+			 -fno-omit-frame-pointer
 
 MAIN_SRC = main.c
 
@@ -19,11 +20,14 @@ OBJS = $(SRCS:.c=.o)
 
 EXEC = ifj26_compiler
 
-.PHONY: all build clean
+.PHONY: all build debug clean
 
 all: build
 
 build: $(EXEC)
+
+debug: $(SRCS)
+	$(CLANG) $(CLANGFLAGS) $(SRCS) -o $@
 
 $(EXEC): $(SRCS)
 	$(CC) $(CFLAGS) $(SRCS) -o $@
