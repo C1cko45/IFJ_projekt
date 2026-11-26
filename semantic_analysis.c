@@ -97,7 +97,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
     {
         if (program_node->right_ch == NULL) // if last statement in function body
         {
-            // If last function statment is if-statement
+            // If last function statement is if-statement
             // And function has no explicit return type UNIT -> can only end if all branches have return
             if (program_node->left_ch->type == NODE_IF && function_entry->entry_data.function.return_type != UNIT)
             {
@@ -105,9 +105,12 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
                 while (if_node != NULL)
                 {
                     AST_NODE *if_last_node = if_node->left_ch;
-                    // Get if-branch's last statement
+                    // Get if-branch's last statement and also semantic checks for every statement in that block
                     while (if_last_node->right_ch != NULL)
+                    {
+                        programStatement(if_last_node->right_ch, function_entry, sym_table);
                         if_last_node = if_last_node->right_ch;
+                    }
 
                     if (if_last_node->left_ch->token.type != KEYWORD_RETURN)
                     {
@@ -194,9 +197,10 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
     // Check argument types -- can only be literals and identifiers (Should be guaranteed by syntactic analysis)
     // Handles possible Int->Double implicit conversion
     DataType arg_type;
-    for (size_t index = 0; arg_count > 0; ++index, --arg_count)
+    AST_NODE *arg_node = call_node->right_ch;
+    for (size_t index = 0; index < arg_count; ++index)
     {
-        arg_type = getTermType(call_node->right_ch->left_ch, sym_table);
+        arg_type = getTermType(arg_node->left_ch, sym_table);
         if (arg_type == NIL)
         {
             fprintf(stderr, "functionCall() -- function argument of indeterminate type\n");
@@ -223,7 +227,7 @@ static DataType functionCall(AST_NODE *call_node, SymTable *sym_table)
             compilerError(ERROR_PARAM);
         }
 
-        call_node = call_node->right_ch;
+        arg_node = arg_node->right_ch;
     }
 
     // If all is correct, annotate AST node with sym_table info for codegen
