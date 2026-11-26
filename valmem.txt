@@ -1,0 +1,7 @@
+import ifj26.*
+
+@main
+def runFoo(): Unit =
+    var x = 50
+    x.toInt
+    return
