@@ -2,7 +2,7 @@ import ifj26.*
 
 @main
 def runFoo(): Unit = 
-    if 5 > 3 then
-        print(i)
-    else
-        print(0)
+    if 5 > 3 then print(5)
+
+def f(x: Int): Unit =
+    return
