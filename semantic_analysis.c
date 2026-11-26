@@ -118,7 +118,7 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
                     }
                 }
                 // If if-statement last, and explicit return type not UNIT, check if every branch has return statement
-                else if (program_node->left_ch->type == NODE_IF)
+                else if (program_node->left_ch->type == NODE_IF && program_node->left_ch->right_ch->type != NODE_ELSE)
                 {
                     AST_NODE *if_node = program_node->left_ch;
                     bool else_found = false;
@@ -281,6 +281,9 @@ static DataType functionCall(AST_NODE *call_node, HTEntry *function_entry, SymTa
     return func_ret_type;
 }
 
+/*
+ * TODO: FINISH LIST BUILTIN invocation
+ */
 static DataType valmemList(AST_NODE *valmem_node, SymTable *sym_table)
 {
     // Argument error-handling
@@ -1505,10 +1508,11 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
     switch (program_node->left_ch->type)
     {
         case NODE_CALL:
-            if (program_node->left_ch->left_ch->token.type == TOKEN_TYPE_IDENTIFIER)
-                return functionCall(program_node->left_ch, function_entry, sym_table);
-            // else List valmem call
-            // return valmemList(program_node->left_ch, sym_table);
+            // Only way to invoke List's valmem
+            if (program_node->left_ch->left_ch->token.type == KEYWORD_LIST)
+                return valmemList(program_node->left_ch, sym_table);
+
+            return functionCall(program_node->left_ch, function_entry, sym_table);
             break;
         case NODE_VAR_DEF:
         case NODE_VAL_DEF:
@@ -1516,19 +1520,17 @@ static DataType programStatement(AST_NODE *program_node, HTEntry *function_entry
 
         case NODE_WHILE:
             return whileStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
-        //
         case NODE_FOR:
             return forStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
-        //
         case NODE_IF:
             // If if-structure has if-branch and else-branch only -> if-expression
             if (program_node->left_ch->right_ch != NULL && program_node->left_ch->right_ch->type == NODE_ELSE)
                 return ifExpr(program_node->left_ch, function_entry, sym_table);
 
             return ifStatement(program_node->left_ch, function_entry, sym_table); // returns UNIT
-        //
+
+        // Non-List valmem
         case NODE_VALMEM:
-        case NODE_LIST:
             return exprStatement(program_node->left_ch, sym_table);
 
         case NODE_TOKEN_ONLY:
