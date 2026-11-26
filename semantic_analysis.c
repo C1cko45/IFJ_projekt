@@ -30,11 +30,12 @@ static void allocateParams(size_t param_count, DataType **param_ptr);
 static DataType getTermType(AST_NODE *term_node, SymTable *sym_table);
 static void annotateAST(AST_NODE *identifier_node, HTEntry *sym_table_entry, HTEntryType entry_type);
 
-static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
 static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table);
 static DataType boolExpr(AST_NODE *bool_node, SymTable *sym_table);
 static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table);
 static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table);
+static DataType valmemExpr(AST_NODE *valmem_node, SymTable *sym_table);
+static DataType ifExpr(AST_NODE *if_node, HTEntry *function_entry, SymTable *sym_table);
 
 static DataType checkRangeFunc(AST_NODE *func_node, SymTable *sym_table);
 
@@ -67,6 +68,10 @@ static void topLevelStatement(AST_NODE *program_node, SymTable *sym_table);
 
 /*
  * Semantic checks for AST subtree for function definition
+ * Processes function body
+ * Checks that last statement in function body has correct return value type
+ * Checks that every return statement has correct return value type
+ *
  * Function assumes correct call sight --> function definition doesn't happen inside function body
  */
 static void functionDef(AST_NODE *function_node, SymTable *sym_table)
@@ -83,27 +88,15 @@ static void functionDef(AST_NODE *function_node, SymTable *sym_table)
 
     // update sym_table's function_entry to include info about each parameter's type
     HTEntry *function_entry = getIdentifier(function_node->left_ch->token.attr.str_val, FUNCTION, sym_table);
+    if (function_entry == NULL)
+    {
+        fprintf(stderr, "functionDef() -- function not already in sym_table, is wrong.\n");
+        compilerError(ERROR_INTERNAL);
+    }
 
     // Push every parameter into its function scope as immutable variable
     pushParamsIntoScope(function_node->left_ch->right_ch, sym_table);
 
-    /*
-     * Process function body
-     * check that last statement in function body has correct return value
-     * If Expr -> Evaluate its return value and compare against function return type
-     * if VAR def | assign | for-loop | while-loop | -> return value is '()'
-     * if Function call -> Evaluate its return value and compare against function return type
-     * if if-statement
-     * -- if if-statement is expression -> treat as case Expr
-     * -- if if-statement not expression ->
-     *          allowed as last stat when function return type explicitly Unit
-     *          or all branches end with return -> return '()'
-     *          or function return type not specified and all branches return '()' -> return '()'
-     * Other return statements elsewhere in function body evaluated as they are processed during AST traversal
-     *
-     * If function body contains return statement, function signature must have return type -> otherwise ERROR 6
-     * Else return type annotation not necessary, inferred from last statement/expression in function body
-     */
     AST_NODE *program_node = function_node->right_ch;
     DataType *func_ret_type = &function_entry->entry_data.function.return_type;
     while (program_node != NULL)
@@ -237,6 +230,13 @@ static DataType returnStatement(AST_NODE *ret_node, HTEntry *function_entry, Sym
     // Doesn't check for type compatibility in that case
     if (func_ret_type == UNIT)
         return UNIT;
+
+    // Return statement inside function with no explicit return type is ERROR_TYPE
+    if (func_ret_type == NIL)
+    {
+        fprintf(stderr, "returnStatement() -- return statement inside function with no explicit return type\n");
+        compilerError(ERROR_TYPE);
+    }
 
     // empty return allowed only in functions that have explicit return type Unit, which in this case it doesn't
     if (ret_node->left_ch == NULL)
@@ -522,7 +522,7 @@ static DataType variableDef(AST_NODE *def_node, HTEntry *function_entry, SymTabl
     if (isEntry(def_node->left_ch->token.attr.str_val, VAR, &sym_table->scopes[sym_table->current]))
     {
         fprintf(stderr, "variableDef() -- variable already defined\n");
-        compilerError(ERROR_TYPE);
+        compilerError(ERROR_REDEF);
     }
 
     // Get right side expression/function call return value type
@@ -658,18 +658,33 @@ static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table)
     if (expr_node == NULL || sym_table == NULL)
     {
         fprintf(stderr, "exprStatement() -- at least one argument is invalid\n");
-        compilerError(ERROR_TYPE);
+        compilerError(ERROR_INTERNAL);
     }
 
+    // VALMEM expression
+    if (expr_node->type == NODE_VALMEM)
+        return valmemExpr(expr_node, sym_table);
+
+    HTEntry *var_entry = NULL;
     switch (expr_node->token.type)
     {
         // Term
+        case TOKEN_TYPE_IDENTIFIER:
+            var_entry = getIdentifier(expr_node->token.attr.str_val, VAR, sym_table);
+            if (var_entry == NULL)
+            {
+                fprintf(stderr, "exprStatement() -- Expression contains undefined variable\n");
+                compilerError(ERROR_UNDEF);
+                exit(ERROR_UNDEF);
+            }
+            // Annotate the identifier AST_NODE with symtable info for codegen
+            annotateAST(expr_node, var_entry, var_entry->entry_type);
         case TOKEN_TYPE_INT:
         case TOKEN_TYPE_DOUBLE:
         case TOKEN_TYPE_STRING:
         case TOKEN_TYPE_UNIT:
         case TOKEN_TYPE_BOOL:
-        case TOKEN_TYPE_IDENTIFIER:
+        case KEYWORD_LIST:
             return getTermType(expr_node, sym_table);
 
         // Arithmetic operator
@@ -695,14 +710,142 @@ static DataType exprStatement(AST_NODE *expr_node, SymTable *sym_table)
         case TOKEN_TYPE_NEQ:
             return compareExpr(expr_node, sym_table);
 
-            // TODO: ADD VALMEM expressions
-            // TODO: ADD LISTS expressions -- Doesn't work in parser anyway...
-
         default:
             fprintf(stderr, "exprStatement() -- Expression of unsupported type\n");
             compilerError(ERROR_INTERNAL);
             exit(ERROR_INTERNAL);
     }
+}
+
+/*
+ * Processes VALMEM expressions
+ * Left-side is expression of any other kind, right-side must be VALMEM supported non-parametric builtin function
+ *
+ * Mainly a helper function for exprStatement(), from where it's called on the operator node
+ * Should not be called on its own
+ */
+static DataType valmemExpr(AST_NODE *valmem_node, SymTable *sym_table)
+{
+    // Argument error-handling
+    if (valmem_node == NULL || sym_table == NULL)
+    {
+        fprintf(stderr, "valmemStatement() -- at least one argument is invalid\n");
+        compilerError(ERROR_INTERNAL);
+    }
+
+    DataType left_operand;
+    HTEntry *function_entry = NULL, *var_entry = NULL;
+    switch (valmem_node->type)
+    {
+        case NODE_VALMEM:
+            if (valmem_node->left_ch->type == NODE_VALMEM)
+                left_operand = valmemExpr(valmem_node->left_ch, sym_table);
+
+            // Process left side of VALMEM, get its data type
+            switch (valmem_node->left_ch->token.type)
+            {
+                // Term
+                case TOKEN_TYPE_IDENTIFIER:
+                    var_entry = getIdentifier(valmem_node->left_ch->token.attr.str_val, VAR, sym_table);
+                    if (var_entry == NULL)
+                    {
+                        fprintf(stderr, "valmemExpr() -- VALMEM method called on undefined variable\n");
+                        compilerError(ERROR_UNDEF);
+                    }
+                    // Annotate the identifier AST_NODE with symtable info for codegen
+                    annotateAST(valmem_node->left_ch, var_entry, var_entry->entry_type);
+                case TOKEN_TYPE_INT:
+                case TOKEN_TYPE_DOUBLE:
+                case TOKEN_TYPE_STRING:
+                case TOKEN_TYPE_UNIT:
+                case TOKEN_TYPE_BOOL:
+                case KEYWORD_LIST:
+                    left_operand = getTermType(valmem_node->left_ch, sym_table);
+                    break;
+
+                // Arithmetic operator
+                case TOKEN_TYPE_PLUS:
+                case TOKEN_TYPE_MINUS:
+                case TOKEN_TYPE_MUL:
+                case TOKEN_TYPE_DIV:
+                    left_operand = arithmExpr(valmem_node->left_ch, sym_table);
+                    break;
+
+                // Logical operator
+                case TOKEN_TYPE_AND:
+                case TOKEN_TYPE_OR:
+                case TOKEN_TYPE_NOT:
+                    left_operand = boolExpr(valmem_node->left_ch, sym_table);
+                    break;
+
+                // Relational operator
+                case TOKEN_TYPE_GT:
+                case TOKEN_TYPE_LT:
+                case TOKEN_TYPE_LTE:
+                case TOKEN_TYPE_GTE:
+                    left_operand = relatExpr(valmem_node->left_ch, sym_table);
+                    break;
+                case TOKEN_TYPE_EQ:
+                case TOKEN_TYPE_NEQ:
+                    left_operand = compareExpr(valmem_node->left_ch, sym_table);
+                    break;
+
+                default:
+                    fprintf(stderr, "valmemExpr() -- VALMEM method called on expression of unsupported type\n");
+                    compilerError(ERROR_INTERNAL);
+            }
+
+            function_entry = getIdentifier(valmem_node->right_ch->token.attr.str_val, FUNCTION, sym_table);
+            if (function_entry == NULL)
+            {
+                fprintf(stderr, "valmemExpr() -- Called method doesn't exist\n");
+                compilerError(ERROR_UNDEF);
+            }
+            break;
+
+        default:
+            fprintf(stderr, "valmemExpr() -- Expression of unsupported type\n");
+            compilerError(ERROR_INTERNAL);
+    }
+
+    // toString
+    if (strcmp("toString", function_entry->identifier) == 0)
+        return STRING;
+    // toInt
+    if (strcmp("toInt", function_entry->identifier) == 0)
+    {
+        if (left_operand != DOUBLE)
+        {
+            fprintf(stderr, "valmemExpr() -- Method 'toInt' called on expression of unsupported data type\n");
+            compilerError(ERROR_TYPE);
+        }
+        return INT;
+    }
+    // floor
+    if (strcmp("floor", function_entry->identifier) == 0)
+    {
+        if (left_operand != DOUBLE)
+        {
+            fprintf(stderr, "valmemExpr() -- Method 'floor' called on expression of unsupported data type\n");
+            compilerError(ERROR_TYPE);
+        }
+        return DOUBLE;
+    }
+    // length
+    if (strcmp("length", function_entry->identifier) == 0)
+    {
+        if (left_operand != STRING)
+        {
+            fprintf(stderr, "valmemExpr() -- Method 'length' called on expression of unsupported data type\n");
+            compilerError(ERROR_TYPE);
+        }
+        return INT;
+    }
+
+    // VALMEM method is not supported calling it this way
+    fprintf(stderr, "valmemExpr() -- VALMEM method called is unsupported\n");
+    compilerError(ERROR_OTHER);
+    exit(ERROR_OTHER);
 }
 
 /*
@@ -722,6 +865,9 @@ static DataType arithmExpr(AST_NODE *arithm_node, SymTable *sym_table)
         fprintf(stderr, "arithmExpr() -- at least one argument is invalid\n");
         compilerError(ERROR_TYPE);
     }
+
+    if (arithm_node->type == NODE_VALMEM)
+        return valmemExpr(arithm_node, sym_table);
 
     DataType left_operand, right_operand;
     HTEntry *id_entry = NULL;
@@ -893,6 +1039,9 @@ static DataType relatExpr(AST_NODE *relat_node, SymTable *sym_table)
         compilerError(ERROR_TYPE);
     }
 
+    if (relat_node->type == NODE_VALMEM)
+        return valmemExpr(relat_node, sym_table);
+
     DataType left_operand, right_operand;
     HTEntry *id_entry = NULL;
     switch (relat_node->token.type)
@@ -984,6 +1133,9 @@ static DataType compareExpr(AST_NODE *neq_node, SymTable *sym_table)
         fprintf(stderr, "compareExpr() -- at least one argument is invalid\n");
         compilerError(ERROR_TYPE);
     }
+
+    if (neq_node->type == NODE_VALMEM)
+        return valmemExpr(neq_node, sym_table);
 
     DataType left_operand, right_operand;
     HTEntry *id_entry = NULL;
@@ -1307,7 +1459,7 @@ void semanticAnalysis(AST_NODE *root)
     checkMain(root, sym_table);
 
     // Insert all builtin functions
-    for (size_t builtin_count = 18; builtin_count > 0; --builtin_count)
+    for (size_t builtin_count = 20; builtin_count > 0; --builtin_count)
         insertBuiltin(builtin_count, sym_table);
 
     // Fills sym_table with all func identifiers to support function call before its respective definition
@@ -1351,12 +1503,17 @@ static size_t countParams(AST_NODE *param_node)
 /*
  * Returns target_node's type annotation (located at target_node->left_ch)
  *
- * Function assumes correct argument passed (pass exactly the AST node you want analyzed) -> no argument check
- * Please check the argument before calling this function thoroughly
  * Mainly for getting function def's return type, variable definition's type annotation
  */
 static DataType getParamType(AST_NODE *type_node)
 {
+    // Argument error-handling
+    if (type_node == NULL)
+    {
+        fprintf(stderr, "getParamType() -- passed argument is NULL\n");
+        compilerError(ERROR_INTERNAL);
+    }
+
     // passed argument node might be type literal or variable
     switch (type_node->token.type)
     {
@@ -1550,7 +1707,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
         /* Ordered from 0-parameter, to most */
         // IFJ26 BASE
         // 0-parameter functions
-        case 18:
+        case 20:
             // readLine(): String
             builtin_function.identifier = "readLine";
             builtin_function.entry_data.function.param_count = 0;
@@ -1559,7 +1716,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 17:
+        case 19:
             // readInt(): Int
             builtin_function.identifier = "readInt";
             builtin_function.entry_data.function.param_count = 0;
@@ -1568,7 +1725,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 16:
+        case 18:
             // readDouble(): Double
             builtin_function.identifier = "readDouble";
             builtin_function.entry_data.function.param_count = 0;
@@ -1581,7 +1738,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // 1-parameter functions
-        case 15:
+        case 17:
             // print(value: Any): Unit
             builtin_function.identifier = "print";
             builtin_function.entry_data.function.param_count = 1;
@@ -1591,7 +1748,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 14:
+        case 16:
             // toStr(value: Any): String -- LZE I ARGUMENT value: List[T]
             builtin_function.identifier = "toStr";
             builtin_function.entry_data.function.param_count = 1;
@@ -1601,7 +1758,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 13:
+        case 15:
             // toInt(value: Double): Int
             builtin_function.identifier = "toInt";
             builtin_function.entry_data.function.param_count = 1;
@@ -1611,7 +1768,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 12:
+        case 14:
             // strLength(value: String): Int
             builtin_function.identifier = "strLength";
             builtin_function.entry_data.function.param_count = 1;
@@ -1621,7 +1778,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 11:
+        case 13:
             // chr(code: Int): String
             builtin_function.identifier = "chr";
             builtin_function.entry_data.function.param_count = 1;
@@ -1632,7 +1789,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // 2-parameter functions
-        case 10:
+        case 12:
             // ord(value: String, index: Int): Int
             builtin_function.identifier = "ord";
             builtin_function.entry_data.function.param_count = 2;
@@ -1644,7 +1801,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // 3-parameter functions
-        case 9:
+        case 11:
             // subStr(value: String, start: Int, end: Int): String
             builtin_function.identifier = "subStr";
             builtin_function.entry_data.function.param_count = 3;
@@ -1657,7 +1814,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // BOOLTHEN extension
-        case 8:
+        case 10:
             // readBoolean(): Boolean
             builtin_function.identifier = "readBoolean";
             builtin_function.entry_data.function.param_count = 0;
@@ -1668,7 +1825,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             break;
         // LISTS extension
         // 0-parameter functions
-        case 7:
+        case 9:
             // head(): T ~> ANY
             builtin_function.identifier = "head";
             builtin_function.entry_data.function.param_count = 0;
@@ -1677,7 +1834,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 6:
+        case 8:
             // tail(): List[T] ~> LIST_ANY
             builtin_function.identifier = "tail";
             builtin_function.entry_data.function.param_count = 0;
@@ -1686,7 +1843,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 5:
+        case 7:
             // toString(): String
             builtin_function.identifier = "toString";
             builtin_function.entry_data.function.param_count = 0;
@@ -1696,7 +1853,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // 1-parameter functions
-        case 4:
+        case 6:
             // drop(n): List[T]
             builtin_function.identifier = "drop";
             builtin_function.entry_data.function.param_count = 1;
@@ -1706,7 +1863,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
 
             createIdentifier(&builtin_function, sym_table);
             break;
-        case 3:
+        case 5:
             // take(n): List[T]
             builtin_function.identifier = "take";
             builtin_function.entry_data.function.param_count = 1;
@@ -1717,7 +1874,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // 2-parameter functions
-        case 2:
+        case 4:
             // slice(from, until): List[T]
             builtin_function.identifier = "slice";
             builtin_function.entry_data.function.param_count = 2;
@@ -1729,7 +1886,7 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             createIdentifier(&builtin_function, sym_table);
             break;
         // 3-parameter functions
-        case 1:
+        case 3:
             // range(start, end, step): List[Int]
 
             // Dubious one, language spec supports builtin range(start, end) AND builtin range(start,end,step)
@@ -1745,6 +1902,24 @@ static void insertBuiltin(size_t builtin_count, SymTable *sym_table)
             builtin_function.entry_data.function.parameters[0] = DOUBLE; // Posibble also INT -> DOUBLE
             builtin_function.entry_data.function.parameters[1] = DOUBLE; // Posibble also INT -> DOUBLE
             builtin_function.entry_data.function.parameters[2] = DOUBLE; // Posibble also INT -> DOUBLE
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        // VALMEM extension
+        // 0-parameter functions
+        case 2:
+            // Double.floor: Double
+            builtin_function.identifier = "floor";
+            builtin_function.entry_data.function.param_count = 0;
+            builtin_function.entry_data.function.return_type = DOUBLE;
+
+            createIdentifier(&builtin_function, sym_table);
+            break;
+        case 1:
+            // String.length: Int
+            builtin_function.identifier = "length";
+            builtin_function.entry_data.function.param_count = 0;
+            builtin_function.entry_data.function.return_type = INT;
 
             createIdentifier(&builtin_function, sym_table);
             break;
@@ -1848,7 +2023,7 @@ static void allocateParams(size_t param_count, DataType **param_ptr)
 }
 
 /*
- * Fill sym_table's global scope with all function names in top-level scope
+ * Fill sym_table's global scope with all function entries in top-level scope
  *
  * Should be called right before semantic analysis (to support function calls before their respective definition)
  * Call only after checkMain() function, which guarantees correct AST structure of top-level scope
@@ -1874,12 +2049,15 @@ static void insertAllFunctions(AST_NODE *root, SymTable *sym_table)
         function_entry.identifier = function_node->left_ch->token.attr.str_val;
         if (isIdentifier(function_entry.identifier, FUNCTION, sym_table))
         {
-            fprintf(stderr, "insertAllFunctions() -- Function was previously defined\n");
+            fprintf(stderr, "insertAllFunctions() -- Function was already defined\n");
             compilerError(ERROR_REDEF);
         }
 
         function_entry.entry_type = FUNCTION;
-        function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
+        if (function_node->left_ch->left_ch != NULL)
+            function_entry.entry_data.function.return_type = getParamType(function_node->left_ch->left_ch);
+        else
+            function_entry.entry_data.function.return_type = NIL;
         function_entry.entry_data.function.param_count = countParams(function_node->left_ch->right_ch);
 
         size_t param_count = function_entry.entry_data.function.param_count;
