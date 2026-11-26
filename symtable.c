@@ -183,7 +183,7 @@ bool isEntry(const char *key, HTEntryType entry_type, HTable *table)
     }
 
     size_t index_hash = DJBHash(key);
-    size_t probe_step_hash = BKDRHash(key);
+    size_t probe_step_hash = 1 + BKDRHash(key) % (table->capacity - 1);
     HTEntry *target_entry = &table->entries[index_hash % table->capacity];
 
     // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
@@ -228,7 +228,7 @@ HTEntry *getEntry(const char *key, HTEntryType entry_type, HTable *table)
     }
 
     size_t index_hash = DJBHash(key);
-    size_t probe_step_hash = BKDRHash(key);
+    size_t probe_step_hash = 1 + BKDRHash(key) % (table->capacity - 1);
     HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
 
     // Double-hash function: h(k, i) = (h1(k) + i*h2(k)) % (MAX+1)
@@ -514,7 +514,7 @@ static void insertEntry(HTEntry *entry, HTable *table)
         resizeScope(table);
 
     size_t index_hash = DJBHash(entry->identifier);
-    size_t probe_step_hash = BKDRHash(entry->identifier);
+    size_t probe_step_hash = 1 + BKDRHash(entry->identifier) % (table->capacity - 1);
     HTEntry *target_entry = &table->entries[index_hash % (table->capacity)];
 
     // Find EMPTY/DELETED place in HTable (HTable synonyms list)
