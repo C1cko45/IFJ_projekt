@@ -2,26 +2,15 @@ import ifj26.*
 
 @main
 def runFoo(): Unit =
-    var x = 5
+    var x: List[Int] = (1)
     
-    if -(5 + 5.0) > 3 then
-        print(5)
-        var x = 5
-    else if -(5 + 5) == x then
-        x = 5
-    else
-        x = 50
-
-
-    while -5 == -5 do
-        readLine()
-
-
-    var z = 5
 
 def main(): Int =
     for i <- 1 to -(5 + 3) by 1002 do
         print(10)
+        50
         //z.range(3, 5)
+    50
 
-    if 5 < 0 then 0 else 0
+def list(nice: List[Int]): Unit =
+    5
