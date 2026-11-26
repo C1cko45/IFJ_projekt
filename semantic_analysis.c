@@ -772,68 +772,70 @@ static DataType valmemExpr(AST_NODE *valmem_node, SymTable *sym_table)
         case NODE_VALMEM:
             if (valmem_node->left_ch->type == NODE_VALMEM)
                 left_operand = valmemExpr(valmem_node->left_ch, sym_table);
-
-            // Process left side of VALMEM, get its data type
-            switch (valmem_node->left_ch->token.type)
+            else
             {
-                // Term
-                case TOKEN_TYPE_IDENTIFIER:
-                    var_entry = getIdentifier(valmem_node->left_ch->token.attr.str_val, VAR, sym_table);
-                    if (var_entry == NULL)
-                    {
-                        fprintf(stderr, "valmemExpr() -- VALMEM method called on undefined variable\n");
-                        compilerError(ERROR_UNDEF);
-                    }
-                    // Annotate the identifier AST_NODE with symtable info for codegen
-                    annotateAST(valmem_node->left_ch, var_entry, var_entry->entry_type);
-                    left_operand = getTermType(valmem_node->left_ch, sym_table);
-                    break;
-                case TOKEN_TYPE_INT:
-                case TOKEN_TYPE_DOUBLE:
-                case TOKEN_TYPE_STRING:
-                case TOKEN_TYPE_UNIT:
-                case TOKEN_TYPE_BOOL:
-                case KEYWORD_LIST:
-                    left_operand = getTermType(valmem_node->left_ch, sym_table);
-                    break;
+                // Process left side of VALMEM, get its data type
+                switch (valmem_node->left_ch->token.type)
+                {
+                    // Term
+                    case TOKEN_TYPE_IDENTIFIER:
+                        var_entry = getIdentifier(valmem_node->left_ch->token.attr.str_val, VAR, sym_table);
+                        if (var_entry == NULL)
+                        {
+                            fprintf(stderr, "valmemExpr() -- VALMEM method called on undefined variable\n");
+                            compilerError(ERROR_UNDEF);
+                        }
+                        // Annotate the identifier AST_NODE with symtable info for codegen
+                        annotateAST(valmem_node->left_ch, var_entry, var_entry->entry_type);
+                        left_operand = getTermType(valmem_node->left_ch, sym_table);
+                        break;
+                    case TOKEN_TYPE_INT:
+                    case TOKEN_TYPE_DOUBLE:
+                    case TOKEN_TYPE_STRING:
+                    case TOKEN_TYPE_UNIT:
+                    case TOKEN_TYPE_BOOL:
+                    case KEYWORD_LIST:
+                        left_operand = getTermType(valmem_node->left_ch, sym_table);
+                        break;
 
-                // Arithmetic operator
-                case TOKEN_TYPE_PLUS:
-                case TOKEN_TYPE_MINUS:
-                case TOKEN_TYPE_MUL:
-                case TOKEN_TYPE_DIV:
-                    left_operand = arithmExpr(valmem_node->left_ch, sym_table);
-                    break;
+                    // Arithmetic operator
+                    case TOKEN_TYPE_PLUS:
+                    case TOKEN_TYPE_MINUS:
+                    case TOKEN_TYPE_MUL:
+                    case TOKEN_TYPE_DIV:
+                        left_operand = arithmExpr(valmem_node->left_ch, sym_table);
+                        break;
 
-                // Logical operator
-                case TOKEN_TYPE_AND:
-                case TOKEN_TYPE_OR:
-                case TOKEN_TYPE_NOT:
-                    left_operand = boolExpr(valmem_node->left_ch, sym_table);
-                    break;
+                    // Logical operator
+                    case TOKEN_TYPE_AND:
+                    case TOKEN_TYPE_OR:
+                    case TOKEN_TYPE_NOT:
+                        left_operand = boolExpr(valmem_node->left_ch, sym_table);
+                        break;
 
-                // Relational operator
-                case TOKEN_TYPE_GT:
-                case TOKEN_TYPE_LT:
-                case TOKEN_TYPE_LTE:
-                case TOKEN_TYPE_GTE:
-                    left_operand = relatExpr(valmem_node->left_ch, sym_table);
-                    break;
-                case TOKEN_TYPE_EQ:
-                case TOKEN_TYPE_NEQ:
-                    left_operand = compareExpr(valmem_node->left_ch, sym_table);
-                    break;
+                    // Relational operator
+                    case TOKEN_TYPE_GT:
+                    case TOKEN_TYPE_LT:
+                    case TOKEN_TYPE_LTE:
+                    case TOKEN_TYPE_GTE:
+                        left_operand = relatExpr(valmem_node->left_ch, sym_table);
+                        break;
+                    case TOKEN_TYPE_EQ:
+                    case TOKEN_TYPE_NEQ:
+                        left_operand = compareExpr(valmem_node->left_ch, sym_table);
+                        break;
 
-                default:
-                    fprintf(stderr, "valmemExpr() -- VALMEM method called on expression of unsupported type\n");
-                    compilerError(ERROR_INTERNAL);
-            }
+                    default:
+                        fprintf(stderr, "valmemExpr() -- VALMEM method called on expression of unsupported type\n");
+                        compilerError(ERROR_INTERNAL);
+                }
 
-            function_entry = getIdentifier(valmem_node->right_ch->token.attr.str_val, FUNCTION, sym_table);
-            if (function_entry == NULL)
-            {
-                fprintf(stderr, "valmemExpr() -- Called method is undefined\n");
-                compilerError(ERROR_UNDEF);
+                function_entry = getIdentifier(valmem_node->right_ch->token.attr.str_val, FUNCTION, sym_table);
+                if (function_entry == NULL)
+                {
+                    fprintf(stderr, "valmemExpr() -- Called method is undefined\n");
+                    compilerError(ERROR_UNDEF);
+                }
             }
             break;
 
