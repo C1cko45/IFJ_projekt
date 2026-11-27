@@ -4,6 +4,7 @@ import ifj26.*
 def runFoo(): Unit =
     -(-5 < 3) && 5
     return 42
+    5
 
 def sign(x: Int): String =
     "string"
