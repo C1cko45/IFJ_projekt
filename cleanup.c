@@ -1,15 +1,12 @@
 /*
- * Implementácia prekladača pre jazyk IFJ26.
- *
- * Ukončenie prekladu s chybovým kódom a uvoľnenie AST a tabuľky symbolov.
- *
- * Autor:   Pham Vu Duy Anh
- * Login:   xphamv00
+ * IFJ26
+ * Autor: Pham Vu Duy Anh, xphamv00
  */
 
-#include "cleanup.h"
-#include "ast.h"
 #include <stdlib.h>
+
+#include "ast.h"
+#include "cleanup.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
