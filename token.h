@@ -1,3 +1,11 @@
+/*
+ * Implementácia prekladača pre jazyk IFJ26.
+ *
+ * Typy tokenov a štruktúra tokenu (výstup lexikálneho analyzátora).
+ *
+ * Autor:   Deák Dominik
+ * Login:   xdeakdo00
+ */
 #ifndef TOKEN_H
 #define TOKEN_H
 
@@ -91,7 +99,8 @@ typedef enum
     KEYWORD_LIST,
 } TokenType;
 
-typedef union {
+typedef union
+{
     long long int_val;
     double double_val;
     char *str_val;

@@ -1,3 +1,11 @@
+/*
+ * Implementácia prekladača pre jazyk IFJ26.
+ *
+ * Dynamický reťazec (nafukovacie pole znakov).
+ *
+ * Autor:   Deák Dominik
+ * Login:   xdeakdo00
+ */
 #include "dstring.h"
 #include <stdio.h>
 #include <stdlib.h>

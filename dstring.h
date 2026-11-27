@@ -1,3 +1,11 @@
+/*
+ * Implementácia prekladača pre jazyk IFJ26.
+ *
+ * Dynamický reťazec (nafukovacie pole znakov).
+ *
+ * Autor:   Deák Dominik
+ * Login:   xdeakdo00
+ */
 #ifndef DSTRING_H
 #define DSTRING_H
 

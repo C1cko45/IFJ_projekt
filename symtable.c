@@ -1,8 +1,11 @@
 /*
- * IFJ26
- * Author: Pham Vu Duy Anh, xphamv00
+ * Implementácia prekladača pre jazyk IFJ26.
+ *
+ * Tabuľka symbolov implementovaná ako (TRP-izp / vv-BVS).
+ *
+ * Autor:   Pham Vu Duy Anh
+ * Login:   xphamv00
  */
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>

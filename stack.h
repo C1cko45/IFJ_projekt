@@ -1,3 +1,11 @@
+/*
+ * Implementácia prekladača pre jazyk IFJ26.
+ *
+ * Zásobník úrovní odsadenia pre lexikálny analyzátor.
+ *
+ * Autor:   Deák Dominik
+ * Login:   xdeakdo00
+ */
 #ifndef STACK_H
 #define STACK_H
 

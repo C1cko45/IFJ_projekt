@@ -1,3 +1,12 @@
+/*
+ * Implementácia prekladača pre jazyk IFJ26.
+ *
+ * Štruktúra uzla abstraktného syntaktického stromu a práca s ním.
+ *
+ * Autor:   Richard Sovič
+ * Login:   xsovicr00
+ */
+
 #ifndef AST_H
 #define AST_H
 #include "symtable.h"

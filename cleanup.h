@@ -1,3 +1,11 @@
+/*
+ * Implementácia prekladača pre jazyk IFJ26.
+ *
+ * Ukončenie prekladu s chybovým kódom a uvoľnenie pamäte.
+ *
+ * Autor:   Pham Vu Duy Anh
+ * Login:   xphamv00
+ */
 #ifndef CLEANUP_H
 #define CLEANUP_H
 

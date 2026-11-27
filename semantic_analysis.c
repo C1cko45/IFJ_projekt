@@ -1,8 +1,11 @@
 /*
- * IFJ26
- * Author: Pham Vu Duy Anh, xphamv00
+ * Implementácia prekladača pre jazyk IFJ26.
+ *
+ * Sémantická analýza nad AST: rozsahy platnosti, typové kontroly a odvodzovanie typov.
+ *
+ * Autor:   Pham Vu Duy Anh
+ * Login:   xphamv00
  */
-
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>

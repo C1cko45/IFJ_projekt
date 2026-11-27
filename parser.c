@@ -1,10 +1,18 @@
+/*
+ * Implementácia prekladača pre jazyk IFJ26.
+ *
+ * Syntaktický analyzátor metódou rekurzívneho zostupu - stavia AST.
+ *
+ * Autor:   Richard Sovič
+ * Login:   xsovicr00
+ */
 #include "parser.h"
 #include "ast.h"
-#include "token.h"
 #include "psa.h"
+#include "scanner.h"
+#include "token.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include "scanner.h"
 
 /* ============================================================
    1. Praca s tokenmi (peek / next) a chybove hlasenie
@@ -16,16 +24,22 @@
 
 static Token saved_token;
 static bool has_saved = false;
-static AST_NODE *ast_root = NULL;   // koren AST, aby ho parser_error_exit vedel uvolnit
+static AST_NODE *ast_root = NULL; // koren AST, aby ho parser_error_exit vedel uvolnit
 
 // peek: nacita dalsi token zo scannera, ale nespotrebuje ho (dalsi peek/next vrati ten isty)
 //   pri lexikalnej chybe (TOKEN_ERROR_LEX) ukonci program s kodom 1
 //! Volana z: takmer vsetkych funkcii parsera a z psa.c
-Token peek(void){
-    if(!has_saved){
+Token peek(void)
+{
+    if (!has_saved)
+    {
         has_saved = true;
         saved_token = scanner_get_next_token();
-        if(saved_token.type == TOKEN_ERROR_LEX){parser_error_exit(1, "Lexikalna chyba: neplatny lexem (neznamy znak, chybny literal, neukonceny retazec/komentar alebo tabulator v odsadeni)");}
+        if (saved_token.type == TOKEN_ERROR_LEX)
+        {
+            parser_error_exit(1, "Lexikalna chyba: neplatny lexem (neznamy znak, chybny literal, neukonceny "
+                                 "retazec/komentar alebo tabulator v odsadeni)");
+        }
     }
     return saved_token;
 }
@@ -33,26 +47,39 @@ Token peek(void){
 // next: spotrebuje a vrati token (ulozeny z peek, inak novy zo scannera)
 //   pri lexikalnej chybe (TOKEN_ERROR_LEX) ukonci program s kodom 1
 //! Volana z: takmer vsetkych funkcii parsera a z psa.c
-Token next(void){
+Token next(void)
+{
     Token t;
-    if(has_saved){
+    if (has_saved)
+    {
         has_saved = false;
         return saved_token;
-    }else{
-        t = scanner_get_next_token();
-        if(t.type == TOKEN_ERROR_LEX){parser_error_exit(1, "Lexikalna chyba: neplatny lexem (neznamy znak, chybny literal, neukonceny retazec/komentar alebo tabulator v odsadeni)");}
     }
-    
+    else
+    {
+        t = scanner_get_next_token();
+        if (t.type == TOKEN_ERROR_LEX)
+        {
+            parser_error_exit(1, "Lexikalna chyba: neplatny lexem (neznamy znak, chybny literal, neukonceny "
+                                 "retazec/komentar alebo tabulator v odsadeni)");
+        }
+    }
+
     return t;
 }
 
 // parser_error_exit: vypise chybu na stderr a ukonci program s danym navratovym kodom
 //   (uvolni nespotrebovany token a cast AST pripojenu na koren)
 //! Volana z: vsetkych funkcii parsera a z psa.c pri chybe
-void parser_error_exit(int error_code, const char *message){
-    fprintf(stderr, "Chyba (%d): %s\n",error_code,message);
-    if(has_saved){ token_free(&saved_token); has_saved = false; }   // nespotrebovany token
-    ast_free_node(ast_root);                                         // uvolni cast stromu, ktora uz je postavena
+void parser_error_exit(int error_code, const char *message)
+{
+    fprintf(stderr, "Chyba (%d): %s\n", error_code, message);
+    if (has_saved)
+    {
+        token_free(&saved_token);
+        has_saved = false;
+    }                        // nespotrebovany token
+    ast_free_node(ast_root); // uvolni cast stromu, ktora uz je postavena
     ast_root = NULL;
     exit(error_code);
 }
@@ -63,89 +90,119 @@ void parser_error_exit(int error_code, const char *message){
 
 // get_type: spracuje typ (String, Double, Int, Unit, Boolean, List[...]) a vrati jeho uzol
 //! Volana z: parser_get_list(), parameter_list(), var_def(), val_def(), function_def()
-AST_NODE* get_type(void){
-    AST_NODE* temp = NULL;
-    switch(peek().type){
+AST_NODE *get_type(void)
+{
+    AST_NODE *temp = NULL;
+    switch (peek().type)
+    {
         case KEYWORD_STRING:
-            temp = ast_create_node (next());
+            temp = ast_create_node(next());
             break;
         case KEYWORD_DOUBLE:
-            temp = ast_create_node (next());
+            temp = ast_create_node(next());
             break;
         case KEYWORD_INT:
-            temp = ast_create_node (next());
+            temp = ast_create_node(next());
             break;
         case KEYWORD_UNIT:
-            temp = ast_create_node (next());
+            temp = ast_create_node(next());
             break;
         case KEYWORD_BOOLEAN:
-            temp = ast_create_node (next());
+            temp = ast_create_node(next());
             break;
         case KEYWORD_LIST:
             temp = parser_get_list();
             break;
         default:
-            parser_error_exit(2,"Syntakticka chyba: ocakavany typ (Int, Double, String, Unit, Boolean alebo List[...])");
+            parser_error_exit(2,
+                              "Syntakticka chyba: ocakavany typ (Int, Double, String, Unit, Boolean alebo List[...])");
     }
     return temp;
 }
 
 // parser_get_list: spracuje zapis List[typ] a vrati uzol NODE_LIST (typ prvku v lavom potomkovi)
 //! Volana z: get_type()
-AST_NODE* parser_get_list(void){
-    AST_NODE* list_node = ast_create_node_type(NODE_LIST);
-    Token current_token = next();                 // spotrebuje klucove slovo List
-    if(current_token.type != KEYWORD_LIST){parser_error_exit(2,"Syntakticka chyba v type List: ocakavane klucove slovo List");}
+AST_NODE *parser_get_list(void)
+{
+    AST_NODE *list_node = ast_create_node_type(NODE_LIST);
+    Token current_token = next(); // spotrebuje klucove slovo List
+    if (current_token.type != KEYWORD_LIST)
+    {
+        parser_error_exit(2, "Syntakticka chyba v type List: ocakavane klucove slovo List");
+    }
     current_token = next();
-    if(current_token.type !=TOKEN_TYPE_LBRACKET){parser_error_exit(2,"Syntakticka chyba v type List: za List ocakavana '['");}
+    if (current_token.type != TOKEN_TYPE_LBRACKET)
+    {
+        parser_error_exit(2, "Syntakticka chyba v type List: za List ocakavana '['");
+    }
 
     current_token = peek();
-    AST_NODE* temp= get_type();
-    ast_add_parent(list_node,temp,0);
+    AST_NODE *temp = get_type();
+    ast_add_parent(list_node, temp, 0);
 
     current_token = next();
-    if(current_token.type != TOKEN_TYPE_RBRACKET){
+    if (current_token.type != TOKEN_TYPE_RBRACKET)
+    {
         parser_error_exit(2, "Syntakticka chyba v type List: ocakavana ']'");
     }
-    
+
     return list_node;
 }
 
 // parameter_list: rekurzivne spracuje zoznam parametrov "meno: typ, ..." az po pravu zatvorku
 //! Volana z: sama seba (rekurzia), function_def()
-AST_NODE* parameter_list(void){
-    
-    AST_NODE* root = NULL;
-    AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
-    AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
+AST_NODE *parameter_list(void)
+{
+
+    AST_NODE *root = NULL;
+    AST_NODE *temp = NULL;              // sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
+    AST_NODE *last_program_node = NULL; // ukazatel na posledny node z ktoreho vychadzame
     Token current_token = next();
 
-    if(current_token.type == TOKEN_TYPE_IDENTIFIER){
+    if (current_token.type == TOKEN_TYPE_IDENTIFIER)
+    {
         root = ast_create_node(current_token);
         last_program_node = root;
 
         current_token = next();
-        if(current_token.type != TOKEN_TYPE_COLON){parser_error_exit(2, "Syntakticka chyba v parametroch funkcie: za nazvom parametra ocakavana ':'");}
-        
+        if (current_token.type != TOKEN_TYPE_COLON)
+        {
+            parser_error_exit(2, "Syntakticka chyba v parametroch funkcie: za nazvom parametra ocakavana ':'");
+        }
+
         current_token = peek();
         temp = get_type();
-        ast_add_parent(last_program_node,temp,0);
-        
+        ast_add_parent(last_program_node, temp, 0);
+
         current_token = next();
-        if(current_token.type == TOKEN_TYPE_COMMA){
-             
-            if(peek().type == TOKEN_TYPE_RPAREN){parser_error_exit(2, "Syntakticka chyba v parametroch funkcie: ciarka pred ')'");}
+        if (current_token.type == TOKEN_TYPE_COMMA)
+        {
+
+            if (peek().type == TOKEN_TYPE_RPAREN)
+            {
+                parser_error_exit(2, "Syntakticka chyba v parametroch funkcie: ciarka pred ')'");
+            }
             temp = parameter_list();
-            ast_add_parent(last_program_node,temp,1);
-            
+            ast_add_parent(last_program_node, temp, 1);
+
             return last_program_node;
-        }else if(current_token.type == TOKEN_TYPE_RPAREN){
+        }
+        else if (current_token.type == TOKEN_TYPE_RPAREN)
+        {
             return root;
-        }else{parser_error_exit(2, "Syntakticka chyba v parametroch funkcie: za typom parametra ocakavana ',' alebo ')'");}
-            return NULL;
-    }else if(current_token.type == TOKEN_TYPE_RPAREN){
+        }
+        else
+        {
+            parser_error_exit(2, "Syntakticka chyba v parametroch funkcie: za typom parametra ocakavana ',' alebo ')'");
+        }
         return NULL;
-    }else{
+    }
+    else if (current_token.type == TOKEN_TYPE_RPAREN)
+    {
+        return NULL;
+    }
+    else
+    {
         parser_error_exit(2, "Syntakticka chyba v parametroch funkcie: ocakavany nazov parametra alebo ')'");
         return NULL;
     }
@@ -157,90 +214,103 @@ AST_NODE* parameter_list(void){
 
 // var_def: spracuje definiciu premennej "var meno [: typ] = vyraz" (vyraz cez precedencnu analyzu)
 //! Volana z: statement()
-AST_NODE* var_def(void){
-    AST_NODE* root = NULL;
-    AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
-    AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
-    
+AST_NODE *var_def(void)
+{
+    AST_NODE *root = NULL;
+    AST_NODE *temp = NULL;              // sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
+    AST_NODE *last_program_node = NULL; // ukazatel na posledny node z ktoreho vychadzame
+
     root = ast_create_node_type(NODE_VAR_DEF);
     Token current_token = next();
-    if(current_token.type != TOKEN_TYPE_IDENTIFIER){parser_error_exit(2, "Syntakticka chyba v definicii var: ocakavany nazov premennej");}
+    if (current_token.type != TOKEN_TYPE_IDENTIFIER)
+    {
+        parser_error_exit(2, "Syntakticka chyba v definicii var: ocakavany nazov premennej");
+    }
     temp = ast_create_node(current_token);
-    ast_add_parent(root,temp,0);
-    
+    ast_add_parent(root, temp, 0);
 
     current_token = next();
-    switch (current_token.type){
-    case TOKEN_TYPE_ASSIGN:
-        temp = parse_expression();
-        ast_add_parent(root,temp,1);
-        break;
-    case TOKEN_TYPE_COLON:
-        last_program_node = temp;
-        current_token = peek();
-        temp = get_type( );
-        ast_add_parent(last_program_node,temp,0);
+    switch (current_token.type)
+    {
+        case TOKEN_TYPE_ASSIGN:
+            temp = parse_expression();
+            ast_add_parent(root, temp, 1);
+            break;
+        case TOKEN_TYPE_COLON:
+            last_program_node = temp;
+            current_token = peek();
+            temp = get_type();
+            ast_add_parent(last_program_node, temp, 0);
 
-        current_token = next();
-        if(current_token.type != TOKEN_TYPE_ASSIGN){parser_error_exit(2, "Syntakticka chyba v definicii var: za typom ocakavane '='");}
-        temp = parse_expression();
-        ast_add_parent(root,temp,1);
-        break;
-        
-    default:
-        parser_error_exit(2, "Syntakticka chyba v definicii var: za nazvom premennej ocakavane ':' alebo '='");
-        break;
+            current_token = next();
+            if (current_token.type != TOKEN_TYPE_ASSIGN)
+            {
+                parser_error_exit(2, "Syntakticka chyba v definicii var: za typom ocakavane '='");
+            }
+            temp = parse_expression();
+            ast_add_parent(root, temp, 1);
+            break;
+
+        default:
+            parser_error_exit(2, "Syntakticka chyba v definicii var: za nazvom premennej ocakavane ':' alebo '='");
+            break;
     }
-    
+
     return root;
 }
 
-
- 
 // val_def: spracuje definiciu konstanty "val meno [: typ] = vyraz" (rovnaka struktura ako var_def)
 //! Volana z: statement()
-AST_NODE* val_def(void){
-    AST_NODE* root = NULL;
-    AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
-    AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
-    
+AST_NODE *val_def(void)
+{
+    AST_NODE *root = NULL;
+    AST_NODE *temp = NULL;              // sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
+    AST_NODE *last_program_node = NULL; // ukazatel na posledny node z ktoreho vychadzame
+
     root = ast_create_node_type(NODE_VAL_DEF);
     Token current_token = next();
-    if(current_token.type != TOKEN_TYPE_IDENTIFIER){parser_error_exit(2, "Syntakticka chyba v definicii val: ocakavany nazov premennej");}
+    if (current_token.type != TOKEN_TYPE_IDENTIFIER)
+    {
+        parser_error_exit(2, "Syntakticka chyba v definicii val: ocakavany nazov premennej");
+    }
     temp = ast_create_node(current_token);
-    ast_add_parent(root,temp,0);
-    
+    ast_add_parent(root, temp, 0);
 
     current_token = next();
-    switch (current_token.type){
-    case TOKEN_TYPE_ASSIGN:
-        temp = parse_expression();
-        ast_add_parent(root,temp,1);
-        break;
-    case TOKEN_TYPE_COLON:
-        last_program_node = temp;
-        current_token = peek();
-        temp = get_type();
-        ast_add_parent(last_program_node,temp,0);
+    switch (current_token.type)
+    {
+        case TOKEN_TYPE_ASSIGN:
+            temp = parse_expression();
+            ast_add_parent(root, temp, 1);
+            break;
+        case TOKEN_TYPE_COLON:
+            last_program_node = temp;
+            current_token = peek();
+            temp = get_type();
+            ast_add_parent(last_program_node, temp, 0);
 
-        current_token = next();
-        if(current_token.type != TOKEN_TYPE_ASSIGN){parser_error_exit(2, "Syntakticka chyba v definicii val: za typom ocakavane '='");}
-        temp = parse_expression();
-        ast_add_parent(root,temp,1);
-        break;
-    default:
-        parser_error_exit(2, "Syntakticka chyba v definicii val: za nazvom premennej ocakavane ':' alebo '='");
-        break;
+            current_token = next();
+            if (current_token.type != TOKEN_TYPE_ASSIGN)
+            {
+                parser_error_exit(2, "Syntakticka chyba v definicii val: za typom ocakavane '='");
+            }
+            temp = parse_expression();
+            ast_add_parent(root, temp, 1);
+            break;
+        default:
+            parser_error_exit(2, "Syntakticka chyba v definicii val: za nazvom premennej ocakavane ':' alebo '='");
+            break;
     }
-    
+
     return root;
 }
 
 // var_assign: priradenie "meno = vyraz"
 //! Volana z: statement()
-AST_NODE* var_assign(Token first, Token second){
-    AST_NODE* root = ast_create_node(second);
-    AST_NODE* temp = ast_create_node(first);
+AST_NODE *var_assign(Token first, Token second)
+{
+    AST_NODE *root = ast_create_node(second);
+    AST_NODE *temp = ast_create_node(first);
     ast_add_parent(root, temp, 0);
     temp = parse_expression();
     ast_add_parent(root, temp, 1);
@@ -251,16 +321,20 @@ AST_NODE* var_assign(Token first, Token second){
 //   (lavy = nazov funkcie, pravy = retaz NODE_ARGUMENT; argument je v lavom potomkovi, dalsi NODE_ARGUMENT v pravom)
 //! Volana z: statement(), psa.c: parse_expression (volanie vo vnutri vyrazu - tam sa lavy potomok nahradi
 //!     volanym objektom, napr. NODE_VALMEM pri metode zoznamu)
-AST_NODE* call_f(Token first, Token second){
-    if((first.type == TOKEN_TYPE_IDENTIFIER || first.type == KEYWORD_LIST) && second.type == TOKEN_TYPE_LPAREN){
-        AST_NODE* root = ast_create_node_type(NODE_CALL);
-        ast_add_parent(root, ast_create_node(first), 0);  //pridanie nazvu funkcie
-        AST_NODE* argument;
-        AST_NODE* temp = ast_create_node_type(NODE_ARGUMENT);
-        ast_add_parent(root, temp, 1);  //pridanie vetve argumenty
-        AST_NODE* temp2;
-        while(1){
-            switch(peek().type){
+AST_NODE *call_f(Token first, Token second)
+{
+    if ((first.type == TOKEN_TYPE_IDENTIFIER || first.type == KEYWORD_LIST) && second.type == TOKEN_TYPE_LPAREN)
+    {
+        AST_NODE *root = ast_create_node_type(NODE_CALL);
+        ast_add_parent(root, ast_create_node(first), 0); // pridanie nazvu funkcie
+        AST_NODE *argument;
+        AST_NODE *temp = ast_create_node_type(NODE_ARGUMENT);
+        ast_add_parent(root, temp, 1); // pridanie vetve argumenty
+        AST_NODE *temp2;
+        while (1)
+        {
+            switch (peek().type)
+            {
                 case TOKEN_TYPE_INT:
                 case TOKEN_TYPE_DOUBLE:
                 case TOKEN_TYPE_STRING:
@@ -273,8 +347,7 @@ AST_NODE* call_f(Token first, Token second){
                 case TOKEN_TYPE_NOT:
                 case KEYWORD_LIST:
                     argument = parse_expression();
-                    ast_add_parent(temp, argument, 0 );
-                    
+                    ast_add_parent(temp, argument, 0);
 
                     break;
                 case TOKEN_TYPE_RPAREN:
@@ -282,28 +355,33 @@ AST_NODE* call_f(Token first, Token second){
                     return root;
                     break;
                 default:
-                    parser_error_exit(2,"Syntakticka chyba vo volani funkcie: neplatny argument" );
+                    parser_error_exit(2, "Syntakticka chyba vo volani funkcie: neplatny argument");
                     break;
-
             }
-            if(peek().type == TOKEN_TYPE_RPAREN){
+            if (peek().type == TOKEN_TYPE_RPAREN)
+            {
                 next();
                 return root;
-            }else if(peek().type == TOKEN_TYPE_COMMA){
+            }
+            else if (peek().type == TOKEN_TYPE_COMMA)
+            {
                 next();
-                if(peek().type != TOKEN_TYPE_RPAREN){
+                if (peek().type != TOKEN_TYPE_RPAREN)
+                {
                     temp2 = ast_create_node_type(NODE_ARGUMENT);
-                    ast_add_parent(temp, temp2, 1 );
+                    ast_add_parent(temp, temp2, 1);
                     temp = temp2;
                     continue;
-                }else{
-                    parser_error_exit(2,"Syntakticka chyba vo volani funkcie: ciarka pred ')'" );
                 }
-
-            }else{
-                parser_error_exit(2,"Syntakticka chyba vo volani funkcie: za argumentom ocakavana ',' alebo ')'" );
+                else
+                {
+                    parser_error_exit(2, "Syntakticka chyba vo volani funkcie: ciarka pred ')'");
+                }
             }
-
+            else
+            {
+                parser_error_exit(2, "Syntakticka chyba vo volani funkcie: za argumentom ocakavana ',' alebo ')'");
+            }
         }
     }
     return NULL;
@@ -317,90 +395,99 @@ AST_NODE* call_f(Token first, Token second){
 //   NODE_IF: lavy = NODE_PODMIENKA (lavy = podmienka, pravy = telo then), pravy = NODE_ELSE (lavy = telo else)
 //   alebo pri "else if" priamo dalsi NODE_IF; telo je vzdy retaz NODE_PROGRAM
 //! Volana z: sama seba (else if), statement(), psa.c: parse_expression (if-vyraz)
-AST_NODE* if_statement(void){
-    AST_NODE* root = ast_create_node_type(NODE_IF);
-    AST_NODE* podmienka = ast_create_node_type(NODE_PODMIENKA);
-    AST_NODE* root_temp = root;
-    AST_NODE* temp;
+AST_NODE *if_statement(void)
+{
+    AST_NODE *root = ast_create_node_type(NODE_IF);
+    AST_NODE *podmienka = ast_create_node_type(NODE_PODMIENKA);
+    AST_NODE *root_temp = root;
+    AST_NODE *temp;
     ast_add_parent(root, podmienka, 0);
-    AST_NODE* vyraz = parse_expression();
-    ast_add_parent(podmienka, vyraz,0);
-    if(next().type != KEYWORD_THEN){parser_error_exit(2,"Syntakticka chyba v if: za podmienkou ocakavane 'then'" );}
-    if(peek().type == TOKEN_TYPE_EOL){ 
+    AST_NODE *vyraz = parse_expression();
+    ast_add_parent(podmienka, vyraz, 0);
+    if (next().type != KEYWORD_THEN)
+    {
+        parser_error_exit(2, "Syntakticka chyba v if: za podmienkou ocakavane 'then'");
+    }
+    if (peek().type == TOKEN_TYPE_EOL)
+    {
         temp = function_body();
-        ast_add_parent(podmienka,temp,1);
-        if(peek().type == KEYWORD_ELSE){
-            AST_NODE* els;
+        ast_add_parent(podmienka, temp, 1);
+        if (peek().type == KEYWORD_ELSE)
+        {
+            AST_NODE *els;
             next();
-            
-            switch(peek().type){
+
+            switch (peek().type)
+            {
                 case TOKEN_TYPE_EOL:
-                    els =  ast_create_node_type(NODE_ELSE);
-                    temp = function_body();
-                    ast_add_parent(els,temp,0);
-                    ast_add_parent(root_temp,els,1);
-                break;
-                case KEYWORD_IF: 
-                    next();
-                    temp = if_statement();
-                    ast_add_parent(root_temp,temp,1);
-                break;
-                default:
                     els = ast_create_node_type(NODE_ELSE);
-                    temp = function_body();      
-                    ast_add_parent(els,temp,0);
-                    ast_add_parent(root_temp,els,1);
-                break;
-                
-            }
-            
-            
-        }
-    }else{
-        temp = function_body();          
-        ast_add_parent(podmienka,temp,1);
-        if(peek().type == KEYWORD_ELSE){
-            AST_NODE* els;
-            next();
-            
-            switch(peek().type){
-                case TOKEN_TYPE_EOL:
-                    els =  ast_create_node_type(NODE_ELSE);
                     temp = function_body();
-                    ast_add_parent(els,temp,0);
-                    ast_add_parent(root,els,1);
-                break;
+                    ast_add_parent(els, temp, 0);
+                    ast_add_parent(root_temp, els, 1);
+                    break;
                 case KEYWORD_IF:
                     next();
                     temp = if_statement();
-                    ast_add_parent(root,temp,1);
-                break;
+                    ast_add_parent(root_temp, temp, 1);
+                    break;
                 default:
-                    
                     els = ast_create_node_type(NODE_ELSE);
                     temp = function_body();
-                    ast_add_parent(els,temp,0);
-                    ast_add_parent(root,els,1);
-                break;
-                
+                    ast_add_parent(els, temp, 0);
+                    ast_add_parent(root_temp, els, 1);
+                    break;
             }
-            
-            
         }
     }
-    
+    else
+    {
+        temp = function_body();
+        ast_add_parent(podmienka, temp, 1);
+        if (peek().type == KEYWORD_ELSE)
+        {
+            AST_NODE *els;
+            next();
+
+            switch (peek().type)
+            {
+                case TOKEN_TYPE_EOL:
+                    els = ast_create_node_type(NODE_ELSE);
+                    temp = function_body();
+                    ast_add_parent(els, temp, 0);
+                    ast_add_parent(root, els, 1);
+                    break;
+                case KEYWORD_IF:
+                    next();
+                    temp = if_statement();
+                    ast_add_parent(root, temp, 1);
+                    break;
+                default:
+
+                    els = ast_create_node_type(NODE_ELSE);
+                    temp = function_body();
+                    ast_add_parent(els, temp, 0);
+                    ast_add_parent(root, els, 1);
+                    break;
+            }
+        }
+    }
+
     return root;
 }
 
 // while_loop: "while podmienka do telo" -> NODE_WHILE (lavy = podmienka, pravy = telo)
 //! Volana z: statement()
-AST_NODE* while_loop(void){
-    AST_NODE* root = ast_create_node_type(NODE_WHILE);
-    AST_NODE* temp = parse_expression();
+AST_NODE *while_loop(void)
+{
+    AST_NODE *root = ast_create_node_type(NODE_WHILE);
+    AST_NODE *temp = parse_expression();
     ast_add_parent(root, temp, 0);
-    if(next().type != KEYWORD_DO){parser_error_exit(2,"Syntakticka chyba vo while: za podmienkou ocakavane 'do'" );}
+    if (next().type != KEYWORD_DO)
+    {
+        parser_error_exit(2, "Syntakticka chyba vo while: za podmienkou ocakavane 'do'");
+    }
     temp = function_body();
-    ast_add_parent(root, temp,1);
+    ast_add_parent(root, temp, 1);
 
     return root;
 }
@@ -409,108 +496,142 @@ AST_NODE* while_loop(void){
 //   NODE_FOR: lavy = premenna (lavy = NODE_LIMIT, pravy = retaz NODE_PODMIENKA so strazami), pravy = telo
 //   NODE_LIMIT: lavy = uzol to/until (lavy = od, pravy = do) alebo zdroj (zoznam), pravy = krok (by)
 //! Volana z: statement()
-AST_NODE* for_loop(void){
-    AST_NODE* root = ast_create_node_type(NODE_FOR);
-    AST_NODE* temp;
-    AST_NODE* limit_typ;
-    AST_NODE* limit;
-    AST_NODE* nazov_p;
-    AST_NODE* last_temp;
-    switch(peek().type){
+AST_NODE *for_loop(void)
+{
+    AST_NODE *root = ast_create_node_type(NODE_FOR);
+    AST_NODE *temp;
+    AST_NODE *limit_typ;
+    AST_NODE *limit;
+    AST_NODE *nazov_p;
+    AST_NODE *last_temp;
+    switch (peek().type)
+    {
         case TOKEN_TYPE_EOL:
             next();
-            if(next().type != TOKEN_TYPE_INDENT){parser_error_exit(2,"Syntakticka chyba vo for: viacriadkova hlavicka musi byt odsadena" );}
-            if(peek().type != TOKEN_TYPE_IDENTIFIER){parser_error_exit(2,"Syntakticka chyba vo for: ocakavany nazov riadiacej premennej" );}
-            //Vytvorenie a pridanie uzla s nazvom premmennej k root
+            if (next().type != TOKEN_TYPE_INDENT)
+            {
+                parser_error_exit(2, "Syntakticka chyba vo for: viacriadkova hlavicka musi byt odsadena");
+            }
+            if (peek().type != TOKEN_TYPE_IDENTIFIER)
+            {
+                parser_error_exit(2, "Syntakticka chyba vo for: ocakavany nazov riadiacej premennej");
+            }
+            // Vytvorenie a pridanie uzla s nazvom premmennej k root
             nazov_p = ast_create_node(next());
-            if(next().type != TOKEN_TYPE_ARROW){parser_error_exit(2,"Syntakticka chyba vo for: za premennou ocakavane '<-'");}
-            ast_add_parent(root,nazov_p,0); 
+            if (next().type != TOKEN_TYPE_ARROW)
+            {
+                parser_error_exit(2, "Syntakticka chyba vo for: za premennou ocakavane '<-'");
+            }
+            ast_add_parent(root, nazov_p, 0);
             limit = ast_create_node_type(NODE_LIMIT);
-            ast_add_parent(nazov_p,limit,0 );
-            
+            ast_add_parent(nazov_p, limit, 0);
+
             temp = parse_expression();
-            switch(peek().type){
+            switch (peek().type)
+            {
                 case KEYWORD_TO:
                 case KEYWORD_UNTIL:
                     limit_typ = ast_create_node(next());
-                    ast_add_parent(limit,limit_typ,0);
-                    ast_add_parent(limit_typ, temp,0);
+                    ast_add_parent(limit, limit_typ, 0);
+                    ast_add_parent(limit_typ, temp, 0);
                     temp = parse_expression();
-                    ast_add_parent(limit_typ, temp,1);
-                    if(peek().type == KEYWORD_BY){
+                    ast_add_parent(limit_typ, temp, 1);
+                    if (peek().type == KEYWORD_BY)
+                    {
                         next();
                         temp = parse_expression();
-                        ast_add_parent(limit, temp,1);
+                        ast_add_parent(limit, temp, 1);
                     }
                     break;
                 default:
                     ast_add_parent(limit, temp, 0);
                     break;
             }
-            
-            if(next().type != TOKEN_TYPE_EOL){parser_error_exit(2,"Syntakticka chyba vo for: za generatorom ocakavany koniec riadku" );}
-            last_temp = nazov_p;
-            while(peek().type == KEYWORD_IF){
-                next();
-                temp = ast_create_node_type(NODE_PODMIENKA);  
-                ast_add_parent(temp, parse_expression(),0);
-                ast_add_parent(last_temp, temp,1);
-                last_temp = temp;
-                if(next().type != TOKEN_TYPE_EOL){parser_error_exit(2,"Syntakticka chyba vo for: za strazou (if) ocakavany koniec riadku");}
+
+            if (next().type != TOKEN_TYPE_EOL)
+            {
+                parser_error_exit(2, "Syntakticka chyba vo for: za generatorom ocakavany koniec riadku");
             }
-            if(next().type != TOKEN_TYPE_DEDENT){parser_error_exit(2,"Syntakticka chyba vo for: 'do' musi byt zarovnane s 'for'" );}
-            if(next().type != KEYWORD_DO){parser_error_exit(2,"Syntakticka chyba vo for: ocakavane 'do'" );}
-            break;
-
-
-
-
-
-        case TOKEN_TYPE_IDENTIFIER:
-            if(peek().type != TOKEN_TYPE_IDENTIFIER){parser_error_exit(2,"Syntakticka chyba vo for: ocakavany nazov riadiacej premennej" );}
-            //Vytvorenie a pridanie uzla s nazvom premmennej k root
-            nazov_p = ast_create_node(next());
-            if(next().type != TOKEN_TYPE_ARROW){parser_error_exit(2,"Syntakticka chyba vo for: za premennou ocakavane '<-'");}
-            ast_add_parent(root,nazov_p,0); 
-            limit = ast_create_node_type(NODE_LIMIT);
-            ast_add_parent(nazov_p,limit,0 );
-            
-            temp = parse_expression();
-            switch(peek().type){
-                case KEYWORD_TO:
-                case KEYWORD_UNTIL:
-                    limit_typ = ast_create_node(next());
-                    ast_add_parent(limit,limit_typ,0);
-                    ast_add_parent(limit_typ, temp,0);
-                    temp = parse_expression();
-                    ast_add_parent(limit_typ, temp,1);
-                    if(peek().type == KEYWORD_BY){
-                        next();
-                        temp = parse_expression();
-                        ast_add_parent(limit, temp,1);
-                    }
-                    break;
-                default:
-                    ast_add_parent(limit, temp, 0);
-                    break;
-            }
-            
             last_temp = nazov_p;
-            while(peek().type == KEYWORD_IF){
+            while (peek().type == KEYWORD_IF)
+            {
                 next();
                 temp = ast_create_node_type(NODE_PODMIENKA);
-                ast_add_parent(temp, parse_expression(),0);
-                ast_add_parent(last_temp, temp,1);
+                ast_add_parent(temp, parse_expression(), 0);
+                ast_add_parent(last_temp, temp, 1);
+                last_temp = temp;
+                if (next().type != TOKEN_TYPE_EOL)
+                {
+                    parser_error_exit(2, "Syntakticka chyba vo for: za strazou (if) ocakavany koniec riadku");
+                }
+            }
+            if (next().type != TOKEN_TYPE_DEDENT)
+            {
+                parser_error_exit(2, "Syntakticka chyba vo for: 'do' musi byt zarovnane s 'for'");
+            }
+            if (next().type != KEYWORD_DO)
+            {
+                parser_error_exit(2, "Syntakticka chyba vo for: ocakavane 'do'");
+            }
+            break;
+
+        case TOKEN_TYPE_IDENTIFIER:
+            if (peek().type != TOKEN_TYPE_IDENTIFIER)
+            {
+                parser_error_exit(2, "Syntakticka chyba vo for: ocakavany nazov riadiacej premennej");
+            }
+            // Vytvorenie a pridanie uzla s nazvom premmennej k root
+            nazov_p = ast_create_node(next());
+            if (next().type != TOKEN_TYPE_ARROW)
+            {
+                parser_error_exit(2, "Syntakticka chyba vo for: za premennou ocakavane '<-'");
+            }
+            ast_add_parent(root, nazov_p, 0);
+            limit = ast_create_node_type(NODE_LIMIT);
+            ast_add_parent(nazov_p, limit, 0);
+
+            temp = parse_expression();
+            switch (peek().type)
+            {
+                case KEYWORD_TO:
+                case KEYWORD_UNTIL:
+                    limit_typ = ast_create_node(next());
+                    ast_add_parent(limit, limit_typ, 0);
+                    ast_add_parent(limit_typ, temp, 0);
+                    temp = parse_expression();
+                    ast_add_parent(limit_typ, temp, 1);
+                    if (peek().type == KEYWORD_BY)
+                    {
+                        next();
+                        temp = parse_expression();
+                        ast_add_parent(limit, temp, 1);
+                    }
+                    break;
+                default:
+                    ast_add_parent(limit, temp, 0);
+                    break;
+            }
+
+            last_temp = nazov_p;
+            while (peek().type == KEYWORD_IF)
+            {
+                next();
+                temp = ast_create_node_type(NODE_PODMIENKA);
+                ast_add_parent(temp, parse_expression(), 0);
+                ast_add_parent(last_temp, temp, 1);
                 last_temp = temp;
             }
-            if(next().type != KEYWORD_DO){parser_error_exit(2,"Syntakticka chyba vo for: ocakavane 'do'" );}
+            if (next().type != KEYWORD_DO)
+            {
+                parser_error_exit(2, "Syntakticka chyba vo for: ocakavane 'do'");
+            }
             break;
         default:
-            parser_error_exit(2,"Syntakticka chyba vo for: za 'for' ocakavana premenna alebo koniec riadku" );
+            parser_error_exit(2, "Syntakticka chyba vo for: za 'for' ocakavana premenna alebo koniec riadku");
             break;
     }
-    ast_add_parent(root,function_body(),1); 
-        
+    ast_add_parent(root, function_body(), 1);
+
     return root;
 }
 
@@ -522,40 +643,43 @@ AST_NODE* for_loop(void){
 //   ukoncenie sa nekontroluje za if/while/for (konci blokom alebo ho skontroloval vnoreny prikaz),
 //   za if-vyrazom a pred else (jednoriadkova vetva then, else pokracuje na tom istom riadku)
 //! Volana z: function_body_block(), function_body()
-AST_NODE* statement(void){
+AST_NODE *statement(void)
+{
     Token current_token = peek();
-    AST_NODE* root = NULL;
-    switch (current_token.type){
+    AST_NODE *root = NULL;
+    switch (current_token.type)
+    {
         case KEYWORD_IF:
-            next(); 
+            next();
             root = if_statement();
             break;
         case KEYWORD_WHILE:
-            next(); 
+            next();
             root = while_loop();
             break;
         case KEYWORD_VAR:
-            next(); 
+            next();
             root = var_def();
             break;
         case KEYWORD_VAL:
-            next(); 
+            next();
             root = val_def();
             break;
         case TOKEN_TYPE_IDENTIFIER: {
-            next();                                      // spotrebuje identifikator
-            Token current_token_second = peek();         // len nahliadne na dalsi token
-            switch (current_token_second.type){
+            next();                              // spotrebuje identifikator
+            Token current_token_second = peek(); // len nahliadne na dalsi token
+            switch (current_token_second.type)
+            {
                 case TOKEN_TYPE_ASSIGN:
-                    next(); 
+                    next();
                     root = var_assign(current_token, current_token_second);
                     break;
                 case TOKEN_TYPE_LPAREN:
-                    next(); 
+                    next();
                     root = call_f(current_token, current_token_second);
                     break;
                 default:
-                //pripad kedy je na riadku iba b+1 
+                    // pripad kedy je na riadku iba b+1
                     root = parse_expression_from(current_token);
                     break;
             }
@@ -565,110 +689,138 @@ AST_NODE* statement(void){
             next();
             root = for_loop();
             break;
-        
+
         case KEYWORD_RETURN:
             root = ast_create_node(next());
-            
-            if(peek().type != TOKEN_TYPE_EOL && peek().type != TOKEN_TYPE_SEMICOLON && peek().type != KEYWORD_ELSE){
-                AST_NODE* temp = parse_expression();
-                ast_add_parent(root,temp,0);
+
+            if (peek().type != TOKEN_TYPE_EOL && peek().type != TOKEN_TYPE_SEMICOLON && peek().type != KEYWORD_ELSE)
+            {
+                AST_NODE *temp = parse_expression();
+                ast_add_parent(root, temp, 0);
             }
-            
-            break;
-        case TOKEN_TYPE_EOL: 
 
             break;
-        
+        case TOKEN_TYPE_EOL:
+
+            break;
+
         case TOKEN_TYPE_PLUS:
             // logicky riadok nemoze zacinat operatorom (zadanie 1.2), napr. pokracovanie "+ 2" na novom riadku.
-            // Ostatne binarne operatory na zaciatku odmietne uz PSA; unarne '-' a '!' su povolene (napr. -x ako navratova hodnota).
+            // Ostatne binarne operatory na zaciatku odmietne uz PSA; unarne '-' a '!' su povolene (napr. -x ako
+            // navratova hodnota).
             parser_error_exit(2, "Syntakticka chyba: logicky riadok nemoze zacinat operatorom");
             break;
         default:
             root = parse_expression();
             break;
-        }
-    // prikaz konciaci if-vyrazom (val x = if ..., x = if ..., return if ...): posledna vetva if uz spotrebovala koniec riadku
-    AST_NODE* value = NULL;
-    if(root != NULL && (root->type == NODE_VAR_DEF || root->type == NODE_VAL_DEF ||
-                        (root->type == NODE_TOKEN_ONLY && root->token.type == TOKEN_TYPE_ASSIGN))){
+    }
+    // prikaz konciaci if-vyrazom (val x = if ..., x = if ..., return if ...): posledna vetva if uz spotrebovala koniec
+    // riadku
+    AST_NODE *value = NULL;
+    if (root != NULL && (root->type == NODE_VAR_DEF || root->type == NODE_VAL_DEF ||
+                         (root->type == NODE_TOKEN_ONLY && root->token.type == TOKEN_TYPE_ASSIGN)))
+    {
         value = root->right_ch;
-    }else if(root != NULL && root->type == NODE_TOKEN_ONLY && root->token.type == KEYWORD_RETURN){
+    }
+    else if (root != NULL && root->type == NODE_TOKEN_ONLY && root->token.type == KEYWORD_RETURN)
+    {
         value = root->left_ch;
     }
 
-    if(current_token.type == KEYWORD_WHILE || current_token.type == KEYWORD_IF || current_token.type == KEYWORD_FOR ||
-        (value != NULL && value->type == NODE_IF)){
-
-    }else if(peek().type != KEYWORD_ELSE){
+    if (current_token.type == KEYWORD_WHILE || current_token.type == KEYWORD_IF || current_token.type == KEYWORD_FOR ||
+        (value != NULL && value->type == NODE_IF))
+    {
+    }
+    else if (peek().type != KEYWORD_ELSE)
+    {
         current_token = next();
-        if(current_token.type != TOKEN_TYPE_EOL && current_token.type != TOKEN_TYPE_SEMICOLON){
+        if (current_token.type != TOKEN_TYPE_EOL && current_token.type != TOKEN_TYPE_SEMICOLON)
+        {
             parser_error_exit(2, "Syntakticka chyba: za prikazom ocakavany koniec riadku alebo ';'");
         }
     }
-    
+
     return root;
 }
 
 // function_body_block: blok prikazov medzi INDENT a DEDENT, prikazy su zretazene cez NODE_PROGRAM
 //! Volana z: function_body()
-AST_NODE* function_body_block(void){
-    //vytvorime prvy node program bloku
-    AST_NODE* root = ast_create_node_type(NODE_PROGRAM);
-    AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
-    AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
+AST_NODE *function_body_block(void)
+{
+    // vytvorime prvy node program bloku
+    AST_NODE *root = ast_create_node_type(NODE_PROGRAM);
+    AST_NODE *temp = NULL;              // sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
+    AST_NODE *last_program_node = NULL; // ukazatel na posledny node z ktoreho vychadzame
     Token current_token = next();
-    if(current_token.type != TOKEN_TYPE_INDENT){parser_error_exit(2, "Syntakticka chyba: ocakavany odsadeny blok");}
-    
-    //pre pripad prazdneho bloku. Blok nemoze byt prazdny.
+    if (current_token.type != TOKEN_TYPE_INDENT)
+    {
+        parser_error_exit(2, "Syntakticka chyba: ocakavany odsadeny blok");
+    }
+
+    // pre pripad prazdneho bloku. Blok nemoze byt prazdny.
     current_token = peek();
-    while(current_token.type == TOKEN_TYPE_EOL){       // prazdne riadky / komentare na zaciatku bloku
+    while (current_token.type == TOKEN_TYPE_EOL)
+    { // prazdne riadky / komentare na zaciatku bloku
         next();
         current_token = peek();
     }
-    if(current_token.type == TOKEN_TYPE_DEDENT){parser_error_exit(2, "Syntakticka chyba: blok nemoze byt prazdny");}
+    if (current_token.type == TOKEN_TYPE_DEDENT)
+    {
+        parser_error_exit(2, "Syntakticka chyba: blok nemoze byt prazdny");
+    }
     last_program_node = root;
-    
-    //Loop ktory kontroluje lubovolny pocet statementov
-    while (current_token.type != TOKEN_TYPE_DEDENT){
+
+    // Loop ktory kontroluje lubovolny pocet statementov
+    while (current_token.type != TOKEN_TYPE_DEDENT)
+    {
         temp = statement();
-        ast_add_parent(last_program_node,temp,0);
+        ast_add_parent(last_program_node, temp, 0);
         current_token = peek();
-        while(current_token.type == TOKEN_TYPE_EOL){   // prazdne riadky / komentare za prikazom
+        while (current_token.type == TOKEN_TYPE_EOL)
+        { // prazdne riadky / komentare za prikazom
             next();
             current_token = peek();
         }
-        if(current_token.type == TOKEN_TYPE_EOF){
+        if (current_token.type == TOKEN_TYPE_EOF)
+        {
             next();
             parser_error_exit(2, "Syntakticka chyba: neocakavany koniec suboru vo vnutri bloku");
         }
-        
-        //vytvorenie noveho uzla, nappojenie na predchadzajuci programovy uzol a nastavenie uzla ako posledny
-        if(current_token.type != TOKEN_TYPE_DEDENT){
+
+        // vytvorenie noveho uzla, nappojenie na predchadzajuci programovy uzol a nastavenie uzla ako posledny
+        if (current_token.type != TOKEN_TYPE_DEDENT)
+        {
             temp = ast_create_node_type(NODE_PROGRAM);
-            ast_add_parent(last_program_node,temp,1);
+            ast_add_parent(last_program_node, temp, 1);
             last_program_node = temp;
-        }else{
+        }
+        else
+        {
             next();
         }
-        
     }
-    
-    
+
     return root;
 }
 
 // function_body: telo funkcie, vetvy if/else alebo cyklu - bud odsadeny blok (za EOL),
 //   alebo jeden prikaz na tom istom riadku; v oboch pripadoch vracia retaz NODE_PROGRAM
 //! Volana z: if_statement(), while_loop(), for_loop(), function_list()
-AST_NODE* function_body(void){
-    AST_NODE* root = NULL;
+AST_NODE *function_body(void)
+{
+    AST_NODE *root = NULL;
     Token current_token = peek();
-    if(current_token.type == TOKEN_TYPE_EOL){
+    if (current_token.type == TOKEN_TYPE_EOL)
+    {
         next();
-        while(peek().type == TOKEN_TYPE_EOL){ next(); }   // prazdne riadky pred INDENT
+        while (peek().type == TOKEN_TYPE_EOL)
+        {
+            next();
+        } // prazdne riadky pred INDENT
         root = function_body_block();
-    }else{
+    }
+    else
+    {
         root = ast_create_node_type(NODE_PROGRAM);
         ast_add_parent(root, statement(), 0);
     }
@@ -682,84 +834,104 @@ AST_NODE* function_body(void){
 
 // function_def: hlavicka funkcie "meno(parametre) [: typ] =" (bez tela)
 //! Volana z: function_list()
-AST_NODE* function_def(void){
-    AST_NODE* root = NULL;
+AST_NODE *function_def(void)
+{
+    AST_NODE *root = NULL;
     Token current_token = next();
-    AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
-    AST_NODE* last_program_node = NULL;   //ukazatel na posledny node z ktoreho vychadzame
-    if(current_token.type == TOKEN_TYPE_IDENTIFIER){
+    AST_NODE *temp = NULL;              // sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
+    AST_NODE *last_program_node = NULL; // ukazatel na posledny node z ktoreho vychadzame
+    if (current_token.type == TOKEN_TYPE_IDENTIFIER)
+    {
         root = ast_create_node(current_token);
-        last_program_node = root; 
-    }else{
+        last_program_node = root;
+    }
+    else
+    {
         parser_error_exit(2, "Syntakticka chyba v definicii funkcie: za 'def' ocakavany nazov funkcie");
     }
     current_token = next();
-    if(current_token.type != TOKEN_TYPE_LPAREN){
+    if (current_token.type != TOKEN_TYPE_LPAREN)
+    {
         parser_error_exit(2, "Syntakticka chyba v definicii funkcie: za nazvom ocakavana '('");
     }
     temp = parameter_list();
-    ast_add_parent(last_program_node,temp,1);
+    ast_add_parent(last_program_node, temp, 1);
 
-    //TOKEN_TYPE_RPAREN kontroluje funkcia parameter_list() sama v sebe
+    // TOKEN_TYPE_RPAREN kontroluje funkcia parameter_list() sama v sebe
     current_token = next();
-    if(current_token.type == TOKEN_TYPE_COLON){
+    if (current_token.type == TOKEN_TYPE_COLON)
+    {
         current_token = peek();
         temp = get_type();
-        ast_add_parent(last_program_node,temp,0);
+        ast_add_parent(last_program_node, temp, 0);
         current_token = next();
     }
-    if(current_token.type != TOKEN_TYPE_ASSIGN){parser_error_exit(2, "Syntakticka chyba v definicii funkcie: za hlavickou ocakavane '=' alebo ': typ ='");}
+    if (current_token.type != TOKEN_TYPE_ASSIGN)
+    {
+        parser_error_exit(2, "Syntakticka chyba v definicii funkcie: za hlavickou ocakavane '=' alebo ': typ ='");
+    }
 
     return root;
-
 }
 
 // function_list: jedna definicia funkcie ([@main] def ...) = hlavicka + telo
 //! Volana z: program()
-AST_NODE* function_list(void){
-    AST_NODE* root = NULL;
+AST_NODE *function_list(void)
+{
+    AST_NODE *root = NULL;
     Token current_token = next();
-    AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pointre na uzly ktore treba pripojit na koren
-    AST_NODE* last_program_node = root;   //ukazatel na posledny node z ktoreho vychadzame
+    AST_NODE *temp = NULL;              // sem sa docasne ukladaju vratene pointre na uzly ktore treba pripojit na koren
+    AST_NODE *last_program_node = root; // ukazatel na posledny node z ktoreho vychadzame
 
-    if(current_token.type == TOKEN_TYPE_AT_MAIN){
+    if (current_token.type == TOKEN_TYPE_AT_MAIN)
+    {
         root = ast_create_node_type(NODE_MAIN);
         current_token = next();
-        if(current_token.type == KEYWORD_DEF){
+        if (current_token.type == KEYWORD_DEF)
+        {
             temp = ast_create_node_type(NODE_FUNC_DEF);
             ast_add_parent(root, temp, 0);
             last_program_node = temp;
-        
-        }else if(current_token.type == TOKEN_TYPE_EOL){ //spotrebovanie EOL tokenu aby mohol byt na inom riadku ako def
+        }
+        else if (current_token.type == TOKEN_TYPE_EOL)
+        { // spotrebovanie EOL tokenu aby mohol byt na inom riadku ako def
             current_token = next();
-            while(current_token.type == TOKEN_TYPE_EOL){ current_token = next(); }   // aj viac prazdnych riadkov
-            if(current_token.type == KEYWORD_DEF){
-            temp = ast_create_node_type(NODE_FUNC_DEF);
-            ast_add_parent(root, temp, 0);
-            last_program_node = temp;      
-            }else{
+            while (current_token.type == TOKEN_TYPE_EOL)
+            {
+                current_token = next();
+            } // aj viac prazdnych riadkov
+            if (current_token.type == KEYWORD_DEF)
+            {
+                temp = ast_create_node_type(NODE_FUNC_DEF);
+                ast_add_parent(root, temp, 0);
+                last_program_node = temp;
+            }
+            else
+            {
                 parser_error_exit(2, "Syntakticka chyba: za @main ocakavane 'def'");
             }
-        }else{
+        }
+        else
+        {
             parser_error_exit(2, "Syntakticka chyba: za @main ocakavane 'def'");
         }
-
-    }else if (current_token.type == KEYWORD_DEF){
-        root = ast_create_node_type(NODE_FUNC_DEF); 
+    }
+    else if (current_token.type == KEYWORD_DEF)
+    {
+        root = ast_create_node_type(NODE_FUNC_DEF);
         last_program_node = root;
-    }else{
+    }
+    else
+    {
         parser_error_exit(2, "Syntakticka chyba: ocakavana definicia funkcie (def alebo @main)");
     }
-    
-    temp = function_def();
-    ast_add_parent(last_program_node, temp, 0);     //pridavanie definicie funkcie do laveho uzla 
 
-    
+    temp = function_def();
+    ast_add_parent(last_program_node, temp, 0); // pridavanie definicie funkcie do laveho uzla
 
     temp = function_body();
-    ast_add_parent(last_program_node, temp, 1);     //pridavanie tela funkcie do raveho uzla 
+    ast_add_parent(last_program_node, temp, 1); // pridavanie tela funkcie do raveho uzla
     return root;
-
 }
 
 /* ============================================================
@@ -768,65 +940,79 @@ AST_NODE* function_list(void){
 
 // prolog: skontroluje povinny prolog "import meno.*" ukonceny EOL (pred nim mozu byt prazdne riadky a komentare)
 //! Volana z: program()
-bool prolog(void){
+bool prolog(void)
+{
     Token current_token = next();
-    while(current_token.type == TOKEN_TYPE_EOL){ current_token = next(); }   // pred prologom mozu byt komentare a prazdne riadky
-    if (current_token.type != KEYWORD_IMPORT) return false;
-    
-    current_token = next();       
-    if (current_token.type != TOKEN_TYPE_IDENTIFIER) return false;
-    token_free(&current_token);
-    
-    current_token = next();       
-    if (current_token.type != TOKEN_TYPE_DOT) return false;
-    
-    current_token = next();       
-    if (current_token.type != TOKEN_TYPE_MUL) return false;
-    
+    while (current_token.type == TOKEN_TYPE_EOL)
+    {
+        current_token = next();
+    } // pred prologom mozu byt komentare a prazdne riadky
+    if (current_token.type != KEYWORD_IMPORT)
+        return false;
+
     current_token = next();
-    if (current_token.type != TOKEN_TYPE_EOL) return false;
+    if (current_token.type != TOKEN_TYPE_IDENTIFIER)
+        return false;
+    token_free(&current_token);
+
+    current_token = next();
+    if (current_token.type != TOKEN_TYPE_DOT)
+        return false;
+
+    current_token = next();
+    if (current_token.type != TOKEN_TYPE_MUL)
+        return false;
+
+    current_token = next();
+    if (current_token.type != TOKEN_TYPE_EOL)
+        return false;
 
     return true;
 }
 
- // program: vstupna funkcia parsera - prolog a potom zoznam definicii funkcii, vracia koren AST
+// program: vstupna funkcia parsera - prolog a potom zoznam definicii funkcii, vracia koren AST
 //! Volana z: main.c: main
-AST_NODE* program(void){
-    AST_NODE* root = ast_create_node_type(NODE_PROGRAM);
+AST_NODE *program(void)
+{
+    AST_NODE *root = ast_create_node_type(NODE_PROGRAM);
     ast_root = root;
-    if (prolog() == false){
-        parser_error_exit(2,"Syntakticka chyba: chybajuci alebo chybny prolog 'import ifj26.*'");
+    if (prolog() == false)
+    {
+        parser_error_exit(2, "Syntakticka chyba: chybajuci alebo chybny prolog 'import ifj26.*'");
     }
 
-    AST_NODE* temp = NULL;     //sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
-    AST_NODE* last_program_node = root;
-    Token current_token = peek();  //volanie lexera
-    while (current_token.type != TOKEN_TYPE_EOF){            //kontrola ci po prologu nasleduju definicie funkcii. Kazda funkcia ma v sebe zvysok pravidiel
-        
-        switch(current_token.type){
+    AST_NODE *temp = NULL; // sem sa docasne ukladaju vratene pontre na uzly ktore treba pripojit na koren
+    AST_NODE *last_program_node = root;
+    Token current_token = peek(); // volanie lexera
+    while (current_token.type != TOKEN_TYPE_EOF)
+    { // kontrola ci po prologu nasleduju definicie funkcii. Kazda funkcia ma v sebe zvysok pravidiel
+
+        switch (current_token.type)
+        {
             case TOKEN_TYPE_AT_MAIN:
                 temp = function_list();
                 ast_add_parent(last_program_node, temp, 0);
                 break;
             case KEYWORD_DEF:
                 temp = function_list();
-                ast_add_parent(last_program_node, temp, 0);   
-                break; 
+                ast_add_parent(last_program_node, temp, 0);
+                break;
             case TOKEN_TYPE_EOL:
                 next();
                 current_token = peek();
                 continue;
             default:
-                parser_error_exit(2,"Syntakticka chyba: na najvyssej urovni moze byt iba definicia funkcie (def alebo @main)");
+                parser_error_exit(
+                    2, "Syntakticka chyba: na najvyssej urovni moze byt iba definicia funkcie (def alebo @main)");
         }
 
         current_token = peek();
-        if(current_token.type != TOKEN_TYPE_EOF){
-            AST_NODE* program_node = ast_create_node_type(NODE_PROGRAM);
+        if (current_token.type != TOKEN_TYPE_EOF)
+        {
+            AST_NODE *program_node = ast_create_node_type(NODE_PROGRAM);
             ast_add_parent(last_program_node, program_node, 1);
             last_program_node = program_node;
         }
-        
     }
     return root;
 }
