@@ -1,20 +1,13 @@
-/*
- * Implementácia prekladača pre jazyk IFJ26.
- *
- * Rozhranie generátora kódu IFJcode26 a spoločné typy generátora.
- *
- * Autor:   Richard Veselka
- * Login:   xveselr00
- */
 #ifndef CODEGEN_H
 #define CODEGEN_H
 
-#include "ast.h"
-#include <stddef.h>
 #include <stdio.h>
+#include <stddef.h>
+#include "ast.h"
 
-typedef enum
-{
+
+
+typedef enum{
     CG_TYPE_INT,
     CG_TYPE_DOUBLE,
     CG_TYPE_STRING,
@@ -24,16 +17,17 @@ typedef enum
     CG_TYPE_UNKNOWN
 } CodegenType;
 
-typedef struct
-{
+
+typedef struct{
     const char *name;
     CodegenType type;
 } CodegenSymbol;
 
+
 typedef struct CodegenBinding CodegenBinding;
 
-typedef struct
-{
+
+typedef struct{
     FILE *output;
 
     unsigned int label_counter;
@@ -57,17 +51,19 @@ typedef struct
 
 } CodegenContext;
 
+
 CodegenType codegen_builtin_return_type(const AST_NODE *node);
 CodegenType codegen_from_semantic_type(DataType type);
 
 void codegen_generate_builtin_expression(AST_NODE *node, CodegenContext *ctx);
 void codegen_generate_call_expression(AST_NODE *node, CodegenContext *ctx);
 
-// Spusti generovanie celeho programu
+//Spusti generovanie celeho programu
 int codegen_generate(AST_NODE *root, FILE *output);
 int codegen_generate_ctx(AST_NODE *root, CodegenContext *ctx);
-// Spracuje jeden uzol AST
+//Spracuje jeden uzol AST
 void codegen_generate_node(AST_NODE *node, CodegenContext *ctx);
+
 
 void codegen_emit_header(CodegenContext *ctx);
 void codegen_emit_label(CodegenContext *ctx, const char *label);
@@ -80,7 +76,7 @@ void codegen_reserve_variable(const AST_NODE *identifier, CodegenContext *ctx);
 void codegen_declare_variable(const AST_NODE *identifier, CodegenContext *ctx);
 void codegen_set_variable_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type);
 CodegenType codegen_variable_type(const AST_NODE *identifier, const CodegenContext *ctx);
-// Zacne novy blok premennych
+//Zacne novy blok premennych
 void codegen_enter_scope(CodegenContext *ctx);
 void codegen_leave_scope(CodegenContext *ctx);
 void codegen_clear_bindings(CodegenContext *ctx);
@@ -89,6 +85,12 @@ CodegenType codegen_list_item_type(const AST_NODE *identifier, const CodegenCont
 
 void codegen_set_list_item_type(const AST_NODE *identifier, CodegenContext *ctx, CodegenType type);
 
+
+
 #endif
 
-// FB0
+
+
+
+
+//FB0

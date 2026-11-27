@@ -1,11 +1,8 @@
 /*
- * Implementácia prekladača pre jazyk IFJ26.
- *
- * Tabuľka symbolov (TRP-izp / vv-BVS)
- *
- * Autor:   Pham Vu Duy Anh
- * Login:   xphamv00
+ * IFJ26
+ * Author: Pham Vu Duy Anh, xphamv00
  */
+
 #ifndef SYMTABLE_H
 #define SYMTABLE_H
 

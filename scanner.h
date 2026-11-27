@@ -1,11 +1,3 @@
-/*
- * Implementácia prekladača pre jazyk IFJ26.
- *
- * Lexikálny analyzátor - rozhranie.
- *
- * Autor:   Deák Dominik
- * Login:   xdeakdo00
- */
 #ifndef SCANNER_H
 #define SCANNER_H
 
